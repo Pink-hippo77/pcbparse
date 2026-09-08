@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -297,7 +298,10 @@ class CompositePerceptionProvider:
         }
 
     def build_ir(self, input_path: str | Path, ctx: RunContext | None = None) -> CircuitIR:
+        _phase_timings: dict[str, float] = {}
+        _t0 = time.monotonic()
         original = load_image(input_path)
+        _phase_timings["image_load"] = time.monotonic() - _t0
         component_tiles = tile_image_view(
             original,
             tile_size=self.config.resolved_component_tile_size,
@@ -311,6 +315,8 @@ class CompositePerceptionProvider:
         wire_view_index = {view.view_id: view for view in wire_views}
         wire_view_index[original.view_id] = original
 
+        # --- Phase: Component Detection ---
+        _t_component = time.monotonic()
         component_candidates: list[Component] = []
         raw_component_count = 0
         score_filtered_component_count = 0
@@ -424,6 +430,9 @@ class CompositePerceptionProvider:
             tile_size=self.config.ocr_tile_size,
             overlap=self.config.ocr_tile_overlap,
         )
+        _phase_timings["component_detect"] = time.monotonic() - _t_component
+        # --- Phase: OCR ---
+        _t_ocr = time.monotonic()
         texts = run_multilevel_ocr(
             self.ocr_provider,
             ocr_views,
@@ -439,6 +448,9 @@ class CompositePerceptionProvider:
                 conflicting_text_iou_threshold=self.config.ocr_conflicting_text_iou,
             ),
         )
+        _phase_timings["ocr_recognize"] = time.monotonic() - _t_ocr
+        # --- Phase: Pin Detection ---
+        _t_pin = time.monotonic()
         pin_view_index = {
             view.view_id: view
             for item in pin_component_views
@@ -455,7 +467,9 @@ class CompositePerceptionProvider:
             pin_view_owners,
         )
         _assign_global_ids(pins, "pin")
-
+        _phase_timings["pin_detect"] = time.monotonic() - _t_pin
+        # --- Phase: Wire Segmentation ---
+        _t_wire = time.monotonic()
         wire_masks = self.wire_provider.segment(wire_views, ctx)
         segments, vectorized_junctions = _vectorize_masks(
             wire_masks,
@@ -482,6 +496,8 @@ class CompositePerceptionProvider:
             tolerance=self.config.wire_tile_dedup_tolerance_px,
         )
         _assign_global_ids(junctions, "junction")
+        _phase_timings["wire_segment"] = time.monotonic() - _t_wire
+        _phase_timings["total_perception"] = time.monotonic() - _t0
         image_info = original.image_info(image_id=ctx.image_id if ctx else Path(input_path).stem)
         return CircuitIR(
             state=IRState.PERCEIVED,
@@ -549,6 +565,9 @@ class CompositePerceptionProvider:
                     "max_candidates": self.config.component_max_candidates,
                     "cap_filtered_count": cap_filtered_component_count,
                     "final_count": len(components),
+                },
+                "phase_timings_seconds": {
+                    k: round(v, 6) for k, v in _phase_timings.items()
                 },
             },
         )

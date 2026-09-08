@@ -167,6 +167,16 @@ def composite_provider_config_from_pipeline(
     if not isinstance(raw_ocr, Mapping):
         raise ValueError("pipeline ocr section must be an object")
     ocr_inference_overrides = _parse_ocr_inference_overrides(raw_ocr)
+    # OCR batch sizes — configurable to control GPU memory and throughput.
+    ocr_global_batch_size = _optional_strict_positive_int(
+        raw_ocr, "global_batch_size",
+    ) or defaults.ocr_global_batch_size
+    ocr_component_batch_size = _optional_strict_positive_int(
+        raw_ocr, "component_batch_size",
+    ) or defaults.ocr_component_batch_size
+    ocr_strip_batch_size = _optional_strict_positive_int(
+        raw_ocr, "strip_batch_size",
+    ) or defaults.ocr_strip_batch_size
     _validate_tile_pair(
         "component_fallback_tile",
         component_fallback_tile_size,
@@ -203,6 +213,9 @@ def composite_provider_config_from_pipeline(
         ocr_component_roi_padding_px=ocr_component_roi_padding_px,
         ocr_merge_conflicting_text=ocr_merge_conflicting_text,
         ocr_conflicting_text_iou=ocr_conflicting_text_iou,
+        ocr_global_batch_size=ocr_global_batch_size,
+        ocr_component_batch_size=ocr_component_batch_size,
+        ocr_strip_batch_size=ocr_strip_batch_size,
         pin_component_roi_padding_px=pin_component_roi_padding_px,
         wire_minimum_run_px=wire_minimum_run_px,
         wire_rdp_epsilon_px=wire_rdp_epsilon_px,
