@@ -1,0 +1,525 @@
+from __future__ import annotations
+
+from collections import defaultdict
+import math
+import re
+from typing import Any
+
+from pcbparse.association.ocr_common import (
+    OCRAssociationConfig,
+    append_diagnostic,
+    canonical_details,
+    field_choice,
+    lexical_candidates,
+    make_rule_evidence,
+    point_bbox_distance,
+    preferred_text,
+    upsert_evidence,
+)
+from pcbparse.association.pin_assignment import (
+    PinAssignmentCandidate,
+    solve_pin_assignment_group,
+)
+from pcbparse.ir.models import Diagnostic, Pin, TextToken
+
+
+_PIN_TEXT_FIELDS = {
+    "pinnumber": "number",
+    "pindesignator": "number",
+    "pinname": "name",
+}
+_NUMBER_LEXEME = re.compile(r"^[^\s,()]+$")
+_SIDES = {"L", "R", "T", "B"}
+
+
+def associate_pin_texts(
+    pins: list[Pin],
+    texts: list[TextToken],
+    diagnostics: list[Diagnostic],
+    config: OCRAssociationConfig,
+) -> dict[str, Any]:
+    """Conservatively resolve typed pin OCR with global one-to-one matching.
+
+    Matching is performed independently for each field and physical
+    component-side group.  This prevents a locally attractive token from
+    consuming the only viable pin for a neighbouring token.  Existing pin
+    fields always win and all rejected candidates remain available in
+    Evidence for debugging.
+    """
+
+    pin_index = {pin.internal_id: pin for pin in pins}
+    token_index = {token.internal_id: token for token in texts}
+    contexts: dict[str, dict[str, Any]] = {}
+    grouped_edges: dict[
+        tuple[str, tuple[str | None, str]], list[PinAssignmentCandidate]
+    ] = defaultdict(list)
+    relevant_tokens = 0
+
+    # Candidate construction is deterministic, but neither input list is
+    # sorted or replaced: callers retain their original object order.
+    for token in sorted(texts, key=lambda item: item.internal_id):
+        field = _PIN_TEXT_FIELDS.get(canonical_details(token.details))
+        value = preferred_text(token)
+        if field is None or value is None:
+            continue
+        relevant_tokens += 1
+        explicit = token.pin_id in pin_index
+        if explicit:
+            pool = [pin_index[str(token.pin_id)]]
+        elif token.component_id:
+            pool = sorted(
+                (pin for pin in pins if pin.component_id == token.component_id),
+                key=lambda item: item.internal_id,
+            )
+        else:
+            pool = sorted(pins, key=lambda item: item.internal_id)
+
+        candidates = [
+            candidate
+            for pin in pool
+            if (
+                candidate := _score_candidate(
+                    token,
+                    pin,
+                    field=field,
+                    value=value,
+                    explicit=explicit,
+                    config=config,
+                )
+            )
+            is not None
+        ]
+        candidates.sort(key=_candidate_sort_key)
+        context: dict[str, Any] = {
+            "token": token,
+            "field": field,
+            "value": value,
+            "explicit": explicit,
+            "candidates": candidates,
+            "status": "unmatched",
+            "selected_pin_id": None,
+            "target_margin": None,
+            "group_margin": None,
+            "assignment_method": None,
+            "group_total_score": None,
+            "group_next_best_score": None,
+        }
+        contexts[token.internal_id] = context
+
+        eligible = [item for item in candidates if item.score >= config.pin_min_score]
+        if not candidates:
+            context["status"] = "unmatched"
+            continue
+        if not eligible:
+            context["status"] = "below_threshold"
+            continue
+
+        if explicit:
+            selected_group = eligible[0].group_key
+        else:
+            group_best: dict[tuple[str | None, str], PinAssignmentCandidate] = {}
+            for candidate in eligible:
+                previous = group_best.get(candidate.group_key)
+                if previous is None or _candidate_sort_key(candidate) < _candidate_sort_key(previous):
+                    group_best[candidate.group_key] = candidate
+            ranked_groups = sorted(
+                group_best.items(),
+                key=lambda item: (*_candidate_sort_key(item[1]), _group_sort_key(item[0])),
+            )
+            selected_group = ranked_groups[0][0]
+            if len(ranked_groups) > 1:
+                group_margin = ranked_groups[0][1].score - ranked_groups[1][1].score
+                context["group_margin"] = group_margin
+                if group_margin < config.pin_unique_margin:
+                    context["status"] = "ambiguous"
+                    continue
+
+        selected_edges = [item for item in eligible if item.group_key == selected_group]
+        if not selected_edges:
+            context["status"] = "unmatched"
+            continue
+        context["selected_group"] = selected_group
+        grouped_edges[(field, selected_group)].extend(selected_edges)
+
+    # Solve the complete field/group objective before accepting any target.
+    for group_key in sorted(grouped_edges, key=lambda item: (item[0], _group_sort_key(item[1]))):
+        group_candidates = grouped_edges[group_key]
+        result = solve_pin_assignment_group(
+            group_candidates,
+            minimum_score=config.pin_min_score,
+        )
+        token_ids = sorted({item.token_id for item in group_candidates})
+        for token_id in token_ids:
+            context = contexts[token_id]
+            context["assignment_method"] = result.method
+            context["group_total_score"] = result.total_score
+            context["group_next_best_score"] = result.next_best_score
+            pin_id = result.assignments.get(token_id)
+            if pin_id is None:
+                context["status"] = "ambiguous"
+                continue
+            margin = result.pair_margins.get((token_id, pin_id), 0.0)
+            context["selected_pin_id"] = pin_id
+            context["target_margin"] = margin
+            context["status"] = (
+                "accepted" if margin >= config.pin_unique_margin else "ambiguous"
+            )
+
+    rows_by_field: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    accepted_targets = 0
+    ambiguous_targets = 0
+    unknown_targets = 0
+    for token_id in sorted(contexts):
+        context = contexts[token_id]
+        token = context["token"]
+        field = str(context["field"])
+        value = str(context["value"])
+        candidates: list[PinAssignmentCandidate] = context["candidates"]
+        status = str(context["status"])
+        selected_pin_id = context["selected_pin_id"]
+        selected = next(
+            (item for item in candidates if item.pin_id == selected_pin_id),
+            candidates[0] if candidates else None,
+        )
+
+        if status == "accepted" and selected_pin_id is not None:
+            accepted_targets += 1
+            selected_pin = pin_index[selected_pin_id]
+            if token.pin_id is None:
+                token.pin_id = selected_pin_id
+            if token.component_id is None and selected_pin.component_id is not None:
+                token.component_id = selected_pin.component_id
+        elif status == "ambiguous":
+            ambiguous_targets += 1
+            append_diagnostic(
+                diagnostics,
+                severity="INFO",
+                code="ASSOCIATION.PIN_TARGET_AMBIGUOUS",
+                message=f"text {token_id} has no unique global pin target",
+                object_ids=[token_id, *[item.pin_id for item in candidates[:2]]],
+            )
+        else:
+            unknown_targets += 1
+            append_diagnostic(
+                diagnostics,
+                severity="INFO",
+                code="ASSOCIATION.PIN_TARGET_UNKNOWN",
+                message=f"text {token_id} pin target remains UNKNOWN ({status})",
+                object_ids=[token_id, *[item.pin_id for item in candidates[:1]]],
+            )
+
+        candidate_records = [
+            _candidate_record(
+                item,
+                rank=rank,
+                status=(
+                    "accepted"
+                    if status == "accepted" and item.pin_id == selected_pin_id
+                    else status
+                    if rank == 1 and status != "accepted"
+                    else "alternative_target"
+                ),
+                assignment_method=context["assignment_method"],
+            )
+            for rank, item in enumerate(candidates, start=1)
+        ]
+        token_evidence = make_rule_evidence(
+            evidence_id=f"association:pin-target:{token_id}",
+            score=selected.score if selected is not None else token.score,
+            payload_ref=token_id,
+            metadata={
+                "kind": "text-to-pin-global",
+                "field": field,
+                "value": value,
+                "lexical_candidates": lexical_candidates(token),
+                "decision": status,
+                "accepted_target_id": (
+                    selected_pin_id if status == "accepted" else None
+                ),
+                "target_margin": context["target_margin"],
+                "group_margin": context["group_margin"],
+                "assignment_method": context["assignment_method"],
+                "group_total_score": context["group_total_score"],
+                "group_next_best_score": context["group_next_best_score"],
+                "thresholds": {
+                    "min_score": config.pin_min_score,
+                    "unique_margin": config.pin_unique_margin,
+                    "max_distance_px": config.pin_max_distance_px,
+                },
+                "target_candidates": candidate_records[: config.max_recorded_candidates],
+            },
+        )
+        upsert_evidence(token.evidence, token_evidence)
+
+        for record in candidate_records:
+            rows_by_field[(str(record["target_id"]), field)].append(
+                {
+                    "text_id": token_id,
+                    "source_object_id": token.source_object_id,
+                    "value": value,
+                    "lexical_candidates": lexical_candidates(token),
+                    "score": record["score"],
+                    "distance": record["distance"],
+                    "target_rank": record["target_rank"],
+                    "target_status": record["target_status"],
+                    "global_margin": (
+                        context["target_margin"]
+                        if record["target_id"] == selected_pin_id
+                        else None
+                    ),
+                    "assignment_method": context["assignment_method"],
+                    "score_components": record["score_components"],
+                    "token_evidence_id": token_evidence.evidence_id,
+                }
+            )
+
+    evaluations: dict[tuple[str, str], dict[str, Any]] = {}
+    for pin in sorted(pins, key=lambda item: item.internal_id):
+        for field in ("number", "name"):
+            rows = sorted(
+                rows_by_field.get((pin.internal_id, field), []),
+                key=lambda item: (-float(item["score"]), str(item["text_id"])),
+            )
+            if not rows:
+                continue
+            existing = pin.number if field == "number" else pin.name
+            if existing:
+                decision, chosen, score, margin = "preserved_existing", str(existing), 1.0, None
+            else:
+                decision, chosen, score, margin = field_choice(
+                    rows,
+                    min_score=config.pin_min_score,
+                    unique_margin=config.pin_unique_margin,
+                )
+                if decision == "no_accepted_candidate" and any(
+                    row["target_status"] == "ambiguous" for row in rows
+                ):
+                    decision = "ambiguous"
+                    score = float(rows[0]["score"])
+                    margin = rows[0].get("global_margin")
+            evaluations[(pin.internal_id, field)] = {
+                "pin": pin,
+                "field": field,
+                "rows": rows,
+                "existing": existing or None,
+                "decision": decision,
+                "chosen": chosen,
+                "score": score,
+                "margin": margin,
+            }
+
+    # Pin numbers are unique only within one component.  Withhold all
+    # tentative collisions, including collisions with pre-existing numbers.
+    used_numbers: dict[str | None, set[str]] = defaultdict(set)
+    for pin in pins:
+        if pin.number:
+            used_numbers[pin.component_id].add(pin.number.casefold())
+    tentative_numbers: dict[tuple[str | None, str], list[dict[str, Any]]] = defaultdict(list)
+    for (_, field), evaluation in evaluations.items():
+        if field != "number" or evaluation["decision"] != "accepted":
+            continue
+        chosen = evaluation["chosen"]
+        pin = evaluation["pin"]
+        if isinstance(chosen, str):
+            tentative_numbers[(pin.component_id, chosen.casefold())].append(evaluation)
+    for (component_id, normalized), group in tentative_numbers.items():
+        if normalized in used_numbers[component_id] or len(group) > 1:
+            for evaluation in group:
+                evaluation["decision"] = "component_number_conflict"
+                evaluation["chosen"] = None
+
+    assignments: dict[str, dict[str, str]] = defaultdict(dict)
+    ambiguous_fields = 0
+    for (pin_id, field), evaluation in sorted(evaluations.items()):
+        pin = evaluation["pin"]
+        decision = str(evaluation["decision"])
+        chosen = evaluation["chosen"]
+        if decision == "accepted" and isinstance(chosen, str):
+            if field == "number":
+                pin.number = chosen
+            else:
+                pin.name = chosen
+            assignments[pin_id][field] = chosen
+        elif decision in {"ambiguous", "component_number_conflict"}:
+            ambiguous_fields += 1
+            append_diagnostic(
+                diagnostics,
+                severity="INFO",
+                code=(
+                    "ASSOCIATION.PIN_NUMBER_CONFLICT"
+                    if decision == "component_number_conflict"
+                    else "ASSOCIATION.PIN_FIELD_AMBIGUOUS"
+                ),
+                message=f"pin {pin_id} field {field} remains unresolved ({decision})",
+                object_ids=[pin_id, *[str(row["text_id"]) for row in evaluation["rows"][:3]]],
+            )
+
+        evidence = make_rule_evidence(
+            evidence_id=f"association:pin-field:{pin_id}:{field}",
+            score=float(evaluation["score"]),
+            payload_ref=pin_id,
+            metadata={
+                "kind": "pin-field-resolution",
+                "field": field,
+                "decision": decision,
+                "existing_value": evaluation["existing"],
+                "chosen_value": chosen,
+                "field_margin": evaluation["margin"],
+                "thresholds": {
+                    "min_score": config.pin_min_score,
+                    "unique_margin": config.pin_unique_margin,
+                    "max_distance_px": config.pin_max_distance_px,
+                },
+                "candidates": evaluation["rows"][: config.max_recorded_candidates],
+            },
+        )
+        upsert_evidence(pin.evidence, evidence)
+
+    return {
+        "relevant_tokens": relevant_tokens,
+        "accepted_targets": accepted_targets,
+        "ambiguous_targets": ambiguous_targets,
+        "unknown_targets": unknown_targets,
+        "assigned_fields": sum(len(value) for value in assignments.values()),
+        "ambiguous_fields": ambiguous_fields,
+        "assignments": {key: dict(value) for key, value in sorted(assignments.items())},
+    }
+
+
+def _score_candidate(
+    token: TextToken,
+    pin: Pin,
+    *,
+    field: str,
+    value: str,
+    explicit: bool,
+    config: OCRAssociationConfig,
+) -> PinAssignmentCandidate | None:
+    distances = [point_bbox_distance(pin.point, token.bbox)]
+    if pin.base is not None:
+        distances.append(point_bbox_distance(pin.base, token.bbox))
+    distance = min(distances)
+    if not explicit and distance > config.pin_max_distance_px:
+        return None
+
+    side = _pin_side(pin)
+    proximity = max(0.0, 1.0 - distance / config.pin_max_distance_px)
+    side_score = _side_compatibility(pin, token, side, config.pin_max_distance_px)
+    details_score = 1.0 if _PIN_TEXT_FIELDS.get(canonical_details(token.details)) == field else 0.0
+    lexical_score = _lexical_compatibility(field, value)
+    if explicit:
+        score = 0.90 * float(token.score) + 0.05 * details_score + 0.05 * lexical_score
+    else:
+        score = (
+            0.65 * float(token.score)
+            + 0.22 * proximity
+            + 0.08 * side_score
+            + 0.05 * lexical_score
+        )
+    center = token.bbox.center
+    token_axis = center.y if side in {"L", "R", "UNKNOWN"} else center.x
+    pin_axis = pin.point.y if side in {"L", "R", "UNKNOWN"} else pin.point.x
+    return PinAssignmentCandidate(
+        token_id=token.internal_id,
+        pin_id=pin.internal_id,
+        component_id=pin.component_id,
+        side=side,
+        score=min(1.0, max(0.0, score)),
+        distance=distance,
+        token_axis=token_axis,
+        pin_axis=pin_axis,
+        explicit=explicit,
+        score_components={
+            "ocr": float(token.score),
+            "proximity": proximity,
+            "side_orientation": side_score,
+            "details": details_score,
+            "lexical": lexical_score,
+        },
+    )
+
+
+def _pin_side(pin: Pin) -> str:
+    if pin.orientation in _SIDES:
+        return pin.orientation
+    if pin.base is None:
+        return "UNKNOWN"
+    dx = pin.point.x - pin.base.x
+    dy = pin.point.y - pin.base.y
+    if dx == 0 and dy == 0:
+        return "UNKNOWN"
+    if abs(dx) >= abs(dy):
+        return "R" if dx > 0 else "L"
+    return "B" if dy > 0 else "T"
+
+
+def _side_compatibility(
+    pin: Pin,
+    token: TextToken,
+    side: str,
+    maximum_distance: float,
+) -> float:
+    if side == "UNKNOWN":
+        return 0.75
+    center = token.bbox.center
+    inward = {
+        "R": pin.point.x - center.x,
+        "L": center.x - pin.point.x,
+        "B": pin.point.y - center.y,
+        "T": center.y - pin.point.y,
+    }[side]
+    if inward >= 0:
+        return 1.0
+    if inward >= -0.25 * maximum_distance:
+        return 0.6
+    return 0.2
+
+
+def _lexical_compatibility(field: str, value: str) -> float:
+    normalized = value.strip()
+    if not normalized:
+        return 0.0
+    if field == "number":
+        return 1.0 if _NUMBER_LEXEME.fullmatch(normalized) else 0.25
+    printable = sum(not character.isspace() for character in normalized)
+    return 1.0 if printable else 0.0
+
+
+def _candidate_sort_key(
+    candidate: PinAssignmentCandidate,
+) -> tuple[float, float, str, str]:
+    return (-candidate.score, candidate.distance, candidate.pin_id, candidate.token_id)
+
+
+def _group_sort_key(group: tuple[str | None, str]) -> tuple[str, str]:
+    return group[0] or "", group[1]
+
+
+def _candidate_record(
+    candidate: PinAssignmentCandidate,
+    *,
+    rank: int,
+    status: str,
+    assignment_method: str | None,
+) -> dict[str, Any]:
+    return {
+        "target_id": candidate.pin_id,
+        "score": round(float(candidate.score), 8),
+        "distance": round(float(candidate.distance), 8),
+        "explicit": candidate.explicit,
+        "semantic_compatibility": round(
+            float((candidate.score_components or {}).get("details", 0.0)), 8
+        ),
+        "component_id": candidate.component_id,
+        "side": candidate.side,
+        "target_rank": rank,
+        "target_status": status,
+        "assignment_method": assignment_method,
+        "score_components": {
+            key: round(float(value), 8)
+            for key, value in sorted((candidate.score_components or {}).items())
+        },
+    }
+
+
+__all__ = ["associate_pin_texts"]

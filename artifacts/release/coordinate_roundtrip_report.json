@@ -1,0 +1,182 @@
+{
+  "audit_payload_sha256": "4f8f5a93c794bbe39efe0305e52ee160ec791a11941220e5c410d59239a60f3d",
+  "cases_checked": 1,
+  "claim_boundary": {
+    "current_lock_production_inference": false,
+    "current_serializer_byte_determinism": true,
+    "current_serializer_coordinate_mapping": true,
+    "current_strict_schema_serialization": true,
+    "official_machine_evaluator": false,
+    "reason": "The current serializer replays a historical strict image-only frozen IR; no current models.lock artifact was loaded and no inference was executed."
+  },
+  "config": {
+    "bbox_forward": "[x1,image_height-y2,x2,image_height-y1]",
+    "case_id": "0024",
+    "coordinate_forward": "official_x=x; official_y=image_height-source_y",
+    "coordinate_inverse": "source_x=official_x; source_y=image_height-official_y",
+    "current_model_lock_sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af",
+    "evidence_scope": "frozen_ir_current_serializer_replay",
+    "kind": "official-serializer-frozen-ir-replay-config",
+    "official_profile_sha256": "4d0fb1ea15686a95ce94987d2968ef652b37b8fb8e6b0f251609486a898be44a",
+    "replay_runs": 3,
+    "roundtrip_limit_px": 0.5,
+    "schema_version": 1,
+    "source_ir_sha256": "60c8bb56cfab49ae7714697bde257cba2625b8fb44a4d03b9f1f29f7cf96ba26",
+    "source_prediction_set_sha256": "ff45ca97caf6ad0393f025f13a51d5e12172719c772e47f53345473ca22bc4e1"
+  },
+  "config_sha256": "4709bcb873f6e93d6dce0c5a4e9ae51d7f4ac2b1cc4ecbe57f1278340737e35a",
+  "coordinate_checks": {
+    "boundary_probe_points_checked": 6,
+    "cases_checked": 1,
+    "component_bbox_points_checked": 6,
+    "coordinate_observations_sha256": "26687df5386d545a73a6798d9411c9ca74b18babf419545a91fdd59b0a3c9a0f",
+    "max_roundtrip_error_px": 0.0,
+    "max_source_to_serialized_error_px": 0.0,
+    "net_edge_points_checked": 1214,
+    "origin_conversion_verified": true,
+    "pin_points_checked": 4,
+    "points_checked": 1224,
+    "positive_edges_checked": 606,
+    "roundtrip_limit_px": 0.5,
+    "within_limit": true,
+    "zero_length_edges_checked": 1
+  },
+  "current_lock_inference_executed": false,
+  "determinism": {
+    "byte_identical": true,
+    "environment_fingerprint_sha256": "1f956ef36c03ed23ddd2c86cdbb3a75c11f165dbfbc7ed25a9d150f6be75621f",
+    "environment_manifest_path": "artifacts/determinism/current_serializer_frozen_ir_replay/environment.json",
+    "environment_manifest_sha256": "6d43ce848ae7e4699b4630e34178ef2b5c24bd6c944c3d8f2df24974efd5548d",
+    "official_output_sha256": "360c314da694ffb6b65ce5fd1199b99459c8f1d5908b70e27dbfa4a931708b00",
+    "output_tree_sha256": "1c41e8c1e4a573ef0ccfc3aa5e87294b2c740aa758b5e40331119f033a528099",
+    "runs": 3
+  },
+  "environment": {
+    "code_sha256": {
+      "audit_script": "5ccf71309b37a801e6f07fc08fbdeb1e3136df2a305a867712d420edfa86497f",
+      "coordinate_lineage": "8e9b91ed27316dae40740db56e6329b5d17dd035b3cf66b24cbfab0ebfa9b586",
+      "official_schema": "27a5ca1b5f58da95d49527c6d1d464547270042c8c283b120f73b3866ca98f80",
+      "official_serializer": "9c5a01227628491d3927d3bd4ed9d4cf6e635054869cf736aeb0c81e0919ac48",
+      "orchestrator": "bec29399f0572068cc3f323ede1d880753a0f728c27cd9ba1304fb40dd80c67e"
+    },
+    "config_sha256": "4709bcb873f6e93d6dce0c5a4e9ae51d7f4ac2b1cc4ecbe57f1278340737e35a",
+    "current_model_lock_sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af",
+    "dependencies": {
+      "Pillow": "12.3.0",
+      "pydantic": "2.13.4"
+    },
+    "execution": {
+      "device": "cpu_only",
+      "inference_executed": false,
+      "models_loaded": false
+    },
+    "official_profile_sha256": "4d0fb1ea15686a95ce94987d2968ef652b37b8fb8e6b0f251609486a898be44a",
+    "platform": {
+      "machine": "AMD64",
+      "release": "11",
+      "system": "Windows"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.13"
+    }
+  },
+  "evidence_scope": "frozen_ir_current_serializer_replay",
+  "execution": {
+    "device": "cpu_only",
+    "inference_executed": false,
+    "models_loaded": false,
+    "models_lock_modified": false,
+    "test_data_used_for_tuning": false,
+    "training_configuration_modified": false
+  },
+  "internal_coordinate_origin": "top_left",
+  "internal_y_axis": "down",
+  "kind": "coordinate-roundtrip-release-report",
+  "max_roundtrip_error_px": 0.0,
+  "model_lock_binding_role": "audit_snapshot_only_models_not_loaded",
+  "model_lock_sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af",
+  "models_loaded": false,
+  "official_coordinate_origin": "bottom_left",
+  "official_y_axis": "up",
+  "origin_conversion_verified": true,
+  "points_checked": 1224,
+  "replay": {
+    "current_models_lock_path": "models/models.lock.json",
+    "current_models_lock_sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af",
+    "historical_output_matches_replay": false,
+    "official_output_sha256": "360c314da694ffb6b65ce5fd1199b99459c8f1d5908b70e27dbfa4a931708b00",
+    "official_profile_path": "src/pcbparse/resources/official_schema.json",
+    "official_profile_sha256": "4d0fb1ea15686a95ce94987d2968ef652b37b8fb8e6b0f251609486a898be44a",
+    "output_counts": {
+      "components": 3,
+      "edges": 607,
+      "nets": 107,
+      "pins": 4,
+      "zero_length_edges": 1
+    },
+    "output_root": "artifacts/determinism/current_serializer_frozen_ir_replay"
+  },
+  "schema_version": 2,
+  "source": {
+    "canvas": {
+      "height": 515,
+      "width": 916
+    },
+    "case_id": "0024",
+    "historical_component_fields": [
+      "type",
+      "name",
+      "value",
+      "bbox"
+    ],
+    "historical_official_path": "work/production-e2e-audit-calibrated-degraded/official/0024.json",
+    "historical_official_sha256": "e15a80736df268adfdb58c56e4948ce5096555af40106fccdb59fb0d6288416e",
+    "orchestrator_state_contract": {
+      "contract": "serialize VALIDATED IR, then persist state SERIALIZED",
+      "path": "src/pcbparse/pipeline/orchestrator.py",
+      "sha256": "bec29399f0572068cc3f323ede1d880753a0f728c27cd9ba1304fb40dd80c67e",
+      "verified": true
+    },
+    "prediction_manifest_path": "work/production-e2e-audit-calibrated-degraded/predictions.jsonl",
+    "prediction_manifest_sha256": "ae2dfd56fe92727147be2f80082c72ca5624225e77169ca6a3186868d2ef18f5",
+    "replay_ir_state": "VALIDATED",
+    "source_annotation_path": "Dataset300/Dataset300/0024/0024-other_CVJsonStd.json",
+    "source_annotation_sha256": "b0e1c133dfa654889106aa27dd52810825c802a1e9497f05f45196fee97c0017",
+    "source_config_sha256": "29ca4af23cc2999e3aee54c56caa9b66569499e2a9454bb26d4723d6912e8865",
+    "source_image_path": "Dataset300/Dataset300/0024/0024-other.png",
+    "source_image_sha256": "ba5066550c7675b5fd9d652904c9d52429de818a85e027e6077fef3fd4f3d183",
+    "source_inference_models_lock_path": "work/models.lock.audit-calibrated.json",
+    "source_inference_models_lock_sha256": "297ed07f9559f41dce0dcc8c5f7cf85a3d8f736bcdc5fdecf6f77bad6b3942a3",
+    "source_ir_path": "work/production-e2e-audit-calibrated-degraded/circuit_ir/0024.circuit-ir.json",
+    "source_ir_sha256": "60c8bb56cfab49ae7714697bde257cba2625b8fb44a4d03b9f1f29f7cf96ba26",
+    "source_ir_state_on_disk": "SERIALIZED",
+    "source_split": "test",
+    "state_replay_contract": "The orchestrator persists IR after serialization; replay restores only the immediately preceding VALIDATED state required by the serializer.",
+    "summary_path": "work/production-e2e-audit-calibrated-degraded/summary.json",
+    "summary_sha256": "33855ca8588738322ae6e7a13c3c50d1cf65a4facd4267b59545290de5d7f55e"
+  },
+  "source_inference_matches_current_lock": false,
+  "source_inference_model_lock_sha256": "297ed07f9559f41dce0dcc8c5f7cf85a3d8f736bcdc5fdecf6f77bad6b3942a3",
+  "source_prediction_set_sha256": "ff45ca97caf6ad0393f025f13a51d5e12172719c772e47f53345473ca22bc4e1",
+  "strict_image_only": true,
+  "strict_image_only_scope": "historical_source_inference",
+  "strict_schema": {
+    "component_fields": [
+      "type",
+      "Name",
+      "value",
+      "bbox"
+    ],
+    "dangling_references": 0,
+    "extra_fields": 0,
+    "profile_authority": "reviewed_guide_local_profile_not_official_machine_evaluator",
+    "profile_version": "official-guide-2026-example-spelling-v1",
+    "top_level_keys": [
+      "components",
+      "pins",
+      "nets"
+    ],
+    "validated": true
+  }
+}

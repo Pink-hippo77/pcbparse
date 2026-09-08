@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "name": "dataset300-v2-pytorch-4gb-pin-v4",
+  "dataset": {
+    "derived_root": "data/derived/dataset300-v2",
+    "summary": "data/derived/dataset300-v2/summary.json",
+    "source_root": "Dataset300/Dataset300",
+    "source_manifest": "data/manifests/dataset300.jsonl",
+    "split_manifest": "data/splits/dataset300_split.jsonl",
+    "derivation_version": "dataset300-v2",
+    "expected_sample_count": 300,
+    "config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+    "summary_sha256": "43b69295534699b42640d7fb19e80afa7ab191e9a55ea0636235826140bf8e65",
+    "source_manifest_sha256": "1282c9c6f7ae5df9647e5e49180cd98b16eeb781880193f386d44ce30eecd5b8",
+    "split_manifest_sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1",
+    "task_manifest_sha256": {
+      "component_detection": "fe379b30be21bb63c90709841700689bcd793ba907f1b40d81a3e8b38cad52fe",
+      "pin_keypoints": "b8ebd239121195a76ac94c5867c40c5b27d72795e42fecf10152cfe37b021377",
+      "ocr_text": "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1",
+      "wire_paths": "6deb93c959da75c26a4c93657e924e9785c52cbb11ab91b33128a96185c6438c",
+      "junction_patches": "b7fd1d4107a1dd946dc2f010d6c3df07ca2e87304dc7a6c14631d5fa9832fd7d"
+    }
+  },
+  "runtime": {
+    "seed": 20260812,
+    "deterministic_algorithms": false,
+    "max_vram_mb": 3000,
+    "dataloader_workers": 0,
+    "pin_memory": true,
+    "checkpoint_every_epochs": 1,
+    "early_stopping_patience": 15
+  },
+  "tasks": {
+    "component": {
+      "dataset_task": "component_detection",
+      "architecture": "fasterrcnn_mobilenet_v3_large_320_fpn",
+      "runner_entrypoint": "pcbparse.training.torch_backend:run_torch_task",
+      "pretrained_artifact": {
+        "path": "models/pretrained/fasterrcnn_mobilenet_v3_large_320_fpn-907ea3f9.pth",
+        "sha256": "907ea3f91ff92242bc1baea8049276a3e76bca48ce7560bd268cc029f37977b5",
+        "source": "https://download.pytorch.org/models/fasterrcnn_mobilenet_v3_large_320_fpn-907ea3f9.pth",
+        "license": "torchvision BSD-3-Clause; COCO pretrained weights provenance retained"
+      },
+      "epochs": 16,
+      "batch_size": 1,
+      "gradient_accumulation": 4,
+      "learning_rate": 0.0002,
+      "weight_decay": 0.0001,
+      "input_size": [
+        640,
+        640
+      ],
+      "precision": "fp16",
+      "export_format": "torchscript",
+      "export_opset": null,
+      "export_max_abs_error": 0.001,
+      "export_min_samples": 16,
+      "evaluation_gates": [
+        {
+          "metric": "bbox_map50",
+          "operator": "gte",
+          "threshold": 0.25
+        }
+      ],
+      "component_score_threshold": 0.0
+    },
+    "pin": {
+      "dataset_task": "pin_keypoints",
+      "architecture": "tiny_pin_unet_v1",
+      "runner_entrypoint": "pcbparse.training.torch_backend:run_torch_task",
+      "epochs": 30,
+      "batch_size": 4,
+      "gradient_accumulation": 4,
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0001,
+      "input_size": [
+        384,
+        384
+      ],
+      "precision": "fp16",
+      "export_format": "onnx",
+      "export_opset": 17,
+      "export_max_abs_error": 0.1,
+      "export_min_samples": 16,
+      "evaluation_gates": [
+        {
+          "metric": "pck_4px",
+          "operator": "gte",
+          "threshold": 0.5
+        },
+        {
+          "metric": "pred_to_gt_ratio",
+          "operator": "gte",
+          "threshold": 1.0
+        },
+        {
+          "metric": "pred_to_gt_ratio",
+          "operator": "lte",
+          "threshold": 2.0
+        }
+      ],
+      "pin_score_threshold": 0.15,
+      "pin_nms_radius": 2.0,
+      "pin_max_detections": 128,
+      "pin_grad_clip": 1.0,
+      "pin_box_margin_px": 4.0,
+      "pin_count_loss_weight": 0.0,
+      "pin_count_target_multiplier": 12.0,
+      "pin_base_channels": 16,
+      "pin_heatmap_loss": "weighted_bce"
+    },
+    "ocr": {
+      "dataset_task": "ocr_text",
+      "architecture": "tiny_unet_crnn_ctc_v1",
+      "runner_entrypoint": "pcbparse.training.torch_backend:run_torch_task",
+      "epochs": 40,
+      "batch_size": 4,
+      "gradient_accumulation": 8,
+      "learning_rate": 0.0005,
+      "weight_decay": 0.0001,
+      "input_size": [
+        48,
+        256
+      ],
+      "precision": "fp16",
+      "export_format": "torchscript",
+      "export_opset": null,
+      "export_max_abs_error": 0.003,
+      "export_min_samples": 32,
+      "evaluation_gates": [
+        {
+          "metric": "normalized_exact_match",
+          "operator": "gte",
+          "threshold": 0.5
+        }
+      ],
+      "ocr_detect_threshold": 0.5,
+      "ocr_min_area": 4,
+      "ocr_iou_threshold": 0.5,
+      "ocr_detector_size": 512
+    },
+    "wire": {
+      "dataset_task": "wire_paths",
+      "architecture": "tiny_wire_unet_v1",
+      "runner_entrypoint": "pcbparse.training.torch_backend:run_torch_task",
+      "epochs": 20,
+      "batch_size": 1,
+      "gradient_accumulation": 16,
+      "learning_rate": 0.0002,
+      "weight_decay": 0.0001,
+      "input_size": [
+        512,
+        512
+      ],
+      "precision": "fp16",
+      "export_format": "torchscript",
+      "export_opset": null,
+      "export_max_abs_error": 0.05,
+      "export_min_samples": 16,
+      "evaluation_gates": [
+        {
+          "metric": "skeleton_f1",
+          "operator": "gte",
+          "threshold": 0.55
+        }
+      ]
+    },
+    "junction": {
+      "dataset_task": "junction_patches",
+      "architecture": "tiny_junction_cnn_v1",
+      "runner_entrypoint": "pcbparse.training.torch_backend:run_torch_task",
+      "epochs": 20,
+      "batch_size": 64,
+      "gradient_accumulation": 1,
+      "learning_rate": 0.0005,
+      "weight_decay": 0.0001,
+      "input_size": [
+        64,
+        64
+      ],
+      "precision": "fp16",
+      "export_format": "onnx",
+      "export_opset": 17,
+      "export_max_abs_error": 0.001,
+      "export_min_samples": 32,
+      "evaluation_gates": [
+        {
+          "metric": "macro_f1",
+          "operator": "gte",
+          "threshold": 0.65
+        }
+      ],
+      "junction_synthetic_per_class": 300
+    }
+  }
+}

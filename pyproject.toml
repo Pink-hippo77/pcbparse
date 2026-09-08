@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcb-schematic-parser"
+version = "0.1.0"
+description = "Deterministic PCB schematic parsing baseline built around Circuit-IR"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy==2.3.5",
+  "Pillow==12.2.0",
+  "pydantic==2.13.4",
+]
+
+
+[project.scripts]
+pcbparse = "pcbparse.cli:main"
+pcbparse-eval-raw = "pcbparse.evaluation.raw_cli:main"
+pcbparse-package-submission = "pcbparse.output.submission_cli:main"
+pcbparse-train-preflight = "pcbparse.training.preflight_cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pcbparse = ["resources/*.json", "resources/profiles/*.json"]

@@ -1,0 +1,487 @@
+{
+  "dataset_root": "E:\\EDA挑战题目六\\Dataset300\\Dataset300",
+  "discovered_samples": 300,
+  "duplicate_groups": [
+    {
+      "evidence": [
+        {
+          "kind": "json",
+          "sample_ids": [
+            "0029",
+            "0274"
+          ],
+          "sha256": "cba38b562453b0106c0e012c5d9b5946bc63bc9d465fd492d0bf5a5c7d4b0e85"
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 0,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0029",
+            "0274"
+          ]
+        }
+      ],
+      "group_id": "dup-3daf423dc6ac911b",
+      "sample_ids": [
+        "0029",
+        "0274"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "family": "006_02",
+          "kind": "source_family",
+          "sample_ids": [
+            "0208",
+            "0209",
+            "0210"
+          ],
+          "source_class": "datasheet"
+        }
+      ],
+      "group_id": "dup-4b90af53ca51ffe4",
+      "sample_ids": [
+        "0208",
+        "0209",
+        "0210"
+      ],
+      "size": 3
+    },
+    {
+      "evidence": [
+        {
+          "kind": "json",
+          "sample_ids": [
+            "0139",
+            "0194"
+          ],
+          "sha256": "a6bc081fbc6ace576c7cbe1b94a008b42dd38cd4c892a4d3cbeb69219392b104"
+        },
+        {
+          "kind": "image",
+          "sample_ids": [
+            "0139",
+            "0194"
+          ],
+          "sha256": "23488955ea22034f822f8b6d3104bd10c9e136a69b5dd9b7c1d9c1216a648bc1"
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 0,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0139",
+            "0194"
+          ]
+        }
+      ],
+      "group_id": "dup-728df7d32d2e15a8",
+      "sample_ids": [
+        "0139",
+        "0194"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "kind": "json",
+          "sample_ids": [
+            "0026",
+            "0268"
+          ],
+          "sha256": "be7999202e52d1187a7078f1e3910df32fc35ff089f9679baaf295d60ca44567"
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 0,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0026",
+            "0268"
+          ]
+        }
+      ],
+      "group_id": "dup-7f37a2471c73f6b9",
+      "sample_ids": [
+        "0026",
+        "0268"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 4,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0250",
+            "0257"
+          ]
+        }
+      ],
+      "group_id": "dup-9264238f03618d11",
+      "sample_ids": [
+        "0250",
+        "0257"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "kind": "json",
+          "sample_ids": [
+            "0089",
+            "0283"
+          ],
+          "sha256": "0b920703341e38a61d8efbfd886df9da3dcf9dc9603368830becd84d74a2a995"
+        },
+        {
+          "kind": "image",
+          "sample_ids": [
+            "0089",
+            "0283"
+          ],
+          "sha256": "956b80b1205686568194b98da69b242ca3d07607c8efbcba54c4084414d3dcc9"
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 0,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0089",
+            "0283"
+          ]
+        }
+      ],
+      "group_id": "dup-92e817716c8c8a1b",
+      "sample_ids": [
+        "0089",
+        "0283"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 5,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0249",
+            "0285"
+          ]
+        }
+      ],
+      "group_id": "dup-c3ae1b54b0ad0943",
+      "sample_ids": [
+        "0249",
+        "0285"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "kind": "json",
+          "sample_ids": [
+            "0028",
+            "0266"
+          ],
+          "sha256": "91c920df8b1fe4b4dbe6037fe146d6ad77a36b339f7f0d8c0226a9ce97a750e8"
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 11,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0028",
+            "0086"
+          ]
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 0,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0028",
+            "0266"
+          ]
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 11,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0086",
+            "0266"
+          ]
+        }
+      ],
+      "group_id": "dup-cb074478b5400b73",
+      "sample_ids": [
+        "0028",
+        "0086",
+        "0266"
+      ],
+      "size": 3
+    },
+    {
+      "evidence": [
+        {
+          "kind": "json",
+          "sample_ids": [
+            "0069",
+            "0269"
+          ],
+          "sha256": "6e7c489018cec80ba145879ac6760c43b435d7d859fb06067e686972c5edcbf2"
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 0,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0069",
+            "0269"
+          ]
+        }
+      ],
+      "group_id": "dup-e69f742214263621",
+      "sample_ids": [
+        "0069",
+        "0269"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 2,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0027",
+            "0237"
+          ]
+        }
+      ],
+      "group_id": "dup-e9270eb17b294f48",
+      "sample_ids": [
+        "0027",
+        "0237"
+      ],
+      "size": 2
+    },
+    {
+      "evidence": [
+        {
+          "kind": "json",
+          "sample_ids": [
+            "0118",
+            "0142"
+          ],
+          "sha256": "512ad507e46eba796788b684130e3cb20e673b9a9ce89c63898b26330e0a9c0a"
+        },
+        {
+          "kind": "image",
+          "sample_ids": [
+            "0118",
+            "0142"
+          ],
+          "sha256": "122dd61f6d94d5f2d110292dd3902fec36d0b8316b2180c262451242b55673b2"
+        },
+        {
+          "algorithm": "dhash-16x16-v1",
+          "hamming_distance": 0,
+          "kind": "image_perceptual",
+          "sample_ids": [
+            "0118",
+            "0142"
+          ]
+        }
+      ],
+      "group_id": "dup-edad951a8cb7855a",
+      "sample_ids": [
+        "0118",
+        "0142"
+      ],
+      "size": 2
+    }
+  ],
+  "expected_samples": 300,
+  "ignored_metadata": [
+    ".DS_Store",
+    "._*",
+    "__MACOSX"
+  ],
+  "issues": [
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0029, 0274 share identical image_perceptual and json content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0208, 0209, 0210 share identical source_family content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0139, 0194 share identical image and image_perceptual and json content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0026, 0268 share identical image_perceptual and json content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0250, 0257 share identical image_perceptual content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0089, 0283 share identical image and image_perceptual and json content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0249, 0285 share identical image_perceptual content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0028, 0086, 0266 share identical image_perceptual and json content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0069, 0269 share identical image_perceptual and json content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0027, 0237 share identical image_perceptual content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Keep every member in one train/validation/test split; exclude duplicates from independent evaluation if appropriate.",
+      "code": "duplicate_samples",
+      "message": "Samples 0118, 0142 share identical image and image_perceptual and json content.",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies JPEG.",
+      "path": "0016/0016-Datasheet.png",
+      "sample_id": "0016",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies JPEG.",
+      "path": "0089/0089-Datasheet.png",
+      "sample_id": "0089",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies WEBP.",
+      "path": "0202/001_01_01.png",
+      "sample_id": "0202",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies WEBP.",
+      "path": "0203/002_01_01.png",
+      "sample_id": "0203",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies WEBP.",
+      "path": "0204/003_01_01.png",
+      "sample_id": "0204",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies WEBP.",
+      "path": "0205/004_01_01.png",
+      "sample_id": "0205",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies WEBP.",
+      "path": "0206/005_01_01.png",
+      "sample_id": "0206",
+      "severity": "warning"
+    },
+    {
+      "action": "Decode by detected content format, or rename/normalize the image only in a derived copy of the dataset.",
+      "code": "image_extension_mismatch",
+      "message": "File extension '.png' declares a different type; Pillow magic identifies WEBP.",
+      "path": "0207/006_01_01.png",
+      "sample_id": "0207",
+      "severity": "warning"
+    }
+  ],
+  "ok": true,
+  "schema_version": 1,
+  "strict_ok": false,
+  "summary": {
+    "duplicate_groups": 11,
+    "effective_groups": 287,
+    "errors": 0,
+    "image_formats": {
+      "JPEG": 86,
+      "PNG": 208,
+      "WEBP": 6
+    },
+    "infos": 0,
+    "issues_by_code": {
+      "duplicate_samples": 11,
+      "image_extension_mismatch": 8
+    },
+    "object_totals": {
+      "components": 12790,
+      "edges": 17801,
+      "pins": 29856,
+      "texts": 48464
+    },
+    "samples_in_duplicate_groups": 24,
+    "source_classes": {
+      "ad": 21,
+      "datasheet": 174,
+      "jlc": 99,
+      "kicad": 6
+    },
+    "warnings": 19
+  },
+  "valid_manifest_records": 300
+}

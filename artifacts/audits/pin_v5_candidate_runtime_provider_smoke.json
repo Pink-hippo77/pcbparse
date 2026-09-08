@@ -1,0 +1,930 @@
+{
+  "audit_implementation": {
+    "path": "scripts/audit_pin_candidate_runtime_smoke.py",
+    "sha256": "9c8edd532623a704c85d52eab3f960519ff3d0b564f6768522aa2cf18c0acd40"
+  },
+  "audit_payload_sha256": "7f091a148bf53128c0ed537d3452ed43d5ea3d7dc217f8a31228d3b44c5257b8",
+  "candidate": {
+    "adapter_entrypoint": "pcbparse.perception.torch_pin_adapter:factory",
+    "artifact": {
+      "bytes": 2582430,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/model.onnx",
+      "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71"
+    },
+    "bundle_manifest": {
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/bundle.manifest.json",
+      "sha256": "58f82ecabec7ad450003a030948e453bf0e6cedae708cbf62f435de2cd949e37"
+    },
+    "candidate_lock_entry": {
+      "adapter": "pcbparse.perception.torch_pin_adapter:factory",
+      "blessed": false,
+      "bundle_manifest_sha256": "58f82ecabec7ad450003a030948e453bf0e6cedae708cbf62f435de2cd949e37",
+      "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+      "evaluation": {
+        "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+        "evaluator": "pcbparse.torch.pin",
+        "evaluator_version": "1",
+        "gates": [
+          {
+            "metric": "pin_f1_4px",
+            "operator": "gte",
+            "passed": true,
+            "threshold": 0.55,
+            "value": 0.6376125059213643
+          },
+          {
+            "metric": "pin_precision_4px",
+            "operator": "gte",
+            "passed": true,
+            "threshold": 0.75,
+            "value": 0.8508217446270544
+          },
+          {
+            "metric": "pin_recall_4px",
+            "operator": "gte",
+            "passed": true,
+            "threshold": 0.42,
+            "value": 0.5098484848484849
+          },
+          {
+            "metric": "pred_to_gt_ratio",
+            "operator": "gte",
+            "passed": true,
+            "threshold": 0.45,
+            "value": 0.5992424242424242
+          },
+          {
+            "metric": "pred_to_gt_ratio",
+            "operator": "lte",
+            "passed": true,
+            "threshold": 0.7,
+            "value": 0.5992424242424242
+          }
+        ],
+        "metrics": {
+          "gt_count": 2640.0,
+          "pck_4px": 0.5098484848484849,
+          "pin_f1_4px": 0.6376125059213643,
+          "pin_precision_4px": 0.8508217446270544,
+          "pin_recall_4px": 0.5098484848484849,
+          "pred_count": 1582.0,
+          "pred_to_gt_ratio": 0.5992424242424242,
+          "validation_loss": 1293.1139463795175
+        },
+        "predictions_sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b",
+        "split": "val",
+        "split_manifest_sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
+      },
+      "gate_policy": {
+        "evaluation_gates": [
+          {
+            "metric": "pin_f1_4px",
+            "operator": "gte",
+            "threshold": 0.55
+          },
+          {
+            "metric": "pin_precision_4px",
+            "operator": "gte",
+            "threshold": 0.75
+          },
+          {
+            "metric": "pin_recall_4px",
+            "operator": "gte",
+            "threshold": 0.42
+          },
+          {
+            "metric": "pred_to_gt_ratio",
+            "operator": "gte",
+            "threshold": 0.45
+          },
+          {
+            "metric": "pred_to_gt_ratio",
+            "operator": "lte",
+            "threshold": 0.7
+          }
+        ],
+        "export_max_abs_error": 0.1,
+        "export_min_samples": 16,
+        "task_manifest_sha256": "b8ebd239121195a76ac94c5867c40c5b27d72795e42fecf10152cfe37b021377"
+      },
+      "inference": {
+        "base_length_pixels": 8.0,
+        "box_margin_px": 4.0,
+        "box_prior_mode": "boundary_band_v2",
+        "device": "auto",
+        "input_size": [
+          384,
+          384
+        ],
+        "max_detections_per_component": 128,
+        "nms_kernel": 3,
+        "nms_radius_heatmap": 2.0,
+        "output_stride": 4,
+        "score_threshold": 0.75
+      },
+      "license": "Official Dataset300 competition terms; redistribution not granted",
+      "path": "model.onnx",
+      "precision": "fp32",
+      "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71",
+      "status": "candidate",
+      "task": "pin",
+      "training_config_sha256": "7b966fc7c7fdd2e0ce419e2029e04783a19914b3f4eec5078dcc85bbefac90b4",
+      "version": "pin-ec3c50dc22b8c4e2"
+    },
+    "candidate_lock_entry_resolution": {
+      "resolved_artifact_path": "work/candidates-runtime-bound/pin-v5-boundary/model.onnx",
+      "synthetic_lock_anchor_not_created": "work/candidates-runtime-bound/pin-v5-boundary/models.lock.json"
+    },
+    "candidate_lock_entry_sha256": "bc25f09b556e406e7baf121b1c821b8a599ffb23f25b01746e158ab8f890ff4d",
+    "evaluation_predictions": {
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/predictions.jsonl",
+      "sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b"
+    },
+    "rebind_audit": {
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/rebind.audit.json",
+      "sha256": "5323f7feb4aba39f1edbc13f0a6d1a495e13d7f9091ab115251d3c14fae7151d"
+    },
+    "runtime_inference": {
+      "base_length_pixels": 8.0,
+      "box_margin_px": 4.0,
+      "box_prior_mode": "boundary_band_v2",
+      "device": "auto",
+      "input_size": [
+        384,
+        384
+      ],
+      "max_detections_per_component": 128,
+      "nms_kernel": 3,
+      "nms_radius_heatmap": 2.0,
+      "output_stride": 4,
+      "score_threshold": 0.75
+    },
+    "source_bundle_manifest": {
+      "path": "work/train-pin-v5-boundary/bundle.manifest.json",
+      "sha256": "cdbe0b6dd9222019dc07d730c4ccd445261637efd8484cb3c3d3dc81c3d1c8c4"
+    }
+  },
+  "checks": {
+    "actual_onnx_backend_loaded_both_runs": true,
+    "actual_torch_pin_provider_loaded_both_runs": true,
+    "candidate_bundle_reverified_and_lock_entry_buildable": true,
+    "candidate_device_auto_preserved_both_runs": true,
+    "candidate_entry_unmodified_during_factory_load": true,
+    "candidate_rebind_audit_lock_entry_hash_chain_matched": true,
+    "coordinate_and_strict_serialization_contracts_both_runs": true,
+    "cpu_execution_provider_only_both_runs": true,
+    "decoded_serialized_results_identical_across_runs": true,
+    "input_tensor_bytes_identical_across_runs": true,
+    "input_width_height_order_matches_nchw_tensor": true,
+    "non_square_frozen_val_roi_matches_production_crop": true,
+    "production_adapter_contract_verified_both_runs": true,
+    "raw_model_output_bytes_identical_across_runs": true,
+    "runtime_emitted_nonempty_results_both_runs": true,
+    "source_target_bundles_and_models_lock_unchanged": true
+  },
+  "fixture": {
+    "component_bbox_original": [
+      384.0,
+      329.0,
+      402.0,
+      374.0
+    ],
+    "component_category": "R",
+    "component_id": "C_13",
+    "expected_adapter_letterbox": {
+      "input_size_width_height": [
+        384,
+        384
+      ],
+      "padding_left_top_right_bottom": [
+        30,
+        0,
+        30,
+        0
+      ],
+      "resized_size_width_height": [
+        324,
+        384
+      ],
+      "source_size_width_height": [
+        146,
+        173
+      ],
+      "tensor_shape_nchw": [
+        1,
+        3,
+        384,
+        384
+      ]
+    },
+    "formal_prediction_detection_count": 2,
+    "ground_truth_pin_count": 2,
+    "indexed_roi_crop_left_top_right_bottom": [
+      320,
+      265,
+      466,
+      438
+    ],
+    "materialization_summary": {
+      "binding_sha256": "a406ca0ef8150d2a2428f6389447b5fb26fce85085a42976586fbbd45cb767f2",
+      "path": "artifacts/training/materialized/dataset300-v2/component-pin/summary.json",
+      "sha256": "e20eec8a4ac2f25e22fc385e9ec2002549131f49b0916b8fe39353ba310bad88"
+    },
+    "pin_index": {
+      "path": "artifacts/training/materialized/dataset300-v2/component-pin/pin_index.jsonl",
+      "sha256": "8401c5fe5f6fcc9d7a9a0d86cee431881d0a0f33a55ce55241a85a8d8c8abbf7"
+    },
+    "pin_index_line_number": 1103,
+    "pin_index_line_sha256": "09134b995e96bcaa3c28e0e592bfb57ad7e7a24f0132e825e4be2098c4688bd7",
+    "pipeline_config": {
+      "effective_padding_px": 64.0,
+      "path": "configs/pipeline.component512-experiment.yaml",
+      "resolved_component_roi_padding_factor": 0.15,
+      "resolved_pin_component_roi_padding_px": 64.0,
+      "sha256": "4a7346287eab80f7de7c56dd6a6a428760c3b9a6dfe42181f6711f15fd02f966"
+    },
+    "prediction_line_number": 2,
+    "prediction_line_sha256": "d2f3a03dd76aa2d0b3cb6f852efd5a40ffc45ee5f47893e4794e7a18cc09c46e",
+    "production_roi_crop_left_top_right_bottom": [
+      320,
+      265,
+      466,
+      438
+    ],
+    "production_roi_size_width_height": [
+      146,
+      173
+    ],
+    "record_id": "pin-component:0030:34007372c9e02fa3d067",
+    "record_number": 1103,
+    "sample_id": "0030",
+    "selection_policy": "first file-order candidate evaluation prediction row with at least one detection; resolve its exact record_id in the hash-bound Pin index and require split=val plus non-empty GT",
+    "source_image": {
+      "path": "Dataset300/Dataset300/0030/0030-Datasheet.png",
+      "sha256": "f8bfec2579d4792f977ce20e8e1a0e679ce9561efc7ed8ed00d1e94600cc47bc",
+      "size_width_height": [
+        577,
+        450
+      ]
+    },
+    "split": "val",
+    "split_manifest": {
+      "path": "data/splits/dataset300_split.jsonl",
+      "sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
+    }
+  },
+  "kind": "pin_candidate_production_runtime_provider_smoke",
+  "protected_files_after": {
+    "candidate_bundle_manifest": {
+      "bytes": 4306,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/bundle.manifest.json",
+      "sha256": "58f82ecabec7ad450003a030948e453bf0e6cedae708cbf62f435de2cd949e37"
+    },
+    "candidate_model_artifact": {
+      "bytes": 2582430,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/model.onnx",
+      "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71"
+    },
+    "candidate_model_card": {
+      "bytes": 4506,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/model_card.json",
+      "sha256": "9224a3bda147816e3683ad724eda4170043fc3f0e04edb03f7a6e5260f97692e"
+    },
+    "candidate_predictions": {
+      "bytes": 412694,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/predictions.jsonl",
+      "sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b"
+    },
+    "candidate_rebind_audit": {
+      "bytes": 2964,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/rebind.audit.json",
+      "sha256": "5323f7feb4aba39f1edbc13f0a6d1a495e13d7f9091ab115251d3c14fae7151d"
+    },
+    "models_lock": {
+      "bytes": 4304,
+      "path": "models/models.lock.json",
+      "sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af"
+    },
+    "source_bundle_manifest": {
+      "bytes": 3916,
+      "path": "work/train-pin-v5-boundary/bundle.manifest.json",
+      "sha256": "cdbe0b6dd9222019dc07d730c4ccd445261637efd8484cb3c3d3dc81c3d1c8c4"
+    },
+    "source_model_artifact": {
+      "bytes": 2582430,
+      "path": "work/train-pin-v5-boundary/model.onnx",
+      "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71"
+    },
+    "source_model_card": {
+      "bytes": 4116,
+      "path": "work/train-pin-v5-boundary/model_card.json",
+      "sha256": "50e5bb78bcb8476a59a5570106bf24ae85ccbf75fa1380acc3d9aae2202bab42"
+    },
+    "source_predictions": {
+      "bytes": 412694,
+      "path": "work/train-pin-v5-boundary/predictions.jsonl",
+      "sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b"
+    }
+  },
+  "protected_files_before": {
+    "candidate_bundle_manifest": {
+      "bytes": 4306,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/bundle.manifest.json",
+      "sha256": "58f82ecabec7ad450003a030948e453bf0e6cedae708cbf62f435de2cd949e37"
+    },
+    "candidate_model_artifact": {
+      "bytes": 2582430,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/model.onnx",
+      "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71"
+    },
+    "candidate_model_card": {
+      "bytes": 4506,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/model_card.json",
+      "sha256": "9224a3bda147816e3683ad724eda4170043fc3f0e04edb03f7a6e5260f97692e"
+    },
+    "candidate_predictions": {
+      "bytes": 412694,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/predictions.jsonl",
+      "sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b"
+    },
+    "candidate_rebind_audit": {
+      "bytes": 2964,
+      "path": "work/candidates-runtime-bound/pin-v5-boundary/rebind.audit.json",
+      "sha256": "5323f7feb4aba39f1edbc13f0a6d1a495e13d7f9091ab115251d3c14fae7151d"
+    },
+    "models_lock": {
+      "bytes": 4304,
+      "path": "models/models.lock.json",
+      "sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af"
+    },
+    "source_bundle_manifest": {
+      "bytes": 3916,
+      "path": "work/train-pin-v5-boundary/bundle.manifest.json",
+      "sha256": "cdbe0b6dd9222019dc07d730c4ccd445261637efd8484cb3c3d3dc81c3d1c8c4"
+    },
+    "source_model_artifact": {
+      "bytes": 2582430,
+      "path": "work/train-pin-v5-boundary/model.onnx",
+      "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71"
+    },
+    "source_model_card": {
+      "bytes": 4116,
+      "path": "work/train-pin-v5-boundary/model_card.json",
+      "sha256": "50e5bb78bcb8476a59a5570106bf24ae85ccbf75fa1380acc3d9aae2202bab42"
+    },
+    "source_predictions": {
+      "bytes": 412694,
+      "path": "work/train-pin-v5-boundary/predictions.jsonl",
+      "sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b"
+    }
+  },
+  "release_subgates": {
+    "candidate_pin_cpu_repeatability": "pass",
+    "candidate_pin_runtime_provider_smoke": "pass",
+    "current_models_lock_pin_inference": "open_candidate_unblessed_not_in_primary_lock",
+    "five_model_current_lock_production_inference": "open_not_in_scope",
+    "official_dataset300_pin_f1": "open_official_evaluator_required"
+  },
+  "runtime": {
+    "cpu_only_mask": "onnxruntime.get_available_providers was scoped to [CPUExecutionProvider] only while each unmodified device=auto provider was constructed; the created sessions independently report CPUExecutionProvider only",
+    "cuda_visible_devices": "-1",
+    "host_onnxruntime_available_providers_before_cpu_mask": [
+      "TensorrtExecutionProvider",
+      "CUDAExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "implementation": "CPython",
+    "onnxruntime": "1.28.0",
+    "platform": "Windows-11-10.0.26220-SP0",
+    "python": "3.12.13",
+    "runs": [
+      {
+        "adapter_config": {
+          "base_length_pixels": 8.0,
+          "box_margin_px": 4.0,
+          "box_prior_mode": "boundary_band_v2",
+          "device": "auto",
+          "input_size_width_height": [
+            384,
+            384
+          ],
+          "max_detections_per_component": 128,
+          "nms_kernel": 3,
+          "nms_radius_heatmap": 2.0,
+          "output_stride": 4,
+          "score_threshold": 0.75
+        },
+        "backend_call": {
+          "input": {
+            "bytes": 1769472,
+            "dtype": "float32",
+            "finite": true,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "sha256": "d629a5d5026e268ff121a9dfb8b71bf067edcfeba76291bacc31d602754884d5",
+            "shape": [
+              1,
+              3,
+              384,
+              384
+            ]
+          },
+          "outputs": {
+            "heatmap_logits": {
+              "bytes": 36864,
+              "dtype": "float32",
+              "finite": true,
+              "maximum": 5.901647090911865,
+              "minimum": -15.497695922851562,
+              "sha256": "ff855c8963dbe9883c04ea372e493e51f9fc69e726a936f2747cfb79205b1d56",
+              "shape": [
+                1,
+                1,
+                96,
+                96
+              ]
+            },
+            "offset": {
+              "bytes": 73728,
+              "dtype": "float32",
+              "finite": true,
+              "maximum": 0.8374655246734619,
+              "minimum": 0.07706636190414429,
+              "sha256": "92f9086dd6fefcce671acac2ea46830f1143e0637799f4dff620084c0d809812",
+              "shape": [
+                1,
+                2,
+                96,
+                96
+              ]
+            },
+            "orientation": {
+              "bytes": 73728,
+              "dtype": "float32",
+              "finite": true,
+              "maximum": 0.9999999403953552,
+              "minimum": -1.0,
+              "sha256": "10c95a886b57550e1d9284a00aee9b6e21877ee16aaaa84b69db9f25450561b5",
+              "shape": [
+                1,
+                2,
+                96,
+                96
+              ]
+            }
+          },
+          "outputs_sha256": "05d012d7acf60778c171c6d17fead25aef44f6c64d4e0acb852a41b0a629993d"
+        },
+        "backend_class": "pcbparse.perception.torch_pin_adapter._ONNXBackend",
+        "context_model_versions": {
+          "pin": "pin-ec3c50dc22b8c4e2"
+        },
+        "decoded": {
+          "all_base_vectors_finite_and_bound_length": true,
+          "all_coordinate_roundtrips_within_1e-9_px": true,
+          "all_evidence_geometry_matches_input_contract": true,
+          "all_local_points_in_bounds": true,
+          "all_original_points_in_canvas": true,
+          "all_original_points_in_roi_crop": true,
+          "all_strict_schema_roundtrips": true,
+          "coordinates": [
+            {
+              "base_contract": true,
+              "base_length_px": 8.0,
+              "evidence_geometry_contract": true,
+              "internal_id": "pin-model:e7b9f6fd6dee09b6f681",
+              "local_point": [
+                73.3871457679772,
+                63.945039441188186
+              ],
+              "local_point_in_bounds": true,
+              "original_point": [
+                393.3871457679772,
+                328.9450394411882
+              ],
+              "original_point_in_canvas": true,
+              "original_point_in_roi_crop": true,
+              "roundtrip_error_px": 3.1776437161565096e-14,
+              "strict_schema_roundtrip": true
+            },
+            {
+              "base_contract": true,
+              "base_length_px": 8.000000000000004,
+              "evidence_geometry_contract": true,
+              "internal_id": "pin-model:fc6491a7e2271495821f",
+              "local_point": [
+                73.47861605809058,
+                108.85549708890419
+              ],
+              "local_point_in_bounds": true,
+              "original_point": [
+                393.47861605809055,
+                373.8554970889042
+              ],
+              "original_point_in_canvas": true,
+              "original_point_in_roi_crop": true,
+              "roundtrip_error_px": 3.1776437161565096e-14,
+              "strict_schema_roundtrip": true
+            }
+          ],
+          "maximum_coordinate_roundtrip_error_px": 3.1776437161565096e-14,
+          "pin_count": 2,
+          "serialized_bytes": 1591,
+          "serialized_pins": [
+            {
+              "base": {
+                "x": 73.30740387153217,
+                "y": 71.94464200818808
+              },
+              "component_id": "C_13",
+              "edge_ids": [],
+              "evidence": [
+                {
+                  "evidence_id": "pin-model-evidence:e7b9f6fd6dee09b6f681",
+                  "metadata": {
+                    "heatmap_anchor": [
+                      48,
+                      35
+                    ],
+                    "heatmap_point": [
+                      48.21478635072708,
+                      35.48395252227783
+                    ],
+                    "inference_size": [
+                      384,
+                      384
+                    ],
+                    "letterbox_padding": [
+                      30,
+                      0,
+                      30,
+                      0
+                    ],
+                    "letterbox_resized_size": [
+                      324,
+                      384
+                    ],
+                    "model_version": "pin-ec3c50dc22b8c4e2",
+                    "orientation_unit": [
+                      0.009967737055628555,
+                      -0.9999503208749871
+                    ],
+                    "semantic_fields_generated": false
+                  },
+                  "payload_ref": null,
+                  "score": 0.9972725510597229,
+                  "source": "detector",
+                  "view_id": "component-pin:C_13:full"
+                }
+              ],
+              "internal_id": "pin-model:e7b9f6fd6dee09b6f681",
+              "name": "",
+              "number": null,
+              "orientation": "T",
+              "orphan": false,
+              "point": {
+                "x": 73.3871457679772,
+                "y": 63.945039441188186
+              },
+              "score": 0.9972725510597229,
+              "source_object_id": null
+            },
+            {
+              "base": {
+                "x": 73.36365092246642,
+                "y": 100.85632319295775
+              },
+              "component_id": "C_13",
+              "edge_ids": [],
+              "evidence": [
+                {
+                  "evidence_id": "pin-model-evidence:fc6491a7e2271495821f",
+                  "metadata": {
+                    "heatmap_anchor": [
+                      48,
+                      60
+                    ],
+                    "heatmap_point": [
+                      48.265533566474915,
+                      60.40536254644394
+                    ],
+                    "inference_size": [
+                      384,
+                      384
+                    ],
+                    "letterbox_padding": [
+                      30,
+                      0,
+                      30,
+                      0
+                    ],
+                    "letterbox_resized_size": [
+                      324,
+                      384
+                    ],
+                    "model_version": "pin-ec3c50dc22b8c4e2",
+                    "orientation_unit": [
+                      0.014370641953019252,
+                      0.9998967369933047
+                    ],
+                    "semantic_fields_generated": false
+                  },
+                  "payload_ref": null,
+                  "score": 0.9877276420593262,
+                  "source": "detector",
+                  "view_id": "component-pin:C_13:full"
+                }
+              ],
+              "internal_id": "pin-model:fc6491a7e2271495821f",
+              "name": "",
+              "number": null,
+              "orientation": "B",
+              "orphan": false,
+              "point": {
+                "x": 73.47861605809058,
+                "y": 108.85549708890419
+              },
+              "score": 0.9877276420593262,
+              "source_object_id": null
+            }
+          ],
+          "serialized_sha256": "a861269b73602f53f77ed445950964b27f28c24042bfebfa05ab3bca1f45c197"
+        },
+        "onnx_session_execution_providers": [
+          "CPUExecutionProvider"
+        ],
+        "provider_class": "pcbparse.perception.torch_pin_adapter.TorchPinProvider",
+        "provider_version": "pin-ec3c50dc22b8c4e2"
+      },
+      {
+        "adapter_config": {
+          "base_length_pixels": 8.0,
+          "box_margin_px": 4.0,
+          "box_prior_mode": "boundary_band_v2",
+          "device": "auto",
+          "input_size_width_height": [
+            384,
+            384
+          ],
+          "max_detections_per_component": 128,
+          "nms_kernel": 3,
+          "nms_radius_heatmap": 2.0,
+          "output_stride": 4,
+          "score_threshold": 0.75
+        },
+        "backend_call": {
+          "input": {
+            "bytes": 1769472,
+            "dtype": "float32",
+            "finite": true,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "sha256": "d629a5d5026e268ff121a9dfb8b71bf067edcfeba76291bacc31d602754884d5",
+            "shape": [
+              1,
+              3,
+              384,
+              384
+            ]
+          },
+          "outputs": {
+            "heatmap_logits": {
+              "bytes": 36864,
+              "dtype": "float32",
+              "finite": true,
+              "maximum": 5.901647090911865,
+              "minimum": -15.497695922851562,
+              "sha256": "ff855c8963dbe9883c04ea372e493e51f9fc69e726a936f2747cfb79205b1d56",
+              "shape": [
+                1,
+                1,
+                96,
+                96
+              ]
+            },
+            "offset": {
+              "bytes": 73728,
+              "dtype": "float32",
+              "finite": true,
+              "maximum": 0.8374655246734619,
+              "minimum": 0.07706636190414429,
+              "sha256": "92f9086dd6fefcce671acac2ea46830f1143e0637799f4dff620084c0d809812",
+              "shape": [
+                1,
+                2,
+                96,
+                96
+              ]
+            },
+            "orientation": {
+              "bytes": 73728,
+              "dtype": "float32",
+              "finite": true,
+              "maximum": 0.9999999403953552,
+              "minimum": -1.0,
+              "sha256": "10c95a886b57550e1d9284a00aee9b6e21877ee16aaaa84b69db9f25450561b5",
+              "shape": [
+                1,
+                2,
+                96,
+                96
+              ]
+            }
+          },
+          "outputs_sha256": "05d012d7acf60778c171c6d17fead25aef44f6c64d4e0acb852a41b0a629993d"
+        },
+        "backend_class": "pcbparse.perception.torch_pin_adapter._ONNXBackend",
+        "context_model_versions": {
+          "pin": "pin-ec3c50dc22b8c4e2"
+        },
+        "decoded": {
+          "all_base_vectors_finite_and_bound_length": true,
+          "all_coordinate_roundtrips_within_1e-9_px": true,
+          "all_evidence_geometry_matches_input_contract": true,
+          "all_local_points_in_bounds": true,
+          "all_original_points_in_canvas": true,
+          "all_original_points_in_roi_crop": true,
+          "all_strict_schema_roundtrips": true,
+          "coordinates": [
+            {
+              "base_contract": true,
+              "base_length_px": 8.0,
+              "evidence_geometry_contract": true,
+              "internal_id": "pin-model:e7b9f6fd6dee09b6f681",
+              "local_point": [
+                73.3871457679772,
+                63.945039441188186
+              ],
+              "local_point_in_bounds": true,
+              "original_point": [
+                393.3871457679772,
+                328.9450394411882
+              ],
+              "original_point_in_canvas": true,
+              "original_point_in_roi_crop": true,
+              "roundtrip_error_px": 3.1776437161565096e-14,
+              "strict_schema_roundtrip": true
+            },
+            {
+              "base_contract": true,
+              "base_length_px": 8.000000000000004,
+              "evidence_geometry_contract": true,
+              "internal_id": "pin-model:fc6491a7e2271495821f",
+              "local_point": [
+                73.47861605809058,
+                108.85549708890419
+              ],
+              "local_point_in_bounds": true,
+              "original_point": [
+                393.47861605809055,
+                373.8554970889042
+              ],
+              "original_point_in_canvas": true,
+              "original_point_in_roi_crop": true,
+              "roundtrip_error_px": 3.1776437161565096e-14,
+              "strict_schema_roundtrip": true
+            }
+          ],
+          "maximum_coordinate_roundtrip_error_px": 3.1776437161565096e-14,
+          "pin_count": 2,
+          "serialized_bytes": 1591,
+          "serialized_pins": [
+            {
+              "base": {
+                "x": 73.30740387153217,
+                "y": 71.94464200818808
+              },
+              "component_id": "C_13",
+              "edge_ids": [],
+              "evidence": [
+                {
+                  "evidence_id": "pin-model-evidence:e7b9f6fd6dee09b6f681",
+                  "metadata": {
+                    "heatmap_anchor": [
+                      48,
+                      35
+                    ],
+                    "heatmap_point": [
+                      48.21478635072708,
+                      35.48395252227783
+                    ],
+                    "inference_size": [
+                      384,
+                      384
+                    ],
+                    "letterbox_padding": [
+                      30,
+                      0,
+                      30,
+                      0
+                    ],
+                    "letterbox_resized_size": [
+                      324,
+                      384
+                    ],
+                    "model_version": "pin-ec3c50dc22b8c4e2",
+                    "orientation_unit": [
+                      0.009967737055628555,
+                      -0.9999503208749871
+                    ],
+                    "semantic_fields_generated": false
+                  },
+                  "payload_ref": null,
+                  "score": 0.9972725510597229,
+                  "source": "detector",
+                  "view_id": "component-pin:C_13:full"
+                }
+              ],
+              "internal_id": "pin-model:e7b9f6fd6dee09b6f681",
+              "name": "",
+              "number": null,
+              "orientation": "T",
+              "orphan": false,
+              "point": {
+                "x": 73.3871457679772,
+                "y": 63.945039441188186
+              },
+              "score": 0.9972725510597229,
+              "source_object_id": null
+            },
+            {
+              "base": {
+                "x": 73.36365092246642,
+                "y": 100.85632319295775
+              },
+              "component_id": "C_13",
+              "edge_ids": [],
+              "evidence": [
+                {
+                  "evidence_id": "pin-model-evidence:fc6491a7e2271495821f",
+                  "metadata": {
+                    "heatmap_anchor": [
+                      48,
+                      60
+                    ],
+                    "heatmap_point": [
+                      48.265533566474915,
+                      60.40536254644394
+                    ],
+                    "inference_size": [
+                      384,
+                      384
+                    ],
+                    "letterbox_padding": [
+                      30,
+                      0,
+                      30,
+                      0
+                    ],
+                    "letterbox_resized_size": [
+                      324,
+                      384
+                    ],
+                    "model_version": "pin-ec3c50dc22b8c4e2",
+                    "orientation_unit": [
+                      0.014370641953019252,
+                      0.9998967369933047
+                    ],
+                    "semantic_fields_generated": false
+                  },
+                  "payload_ref": null,
+                  "score": 0.9877276420593262,
+                  "source": "detector",
+                  "view_id": "component-pin:C_13:full"
+                }
+              ],
+              "internal_id": "pin-model:fc6491a7e2271495821f",
+              "name": "",
+              "number": null,
+              "orientation": "B",
+              "orphan": false,
+              "point": {
+                "x": 73.47861605809058,
+                "y": 108.85549708890419
+              },
+              "score": 0.9877276420593262,
+              "source_object_id": null
+            }
+          ],
+          "serialized_sha256": "a861269b73602f53f77ed445950964b27f28c24042bfebfa05ab3bca1f45c197"
+        },
+        "onnx_session_execution_providers": [
+          "CPUExecutionProvider"
+        ],
+        "provider_class": "pcbparse.perception.torch_pin_adapter.TorchPinProvider",
+        "provider_version": "pin-ec3c50dc22b8c4e2"
+      }
+    ],
+    "torch": "2.12.1+cu126"
+  },
+  "schema_version": 1,
+  "scope": {
+    "boundary": "This is real CPU inference through the runtime-bound candidate's production TorchPinProvider factory. The candidate remains unblessed and was not inserted into models.lock, so this is not current-lock five-model production inference.",
+    "candidate_direct_runtime_inference": true,
+    "current_models_lock_inference": false,
+    "model_or_predictions_recomputed": false,
+    "models_lock_blessing_attempted": false,
+    "threshold_or_nms_tuned": false
+  },
+  "status": "pass"
+}

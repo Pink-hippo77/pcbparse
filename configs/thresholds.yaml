@@ -1,0 +1,8 @@
+{
+  "component": {"min_score": 0.20, "nms_iou": 0.55},
+  "pin": {"pck_px": [2.0, 3.0, 5.0], "minimum_margin": 1.5},
+  "wire": {"minimum_run_length_px": 12, "rdp_epsilon_px": 1.5},
+  "junction": {"classifier_threshold": 0.80},
+  "validation": {"coordinate_roundtrip_px": 0.5, "endpoint_tolerance_px": 5.0}
+}
+

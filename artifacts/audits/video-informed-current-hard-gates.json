@@ -1,0 +1,1963 @@
+{
+  "audit_payload_sha256": "2330339268f05ee7d8b7acff78df946248470634aece360bee544072ef6edf9b",
+  "audit_role": "diagnostic_fail_closed_no_bless_no_promotion",
+  "authority": {
+    "guide_contract": {
+      "case_count_range": [
+        30,
+        50
+      ],
+      "component_field_table_fields": [
+        "type",
+        "name",
+        "value",
+        "bbox"
+      ],
+      "component_json_example_fields": [
+        "type",
+        "Name",
+        "value",
+        "bbox"
+      ],
+      "coordinate_origin": "bottom_left",
+      "deadline_seconds_lt": 7200,
+      "document_conflicts": [
+        "Pages 13, 15, and 16 JSON examples use `Name`, while pages 14-16 field tables use `name`."
+      ],
+      "edge_point_count": 2,
+      "net_fields": [
+        "hyperGraph",
+        "edges"
+      ],
+      "pin_fields": [
+        "pinname",
+        "point"
+      ],
+      "resolution_authority_missing": true,
+      "resolved_local_compatibility": [
+        "The local strict validator accepts finite integer or floating-point coordinates.",
+        "The local strict validator accepts page-20 identical endpoint pairs.",
+        "The current default profile explicitly selects the JSON-example `Name` spelling."
+      ],
+      "submission_layout": "submission/case_001/case_001.json",
+      "top_level_keys": [
+        "components",
+        "pins",
+        "nets"
+      ],
+      "x_axis": "right",
+      "y_axis": "up"
+    },
+    "official_evaluator": {
+      "path": null,
+      "present": false,
+      "sha256": null
+    },
+    "official_evaluator_report": {
+      "path": null,
+      "present": false,
+      "sha256": null
+    },
+    "official_evaluator_report_valid": false,
+    "official_guide": {
+      "expected_sha256": "45eedbc195ad71bbb03044c4606ea85ccf3eccebbb3d9b3304d6e325e1acc5e8",
+      "hash_verified": true,
+      "path": "artifacts/reference/2026_EDA_Challenge_Task6_AI_PCB_Schematic_Official_Guide.pdf",
+      "present": true,
+      "sha256": "45eedbc195ad71bbb03044c4606ea85ccf3eccebbb3d9b3304d6e325e1acc5e8"
+    },
+    "official_guide_authority_available": true,
+    "official_machine_contract_available": false,
+    "official_qa": {
+      "path": null,
+      "present": false,
+      "sha256": null
+    },
+    "official_sample": {
+      "path": null,
+      "present": false,
+      "sha256": null
+    },
+    "report_problems": []
+  },
+  "decision": {
+    "bless_authorized": false,
+    "blocking_gates": [
+      "official_json_zero_extra_fields",
+      "official_json_zero_dangling_references",
+      "coordinate_roundtrip_lte_0_5px",
+      "same_environment_three_run_json_hash",
+      "fifty_cases_under_two_hours_with_ten_percent_reserve",
+      "offline_container",
+      "locked_blessed_models",
+      "traceable_errors"
+    ],
+    "failed_gates": [
+      "locked_blessed_models"
+    ],
+    "passed_gates": [],
+    "promotion_authorized": false,
+    "release_ready": false,
+    "unverified_gates": [
+      "official_json_zero_extra_fields",
+      "official_json_zero_dangling_references",
+      "coordinate_roundtrip_lte_0_5px",
+      "same_environment_three_run_json_hash",
+      "fifty_cases_under_two_hours_with_ten_percent_reserve",
+      "offline_container",
+      "traceable_errors"
+    ]
+  },
+  "evidence_selection": {
+    "coordinate": {
+      "ambiguous_newest_candidates": [],
+      "candidates": [
+        {
+          "declared_config_sha256": "4709bcb873f6e93d6dce0c5a4e9ae51d7f4ac2b1cc4ecbe57f1278340737e35a",
+          "declared_model_lock_sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af",
+          "declares_current_lineage": false,
+          "eligible": false,
+          "evidence_scope": "frozen_ir_current_serializer_replay",
+          "generated_at_utc": null,
+          "path": "artifacts/release/coordinate_roundtrip_report.json",
+          "rejection_reasons": [
+            "coordinate report is not bound to current models.lock",
+            "coordinate report forward serialization error must be finite",
+            "frozen-IR replay cannot prove current-lock production inference",
+            "coordinate report generated_at_utc is missing"
+          ],
+          "sha256": "55592eb89f58ae5ec1434c397e160b6a437791e2f3187720055aa5ed67b0ce96"
+        }
+      ],
+      "expected_model_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+      "expected_production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "finding": "No automatically eligible current-lock formal coordinate report exists; use an explicit path only for diagnostic inspection.",
+      "kind": "coordinate",
+      "mode": "automatic",
+      "selected_path": null
+    },
+    "determinism": {
+      "ambiguous_newest_candidates": [],
+      "candidates": [
+        {
+          "declared_config_sha256": null,
+          "declared_model_lock_sha256": null,
+          "declares_current_lineage": false,
+          "eligible": false,
+          "environment": null,
+          "environment_sha256": null,
+          "evidence_scope": null,
+          "generated_at_utc": null,
+          "latest_run_completed_timestamp": null,
+          "path": "artifacts/determinism",
+          "rejection_reasons": [
+            "formal determinism environment manifest is missing"
+          ]
+        },
+        {
+          "declared_config_sha256": null,
+          "declared_model_lock_sha256": null,
+          "declares_current_lineage": false,
+          "eligible": false,
+          "environment": "artifacts/determinism/current_serializer_frozen_ir_replay/environment.json",
+          "environment_sha256": "6d43ce848ae7e4699b4630e34178ef2b5c24bd6c944c3d8f2df24974efd5548d",
+          "evidence_scope": "frozen_ir_current_serializer_replay",
+          "generated_at_utc": null,
+          "latest_run_completed_timestamp": null,
+          "path": "artifacts/determinism/current_serializer_frozen_ir_replay",
+          "rejection_reasons": [
+            "status",
+            "formal_release_evidence",
+            "model_lock_sha256",
+            "config_sha256",
+            "evidence_scope",
+            "determinism environment generated_at_utc is missing",
+            "run1 is not bound to the production config",
+            "run1 is not bound to the current models.lock",
+            "run1 lacks a SHA-256 inference_run_id",
+            "run1 completed_at_utc is missing",
+            "run1 source_summary_path is missing",
+            "run2 is not bound to the production config",
+            "run2 is not bound to the current models.lock",
+            "run2 lacks a SHA-256 inference_run_id",
+            "run2 completed_at_utc is missing",
+            "run2 source_summary_path is missing",
+            "run3 is not bound to the production config",
+            "run3 is not bound to the current models.lock",
+            "run3 lacks a SHA-256 inference_run_id",
+            "run3 completed_at_utc is missing",
+            "run3 source_summary_path is missing",
+            "formal evidence does not identify three distinct inference runs",
+            "formal evidence does not bind three distinct production summaries"
+          ]
+        }
+      ],
+      "expected_model_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+      "expected_production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "finding": "No automatically eligible current-lock formal determinism evidence exists; use explicit paths only for diagnostic inspection.",
+      "mode": "automatic",
+      "requirements": [
+        "current models.lock SHA-256",
+        "current production semantic config SHA-256",
+        "formal successful production status",
+        "embedded UTC generation time",
+        "byte-bound prediction and output manifests",
+        "three distinct inference_run_id and production-summary paths",
+        "current-lock image-only inference scope"
+      ],
+      "selected_environment": null,
+      "selected_path": null
+    },
+    "official_evaluator_report": {
+      "finding": "Automatic evaluator-report selection is disabled until a current-lock/config/time manifest is available.",
+      "mode": "none",
+      "selected_path": null
+    },
+    "offline_container": {
+      "ambiguous_newest_candidates": [],
+      "candidates": [],
+      "expected_model_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+      "expected_production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "finding": "No automatically eligible current-lock formal offline report exists; use an explicit path only for diagnostic inspection.",
+      "kind": "offline",
+      "mode": "automatic",
+      "selected_path": null
+    },
+    "performance_summaries": {
+      "expected_model_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+      "expected_production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "mode": "automatic_inventory",
+      "selected_paths": [
+        "work/production-e2e-audit-calibrated-degraded/summary.json",
+        "work/production-e2e-audit-calibrated-strict/summary.json",
+        "work/production-e2e-audit-degraded-rerun/summary.json",
+        "work/production-e2e-audit-degraded-rerun2/summary.json",
+        "work/production-e2e-audit-degraded/summary.json",
+        "work/production-e2e-audit-run/summary.json",
+        "work/production-e2e-tile512-degraded/summary.json",
+        "work/production-e2e-tile512-strict/summary.json"
+      ]
+    }
+  },
+  "execution": {
+    "device": "cpu_only",
+    "gpu_used": false,
+    "inference_executed": false,
+    "models_loaded": false,
+    "models_lock_modified": false,
+    "test_data_used_for_tuning": false,
+    "training_configuration_modified": false
+  },
+  "gates": {
+    "coordinate_roundtrip_lte_0_5px": {
+      "boundary": "The existing subpixel unit test is synthetic and does not test the official bottom-left/y-up conversion.",
+      "cases_checked": null,
+      "coordinate_auditor_source": {
+        "path": "scripts/generate_current_coordinate_evidence.py",
+        "present": true,
+        "sha256": "262b3062169c912b5ddfbd9ca682a3bf44652ccb65f0a446ef2df22d8f1cd116"
+      },
+      "coordinate_lineage_source": {
+        "path": "src/pcbparse/data/derive.py",
+        "present": true,
+        "sha256": "8e9b91ed27316dae40740db56e6329b5d17dd035b3cf66b24cbfab0ebfa9b586"
+      },
+      "current_lock_inference_proven": false,
+      "evidence_scope": null,
+      "formal_binding_required": true,
+      "internal_y_axis_down": true,
+      "limit_px": 0.5,
+      "max_roundtrip_error_px": null,
+      "official_coordinate_origin": "bottom_left",
+      "official_y_axis": "up",
+      "points_checked": null,
+      "problems": [],
+      "production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "release_binding_problems": [],
+      "release_run_cross_binding": {
+        "problems": [
+          "coordinate evidence is not independently valid"
+        ],
+        "status": "unverified"
+      },
+      "report": {
+        "path": null,
+        "present": false,
+        "sha256": null
+      },
+      "serializer_converts_to_bottom_left": true,
+      "serializer_emits_y_directly": false,
+      "serializer_replay_subcheck": "unverified",
+      "serializer_source": {
+        "path": "src/pcbparse/output/official_serializer.py",
+        "present": true,
+        "sha256": "26e9641134a7b994961a9c585315703a8477c542a291bd56103bc5b7b1f3e01e"
+      },
+      "source_summary_binding": null,
+      "static_origin_mismatch": false,
+      "status": "unverified"
+    },
+    "fifty_cases_under_two_hours_with_ten_percent_reserve": {
+      "best_passing_run": null,
+      "current_runs_missing_embedded_time": 0,
+      "deadline_seconds": 7200,
+      "declared_current_lock_config_50_case_runs": 0,
+      "exact_current_lock_runs": 0,
+      "finding": "No exact 50-case current-lock run exists; one-case timing is not extrapolated.",
+      "formal_binding_required": true,
+      "newest_timestamp_ambiguity": [],
+      "pass_elapsed_seconds_lte": 6480.0,
+      "passing_runs": 0,
+      "production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "required_cases": 50,
+      "required_reserve_fraction": 0.1,
+      "selected_newest_run": null,
+      "status": "unverified"
+    },
+    "locked_blessed_models": {
+      "all_entries_blessed": true,
+      "artifact_hashes_all_match": true,
+      "entries": [
+        {
+          "actual_sha256": "34d79a6dfa4340e64dc96de4945bcfea6e376d9a6f4949876b58d7e719697af5",
+          "blessed": true,
+          "expected_sha256": "34d79a6dfa4340e64dc96de4945bcfea6e376d9a6f4949876b58d7e719697af5",
+          "hash_matches": true,
+          "path": "models/releases/v8-portable/component/train-component-v5-fullmix/model.pt",
+          "present": true,
+          "status": "blessed",
+          "task": "component",
+          "within_models_root": true,
+          "within_workspace": true
+        },
+        {
+          "actual_sha256": "e4212287d6ac31d2b45e20bb0c6f273bf6328299fb7746ea75a01e2bf180fe78",
+          "blessed": true,
+          "expected_sha256": "e4212287d6ac31d2b45e20bb0c6f273bf6328299fb7746ea75a01e2bf180fe78",
+          "hash_matches": true,
+          "path": "models/releases/v8-portable/ocr/train-ocr-resume/model.pt",
+          "present": true,
+          "status": "blessed",
+          "task": "ocr",
+          "within_models_root": true,
+          "within_workspace": true
+        },
+        {
+          "actual_sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71",
+          "blessed": true,
+          "expected_sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71",
+          "hash_matches": true,
+          "path": "models/releases/v8-portable/pin/train-pin-v5-boundary/model.onnx",
+          "present": true,
+          "status": "blessed",
+          "task": "pin",
+          "within_models_root": true,
+          "within_workspace": true
+        },
+        {
+          "actual_sha256": "3235b9e083190e8d399f819b55a34ed8531652377323ff8be05ae99286ea17dd",
+          "blessed": true,
+          "expected_sha256": "3235b9e083190e8d399f819b55a34ed8531652377323ff8be05ae99286ea17dd",
+          "hash_matches": true,
+          "path": "models/releases/v8-portable/wire/train-wire-v5-fresh-allgate/model.pt",
+          "present": true,
+          "status": "blessed",
+          "task": "wire",
+          "within_models_root": true,
+          "within_workspace": true
+        }
+      ],
+      "inactive_task_exemptions": [
+        "junction"
+      ],
+      "junction_dependency_policy": {
+        "composite_call_guard_and_quarantine_metadata_present": true,
+        "decision": "The exact four-model plan is statically configured, but current formal runtime non-load/non-invocation evidence is missing or invalid.",
+        "exemption_applied": true,
+        "hash_bound_runtime_non_load_non_invocation_evidence": false,
+        "inactive_dependency_exemption_proven": false,
+        "inactive_dependency_exemption_static_eligible": true,
+        "junction_output_path_disabled_by_config": true,
+        "learned_junctions_enabled": false,
+        "production_loader_loads_junction_unconditionally": false,
+        "production_loader_uses_configured_task_plan": true,
+        "readiness_requires_junction_by_default": true,
+        "readiness_supports_exact_configured_task_plan": true,
+        "runtime_evidence_summary": null,
+        "runtime_task_plan_metadata_present": true
+      },
+      "lock": {
+        "path": "models/models.lock.json",
+        "present": true,
+        "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413"
+      },
+      "problems": [
+        "deterministic Junction exemption lacks current formal runtime non-load/non-invocation evidence"
+      ],
+      "required_tasks": [
+        "component",
+        "ocr",
+        "pin",
+        "wire"
+      ],
+      "status": "fail"
+    },
+    "official_json_zero_dangling_references": {
+      "boundary": "The official guide defines hyperGraph structure, but local guide-v1 validation cannot substitute for the promised official evaluator.",
+      "internal_guide_subcheck": "unverified",
+      "observed_official_dangling_references": null,
+      "status": "unverified"
+    },
+    "official_json_zero_extra_fields": {
+      "boundary": "The current profile selects guide-example `Name` and the strict local replay has zero extra fields, but the guide's `Name`/`name` conflict remains unresolved without Q&A or the official evaluator.",
+      "guide_name_case_conflict": false,
+      "internal_guide_subcheck": "unverified",
+      "observed_official_extra_fields": null,
+      "status": "unverified"
+    },
+    "offline_container": {
+      "boundary": "Dockerfile presence is not evidence of a runtime launched with network=none.",
+      "build_context": {
+        "files": 210,
+        "manifest": [
+          {
+            "path": ".dockerignore",
+            "sha256": "e29b9a5b659a5667139c9c976e6667fc6cde4503bad42eddb790e0d17a98c916"
+          },
+          {
+            "path": "README.md",
+            "sha256": "9a2ce673aa57272b92a13e9fe23a0f0f4e52f38c78d83bb7f817fbcefd1074ba"
+          },
+          {
+            "path": "configs/models.yaml",
+            "sha256": "2cd361bdac27b481f8f43bccd15e02e132bf6685a11d8298759113b526260bfa"
+          },
+          {
+            "path": "configs/official_schema.yaml",
+            "sha256": "ef0b54b07859f625be4832644beca6d575721d2d137eb4de76e7f9523bd4651b"
+          },
+          {
+            "path": "configs/pipeline.component512-experiment.yaml",
+            "sha256": "4a7346287eab80f7de7c56dd6a6a428760c3b9a6dfe42181f6711f15fd02f966"
+          },
+          {
+            "path": "configs/pipeline.yaml",
+            "sha256": "01275bd0c6fd98adbd53718b7a03658a9bf2d11ab6f8868d2f09f7ef482480fe"
+          },
+          {
+            "path": "configs/profiles/baseline.yaml",
+            "sha256": "5fd343b71ae684349b82629138fca979687d579492d13effc5a8af950d3de4e8"
+          },
+          {
+            "path": "configs/profiles/competition.yaml",
+            "sha256": "97d248f9fde5d57633a5e2c73376b215b97398fa868dcd808f13467a5a2f4050"
+          },
+          {
+            "path": "configs/profiles/debug.yaml",
+            "sha256": "4ee9737adc36d6172dc3625975705d479f56f30936481f93fac71799807cb3e6"
+          },
+          {
+            "path": "configs/profiles/relaxed.yaml",
+            "sha256": "2e9d88365cbf54d6458a69e38f35d02c94bc994547b0ebb3b244d821f883991f"
+          },
+          {
+            "path": "configs/thresholds.yaml",
+            "sha256": "8c470dce88a90fbaf2391824dc6ccb414e7f54bdcc800d65388bcefd4c3d80c8"
+          },
+          {
+            "path": "configs/train/dataset300_v2_component_interim.json",
+            "sha256": "e21517af2ce3140a80c084c5050c9a0d236d379b5c2c149cd71dcd41fb5b458c"
+          },
+          {
+            "path": "configs/train/dataset300_v2_component_v3.json",
+            "sha256": "5db8bfe31681691f1f59513d467b03789c35c05b598d3a3ec07ee20042886b28"
+          },
+          {
+            "path": "configs/train/dataset300_v2_component_v4.json",
+            "sha256": "e7306b4a49f3d7e26aa1ecba0ccf7e3499c01952aff73b33703c6b22e05dd8ff"
+          },
+          {
+            "path": "configs/train/dataset300_v2_component_v5_fullmix.json",
+            "sha256": "b9ec8e452100bc51c6013b6ea8a2ae3bfe2a33a31136b8f90fda6a2eb1b5d74c"
+          },
+          {
+            "path": "configs/train/dataset300_v2_ocr_v2c_resume.json",
+            "sha256": "be082dff6c3d62b4bdb0a1b7ffa9c74890039eec1850531660678137f5f168b8"
+          },
+          {
+            "path": "configs/train/dataset300_v2_ocr_v3_shrink_warmstart.json",
+            "sha256": "8c3800bc086bbc3fdf3c715274d244ac784240ae218f0fecfe4ea312264a23e7"
+          },
+          {
+            "path": "configs/train/dataset300_v2_ocr_v4_rare_prefix.json",
+            "sha256": "ff36a917b1d299b2d6bfd7926009d122f426e01692e9f7191c43ea6b537052b9"
+          },
+          {
+            "path": "configs/train/dataset300_v2_ocr_v5_allgate.json",
+            "sha256": "833752c16936f9bb02ccec7d9344907d40719636cb219bbbcf156d024095718b"
+          },
+          {
+            "path": "configs/train/dataset300_v2_ocr_v6_recall_boost.json",
+            "sha256": "822edd5868d5515afaaa123347b58cfba93c3ff6a833004a7ead8236d0f8f5ad"
+          },
+          {
+            "path": "configs/train/dataset300_v2_ocr_v7_continue.json",
+            "sha256": "abe6bd3d156f9cfbbc7c2514791120cd810db6e0184c980d8777453e3da4f503"
+          },
+          {
+            "path": "configs/train/dataset300_v2_ocr_v8_extend.json",
+            "sha256": "ae435382ba8f3cadd0e9b51e64b7776472b40d2f4ea7bd56a2b267d8dff0383f"
+          },
+          {
+            "path": "configs/train/dataset300_v2_pin_v2.json",
+            "sha256": "bd646220e086e7d017f9f65a377269d79b27494c862eb886eb62fd585f88bfb7"
+          },
+          {
+            "path": "configs/train/dataset300_v2_pin_v3.json",
+            "sha256": "7c5face7eb7f8ec5d6eb5abac80abc7dfd0c76f78aa9ba08589a30963a788fe9"
+          },
+          {
+            "path": "configs/train/dataset300_v2_pin_v4.json",
+            "sha256": "6e1b058f0851225c9c85e383ffe78ac5e025325466b46b5f4efcbd96091ec90c"
+          },
+          {
+            "path": "configs/train/dataset300_v2_pin_v5_boundary.json",
+            "sha256": "aa9dab488c33ceb594c50297782878982d14b5881fdeb709a5a4ad74be9dafca"
+          },
+          {
+            "path": "configs/train/dataset300_v2_tiny.json",
+            "sha256": "36d868283e70145f855a1c41daed85374929be39f63a0b6a9737f9efc4b7aa6e"
+          },
+          {
+            "path": "configs/train/dataset300_v2_torch.json",
+            "sha256": "6d435d6a1762eca7b86a8b1b7e51594bb36b89253db6aaee2d255076cbf2e296"
+          },
+          {
+            "path": "configs/train/dataset300_v2_wire_v5_fresh_allgate.json",
+            "sha256": "e2a1b78b1f766d3075582d8960c2c03871d01ac16f7a1fe1fef56c66bfc5afee"
+          },
+          {
+            "path": "data_tools/__init__.py",
+            "sha256": "42c3d678354e4f12ad34e6b606a76c0e1493c6563b031bce2daa75e79e369634"
+          },
+          {
+            "path": "data_tools/_bootstrap.py",
+            "sha256": "c48fd0b12f01a1026f87e86a056944f5f6b0cff03eb575d869b11dcbf0f94802"
+          },
+          {
+            "path": "data_tools/audit.py",
+            "sha256": "9147615781a7c0e639e20242dee31ca19bd5f1e06ff621b926d5072e6b2553e3"
+          },
+          {
+            "path": "data_tools/derive_datasets.py",
+            "sha256": "782d3d7b07cd094e8dded37e2e4a2d7479e6e50e8deaf276cfac01118eb04b6a"
+          },
+          {
+            "path": "data_tools/junction_review_pack.py",
+            "sha256": "fb70092b0c05502ef305592da243de0de776dda8bd2e39c9e182241934e89e40"
+          },
+          {
+            "path": "data_tools/junction_truth_audit.py",
+            "sha256": "306d797b66d62c4ccf08728bb47f77437e9c96a0ef006e1bbbf38c6856662415"
+          },
+          {
+            "path": "data_tools/model_promotion.py",
+            "sha256": "24319d845a00d25188d35b859610d54ecc372cb611c415e74cba5850ba2668d1"
+          },
+          {
+            "path": "data_tools/pcbnet_ingest.py",
+            "sha256": "004da10ed5b4d4924ca68391143869081cc1059431fd6e3ef11a61b2137e5aa6"
+          },
+          {
+            "path": "data_tools/split_grouped.py",
+            "sha256": "3fca20300cfd91ae3d4365db0408258689585bc982db86a8847425fade01cf56"
+          },
+          {
+            "path": "data_tools/training_preflight.py",
+            "sha256": "2818bbe26bae66bf5e8c364dbbf7cdb79bd549f740bb250d9b0bb5adb968d4fa"
+          },
+          {
+            "path": "docker/Dockerfile",
+            "sha256": "e32082a3c01d8eb46a2e8381b30f546d9f1357d8d35c46fe40b0e0bc6317fc43"
+          },
+          {
+            "path": "docker/entrypoint.sh",
+            "sha256": "7809818fb34b40b5a0b882ad1c193e3fd9d95742eeee376e1c84ea620f887133"
+          },
+          {
+            "path": "models/candidates/component/model.pt",
+            "sha256": "fc9bbf8d2cd39ba0d7841f5ea2f10e8510bb3e06b660bb92820459f0af85804e"
+          },
+          {
+            "path": "models/candidates/junction/model.onnx",
+            "sha256": "b3374ad89c610275cdfa1fc19896a8aa42d9aa478c16e22afab42f6d8ca31307"
+          },
+          {
+            "path": "models/candidates/junction/model.pt",
+            "sha256": "343e9728fcdb681d0ac797558680a1f3054e6011657646fff94c4d1250a89be7"
+          },
+          {
+            "path": "models/candidates/ocr/model.pt",
+            "sha256": "8136d52fd29960e0c112f4d0fa8bdfe7ec74e32ef53917272a08fbe8be333848"
+          },
+          {
+            "path": "models/candidates/pin/model.onnx",
+            "sha256": "fcb5cd89125c842947be7e0522ca6ae71fc05dfc546680c20ec7797de97db1aa"
+          },
+          {
+            "path": "models/candidates/pin/model.pt",
+            "sha256": "631398a779546b82d4488018c576fba03d35129b98024a31808c935b81b67434"
+          },
+          {
+            "path": "models/candidates/wire/model.pt",
+            "sha256": "04b0e9f5c1d584a64d584aeb2e44e6634e80c4b1bbadd7b6c74bdbe0e6c40f4d"
+          },
+          {
+            "path": "models/models.lock.backup.20260827071516.json",
+            "sha256": "f1ad29a1229f4e18d02b421eef772313aba4ae400bbb439c8af5e2648f1b32af"
+          },
+          {
+            "path": "models/models.lock.backup.20260827071656.json",
+            "sha256": "d2792a066113d3f8881abb6615ac2d81a1c88a4b0d4063a11e8b4c6cf883992f"
+          },
+          {
+            "path": "models/models.lock.json",
+            "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413"
+          },
+          {
+            "path": "models/models.lock.pre-repair-20260827.json",
+            "sha256": "1da1380b6a55159be9b43bf87b649fa0836b46f22c4f2d021c7bc98aad47e071"
+          },
+          {
+            "path": "models/models.lock.release.json",
+            "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413"
+          },
+          {
+            "path": "models/models.lock.release.promotion-report.json",
+            "sha256": "c6f1bedc005e3b6c17d096b4be35edadd3a0a76d75981e950ebb43f6a71af614"
+          },
+          {
+            "path": "models/models.lock.repaired.json",
+            "sha256": "b836dca0315ce058e0ce93cda139694b6803b2ccbd9db440957a44abfe13e816"
+          },
+          {
+            "path": "models/models.lock.repaired.promotion-report.json",
+            "sha256": "275ea77685c2f0d7e290a5e974c9382186a4a482d41c7a444b61d01e4f201649"
+          },
+          {
+            "path": "models/models.v8-lock.json",
+            "sha256": "d2792a066113d3f8881abb6615ac2d81a1c88a4b0d4063a11e8b4c6cf883992f"
+          },
+          {
+            "path": "models/models.v8-lock.report.json",
+            "sha256": "5c7470ad99e538df9ad1cf9d8c029afcc26310b7f228efdbb0f2dc64f3a998b9"
+          },
+          {
+            "path": "models/models.v8-promoted-lock.json",
+            "sha256": "7e4eeaf8ef5a166fd45b44b0c8aea24cabf2d75e889d1191142844b4f2034e97"
+          },
+          {
+            "path": "models/models.v8-promoted-lock.report.json",
+            "sha256": "31b7e86b67d460eff7ea6ef18f8f05dd1a3815b9b4cc58b10a86bb61d0d2c4fb"
+          },
+          {
+            "path": "models/pretrained/fasterrcnn_mobilenet_v3_large_320_fpn-907ea3f9.pth",
+            "sha256": "907ea3f91ff92242bc1baea8049276a3e76bca48ce7560bd268cc029f37977b5"
+          },
+          {
+            "path": "models/registry.yaml",
+            "sha256": "ac9d8b71a30df0c2be0909a609fd477923b8a4ca9ae7ab75dc3907cd651b9941"
+          },
+          {
+            "path": "models/releases/v8-portable/component/train-component-v5-fullmix/bundle.manifest.json",
+            "sha256": "30711359864a5e373c1bfbd01b62e31a9ef16b9adbd866c3f3e0f22c9aa86eef"
+          },
+          {
+            "path": "models/releases/v8-portable/component/train-component-v5-fullmix/metrics.json",
+            "sha256": "6349f3b017176dc318eb7a7bd50e99462d28bd44418072079c5f057870a631f7"
+          },
+          {
+            "path": "models/releases/v8-portable/component/train-component-v5-fullmix/model.pt",
+            "sha256": "34d79a6dfa4340e64dc96de4945bcfea6e376d9a6f4949876b58d7e719697af5"
+          },
+          {
+            "path": "models/releases/v8-portable/component/train-component-v5-fullmix/model.ts",
+            "sha256": "ce59315fd0cbc7a081a3a90fb760117b97f8d2435a18e754e7669cd37a896c37"
+          },
+          {
+            "path": "models/releases/v8-portable/component/train-component-v5-fullmix/model.ts.json",
+            "sha256": "3002bde9146fe257bf9c277b30d3536bde2b23409905490bc1146bd56b278d34"
+          },
+          {
+            "path": "models/releases/v8-portable/component/train-component-v5-fullmix/model_card.json",
+            "sha256": "dc54b301b478916a509990f37ded027af37495c7fcebe4700a27dde4122de4d0"
+          },
+          {
+            "path": "models/releases/v8-portable/component/train-component-v5-fullmix/predictions.jsonl",
+            "sha256": "153883e3834809539b7fb3ddc309bc1a480cf25bbc1b5f199fa689e429108f92"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/bundle.manifest.json",
+            "sha256": "ecbbaf59b8e07e6f3f4e6bec0c6d36b4cc7037c408cc5f567b766c1d65a0ac67"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/detector.ts",
+            "sha256": "d703b05906809f2479a6ec455ec56b80fb0201093d2ad916127344c96fd5356c"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/metrics.json",
+            "sha256": "adf10636150318a7133fe6b8493c13e0535a039aedbe32790549be6de6d670c6"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/model.pt",
+            "sha256": "e4212287d6ac31d2b45e20bb0c6f273bf6328299fb7746ea75a01e2bf180fe78"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/model_card.json",
+            "sha256": "2def5c0b1b01bade7b621fd2d2f78e0c819127cb7403e37eb7d4c6b949086ac4"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/ocr_exports.json",
+            "sha256": "f3ddc6b4642f2e1b6db18a1e3b273486e459e2e9526b28fa06ea1aec9f91d79e"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/predictions.jsonl",
+            "sha256": "ae70844f45ebb439115ebc15467ea79bd4ef661ca108b36f5c4588fdff11a079"
+          },
+          {
+            "path": "models/releases/v8-portable/ocr/train-ocr-resume/recognizer.ts",
+            "sha256": "1d98ad46c64306553364941fada9bce64b9d988bba4cadae84e7b12fe696f599"
+          },
+          {
+            "path": "models/releases/v8-portable/pin/train-pin-v5-boundary/bundle.manifest.json",
+            "sha256": "88d64a536d622114d49baeaff225dedcb2d378099eabccd9430a4b9dd65f42d2"
+          },
+          {
+            "path": "models/releases/v8-portable/pin/train-pin-v5-boundary/metrics.json",
+            "sha256": "7d2bc22fb8a1ee022830bcadba10bdabf341b885b5969fc8e7c3c7671e487e9a"
+          },
+          {
+            "path": "models/releases/v8-portable/pin/train-pin-v5-boundary/model.onnx",
+            "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71"
+          },
+          {
+            "path": "models/releases/v8-portable/pin/train-pin-v5-boundary/model.pt",
+            "sha256": "81cbe93da273ba4510833124b90468364df2d8d1eee7ba4ef549f3cf2b21f673"
+          },
+          {
+            "path": "models/releases/v8-portable/pin/train-pin-v5-boundary/model_card.json",
+            "sha256": "3f5872b413f7c7cb94a6eb7ec6bac98e088890696ef5315ea5c15bcde9584a02"
+          },
+          {
+            "path": "models/releases/v8-portable/pin/train-pin-v5-boundary/predictions.jsonl",
+            "sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b"
+          },
+          {
+            "path": "models/releases/v8-portable/wire/train-wire-v5-fresh-allgate/bundle.manifest.json",
+            "sha256": "37d8143d5e92e6ab0d2416be90e857c2e2eda5200d5ef6cd82989eb23fa5ff17"
+          },
+          {
+            "path": "models/releases/v8-portable/wire/train-wire-v5-fresh-allgate/metrics.json",
+            "sha256": "7f943f95b906eb9b700f120504ba5d52c7c1253e9460d742dbbfbda5b8617a11"
+          },
+          {
+            "path": "models/releases/v8-portable/wire/train-wire-v5-fresh-allgate/model.pt",
+            "sha256": "3235b9e083190e8d399f819b55a34ed8531652377323ff8be05ae99286ea17dd"
+          },
+          {
+            "path": "models/releases/v8-portable/wire/train-wire-v5-fresh-allgate/model_card.json",
+            "sha256": "71de9f5362847158322d57a4fc15898b959d77de7adc8b96875e29258664a03c"
+          },
+          {
+            "path": "models/releases/v8-portable/wire/train-wire-v5-fresh-allgate/predictions.jsonl",
+            "sha256": "6d3884ec4b714d3867851d5103f371ffaa466a753393f9a12c543869776bcc7f"
+          },
+          {
+            "path": "pyproject.toml",
+            "sha256": "d4cb6bbcb9019db559ff77b348581237b38d974bd5af256a962bb921cea33967"
+          },
+          {
+            "path": "requirements.lock",
+            "sha256": "5d44db71ffa252dfde121e31081ac7f61e19694106a8b950abdb51cc5853d5a0"
+          },
+          {
+            "path": "requirements.runtime.lock",
+            "sha256": "2babfe0d8ac4abd46cee712c3f8010a2a2ac5529a6b57e6682d3ac0661bd2a93"
+          },
+          {
+            "path": "src/data_tools/__init__.py",
+            "sha256": "220489323114234400451b7c2d787833422fb5acfe55e5c44a7d928a0b3c14ea"
+          },
+          {
+            "path": "src/data_tools/audit.py",
+            "sha256": "9102ba0afdcdd6d4ede47f2703984e3370bb44a7eeaa9522ca00835ba19159c3"
+          },
+          {
+            "path": "src/data_tools/derive_datasets.py",
+            "sha256": "9a52924486a93a0778f10375606b14eca3393d3b722ecf93394ff801f4e96c0b"
+          },
+          {
+            "path": "src/data_tools/pcbnet_ingest.py",
+            "sha256": "cb8cce6aedaeda00e1ec3bb9870c5de8fe20e2dd97cba7af0a87cb8285c53771"
+          },
+          {
+            "path": "src/data_tools/split_grouped.py",
+            "sha256": "e9da725879846c385713b3cdfc7b7e5ff79294127d4bd9fef46748801b810b94"
+          },
+          {
+            "path": "src/pcbparse/__init__.py",
+            "sha256": "74070c5d972d83811353d0760dec55bb4155b632a2296b76402bf2b2771b3335"
+          },
+          {
+            "path": "src/pcbparse/association/__init__.py",
+            "sha256": "65edbf412a7ac12d9b80a19b1fa6efa4483d1af82f3ab3d707603fc3927fd018"
+          },
+          {
+            "path": "src/pcbparse/association/geometry.py",
+            "sha256": "9b10ee70b73d5e06c6a5411ad41f8c953c3a692475e547fa33def50eff44febb"
+          },
+          {
+            "path": "src/pcbparse/association/netlabel_text.py",
+            "sha256": "223bafe6c0da6a017ce6ecebdacb625dd80cdf56dbbe3d095ee3f9552d304f4c"
+          },
+          {
+            "path": "src/pcbparse/association/ocr.py",
+            "sha256": "b91a3b4362734e4f23368a365f55dd83b2fc8fb62c9fb5a07581616cad83ed6f"
+          },
+          {
+            "path": "src/pcbparse/association/ocr_common.py",
+            "sha256": "f4b61a87ddd4dab1c08aea3f4cf5e14569ffee591dae9a96cb85835cac1a321b"
+          },
+          {
+            "path": "src/pcbparse/association/pin_assignment.py",
+            "sha256": "09a5a396685942d881702a2954d9d40d44ac6826fb1a21cf6128ac0d56d2f0ac"
+          },
+          {
+            "path": "src/pcbparse/association/pin_wire.py",
+            "sha256": "a85973436a5094d5161abc58b05c5ba2a60ba7608e8d70490425e5f7945613e7"
+          },
+          {
+            "path": "src/pcbparse/association/semantic_fields.py",
+            "sha256": "83dc27e8a1edda927359697f6e245631968480696e3a24674ddae2930e8e7485"
+          },
+          {
+            "path": "src/pcbparse/association/text_component.py",
+            "sha256": "deee7e3ff6600df027d744e0b730f44e9ef16cd5e5b31171fc79a783b51ed417"
+          },
+          {
+            "path": "src/pcbparse/association/text_pin.py",
+            "sha256": "c61ab7a926ebc422ba3e9683133a103f0d2e97445d3c84815bcb54b88631467b"
+          },
+          {
+            "path": "src/pcbparse/cli.py",
+            "sha256": "d583e628b3789dcfacba76dfe24b6814bc52524ed01380cc6b2155e4e32072fe"
+          },
+          {
+            "path": "src/pcbparse/config.py",
+            "sha256": "5ffc94d470ebd886f36a86809e121056e678f2a7d0242ecdd94e38aa015df142"
+          },
+          {
+            "path": "src/pcbparse/data/__init__.py",
+            "sha256": "7fe5c8afbfc12b212025999aeec7f8c55c1e1f949f13304f29aadd52ce7b2549"
+          },
+          {
+            "path": "src/pcbparse/data/cli.py",
+            "sha256": "6eb371c074b631f92715f0c5b97f3ddeb4b01e197a4dc1b05194bb312547a2bb"
+          },
+          {
+            "path": "src/pcbparse/data/dataset.py",
+            "sha256": "6d66c21594f9977f3fca7eb4896f1b4f9e5965605373b1ad8cd8fd4a25474147"
+          },
+          {
+            "path": "src/pcbparse/data/derive.py",
+            "sha256": "8e9b91ed27316dae40740db56e6329b5d17dd035b3cf66b24cbfab0ebfa9b586"
+          },
+          {
+            "path": "src/pcbparse/data/hashing.py",
+            "sha256": "15d439720af45c5932cb8e5f151de4bdff7b3c19b8588734e01e521e875a0155"
+          },
+          {
+            "path": "src/pcbparse/data/manifest.py",
+            "sha256": "5392138fd62b07915c78cf313c06ecc492de87a5bf737a520ccf6214e83380d2"
+          },
+          {
+            "path": "src/pcbparse/data/models.py",
+            "sha256": "f98268a21df8d99d2377f4e1eb12bafc10080786569d334e5bdd274876f4215b"
+          },
+          {
+            "path": "src/pcbparse/data/splitting.py",
+            "sha256": "f197fe8a2dcc18c3313a6642b9c2809ede314e238e8d41f36393d5695a9348e2"
+          },
+          {
+            "path": "src/pcbparse/evaluation/__init__.py",
+            "sha256": "402242488fa353466a155f5b37fbfbd1eae216209864e1640491e153b79fb3f8"
+          },
+          {
+            "path": "src/pcbparse/evaluation/cli.py",
+            "sha256": "8575f93b1714fd9292b85a058e49951a5fa6013d1f04329090e93daa6066744e"
+          },
+          {
+            "path": "src/pcbparse/evaluation/infer_cli.py",
+            "sha256": "432d4e327ead7524f1caa566822adb7b0798015d1b97cdf94c80eafd65655f19"
+          },
+          {
+            "path": "src/pcbparse/evaluation/infer_manifest.py",
+            "sha256": "cb70e478b6d60437c44b19b15d178dd5eac45b63fd7d8c1aa764f24c6020656c"
+          },
+          {
+            "path": "src/pcbparse/evaluation/masked_metrics.py",
+            "sha256": "dface600bcd9866ddc6f2c1805898b1c780cd0edc9527eb04f91dcfae33792e7"
+          },
+          {
+            "path": "src/pcbparse/evaluation/metrics.py",
+            "sha256": "7ddb406d43a8b21c88558fc4c832af3ed4a57e49c2a2807a59ab216ef07b7651"
+          },
+          {
+            "path": "src/pcbparse/evaluation/official_metrics.py",
+            "sha256": "e79f7fd7ce807a19e2fe2eb6006cc789d92540b5d888973e8cfe83c7c0af1b53"
+          },
+          {
+            "path": "src/pcbparse/evaluation/raw_cli.py",
+            "sha256": "fc75ba32f934ef01fee093230b52267790b2a56f8a3f6d0d96fc4ceaab9e0f73"
+          },
+          {
+            "path": "src/pcbparse/evaluation/raw_ground_truth.py",
+            "sha256": "69d90ef0cd2f39fe8b37206e89d3ebaae3397bc4af419520cd377a60293b4a2d"
+          },
+          {
+            "path": "src/pcbparse/graph/__init__.py",
+            "sha256": "c16ff6f205e4e883bdef3aec4ba4fabad1bd9f0579031beba0e88d3565f462cd"
+          },
+          {
+            "path": "src/pcbparse/graph/physical.py",
+            "sha256": "c4cd4cc63a380f8f6804dd71c2e20524ee9fc6ad2323bb6474ca39c383075e4a"
+          },
+          {
+            "path": "src/pcbparse/graph/union_find.py",
+            "sha256": "89001ae9f23f458e2575a4b376c83abe948c025d0421562490370b191cfb91ed"
+          },
+          {
+            "path": "src/pcbparse/io/__init__.py",
+            "sha256": "5f98705241cc27b5092f0331264f6a5bb5e37ecc6114a44d3fa14fbcc740fe5b"
+          },
+          {
+            "path": "src/pcbparse/io/image_loader.py",
+            "sha256": "b9d348121fab4a11761cba9f247a64cb14e111c13d662b46f09f511a116a0ac5"
+          },
+          {
+            "path": "src/pcbparse/ir/__init__.py",
+            "sha256": "4e96e2d0d41304e2c2a28ce73ba9cd3e3ee7ee70773a9555835410d8c59cd559"
+          },
+          {
+            "path": "src/pcbparse/ir/models.py",
+            "sha256": "5497ef6a81d481444980f354829c14dccd2da09dac3d2294caa6263b9137e9ef"
+          },
+          {
+            "path": "src/pcbparse/ir/state.py",
+            "sha256": "81565035faf16be02687b06574878e056d6fe95b3a4928f98c38a7cfafa12c16"
+          },
+          {
+            "path": "src/pcbparse/ir/transforms.py",
+            "sha256": "144b9688f6eaf25ccc407a4a310216b01628e213fdd2e7238660b077c27a2700"
+          },
+          {
+            "path": "src/pcbparse/nets/__init__.py",
+            "sha256": "b4c6df5583cf4760f10884a64b1d771faa2e40ad5edcd9688b1764c05d5ac955"
+          },
+          {
+            "path": "src/pcbparse/nets/hypergraph.py",
+            "sha256": "08f393667386239ea9047b7aaa0ebb2eb9d4ca55b383427ed94c874d5636a444"
+          },
+          {
+            "path": "src/pcbparse/output/__init__.py",
+            "sha256": "fbaf8364e81e99b0201dc7f2684826ca0ebb4f3ee0be828f5bf0ebd10f867147"
+          },
+          {
+            "path": "src/pcbparse/output/official_schema.py",
+            "sha256": "27a5ca1b5f58da95d49527c6d1d464547270042c8c283b120f73b3866ca98f80"
+          },
+          {
+            "path": "src/pcbparse/output/official_serializer.py",
+            "sha256": "26e9641134a7b994961a9c585315703a8477c542a291bd56103bc5b7b1f3e01e"
+          },
+          {
+            "path": "src/pcbparse/output/submission_cli.py",
+            "sha256": "6e866731e0f0175d12149d10c113426e89e8fe0d95e475a072da5d99d2c520d6"
+          },
+          {
+            "path": "src/pcbparse/output/submission_package.py",
+            "sha256": "68ba2038f2d7f7d42910dd1c048ba51891f3fb7183ada00ee0c5024ea268e284"
+          },
+          {
+            "path": "src/pcbparse/perception/__init__.py",
+            "sha256": "8111225e7737134a82d7805b8f3f5975afd85fe7958aa2e1e536f02e5186005d"
+          },
+          {
+            "path": "src/pcbparse/perception/component_provider.py",
+            "sha256": "c9c3ac90719ce0b435d05583c1f624c1af6d50d2f0183eaa6d5b37c80b8338da"
+          },
+          {
+            "path": "src/pcbparse/perception/composite_provider.py",
+            "sha256": "2beb2e75165937744e44a300a0096a3a0e3f1ebf57d2c3b8785dbefa16ce9e37"
+          },
+          {
+            "path": "src/pcbparse/perception/coordinate_binding.py",
+            "sha256": "b7eceaa76d0e8c6d4efb6661608e412d01eedb045799682a7d6607607d923ed7"
+          },
+          {
+            "path": "src/pcbparse/perception/golden_provider.py",
+            "sha256": "ac41fc852c593532aab2c6cf04a1169824f8b9c07fc74d8339c1165d68910c38"
+          },
+          {
+            "path": "src/pcbparse/perception/heuristic_provider.py",
+            "sha256": "afa40a025f2431d32da0d622bcd3e004bac35748a841e4fc77547fb07829c63e"
+          },
+          {
+            "path": "src/pcbparse/perception/ocr_multilevel.py",
+            "sha256": "d6e5acb887b15d0ada4c7bee0535aca29fd07d50278b69924c7c109aee3f45ae"
+          },
+          {
+            "path": "src/pcbparse/perception/ocr_provider.py",
+            "sha256": "e191c000e62c85a8c74a4075f97eee8fce06951965f4ee42fbdc0942338f26dd"
+          },
+          {
+            "path": "src/pcbparse/perception/pin_provider.py",
+            "sha256": "d7375e1adae9f197d1aa6c73bed82dd3766c687091851848f75de97bb6950aa6"
+          },
+          {
+            "path": "src/pcbparse/perception/production_provider.py",
+            "sha256": "ecf55267d0966408adefd1da6a61c18f6d4debb2fdba4fd53b831bb0cff52705"
+          },
+          {
+            "path": "src/pcbparse/perception/protocols.py",
+            "sha256": "a709c41c6d79c62639576934a8f3d1392ec48b27006cabc206c92cfe69e2f12d"
+          },
+          {
+            "path": "src/pcbparse/perception/torch_component_adapter.py",
+            "sha256": "9ac78b28642157cdbc5189a9c2c98ae925f429d89a430d7624384880bd5ab96c"
+          },
+          {
+            "path": "src/pcbparse/perception/torch_junction_adapter.py",
+            "sha256": "5b62ced405bed68e056aa39a84538484f1fb48b0ee1cb156c6128d9dfdc42bf0"
+          },
+          {
+            "path": "src/pcbparse/perception/torch_ocr_adapter.py",
+            "sha256": "fa9192a4347c486b0c0a6be1adcc53f7f8f7256b973fe31d9d67491fc5ab81c0"
+          },
+          {
+            "path": "src/pcbparse/perception/torch_pin_adapter.py",
+            "sha256": "b39b9a679a939170f0c9b8b2e048ad6f3543eb19691e55bdf94840588e70793c"
+          },
+          {
+            "path": "src/pcbparse/perception/torch_wire_adapter.py",
+            "sha256": "f7667cfadc26b4472f1a37b63b68ced1515224b0dcbb4e137fd76ead1bf98706"
+          },
+          {
+            "path": "src/pcbparse/perception/wire_provider.py",
+            "sha256": "f92ae7cdf37c9418f17da1d1ae668d9ff73989a1138617960ae626e8a6a5508c"
+          },
+          {
+            "path": "src/pcbparse/perception/wire_vectorizer.py",
+            "sha256": "356b76f13ab1f1b756ac7488c2f38656a6d2944ba10aa424797e270a6b4c48f0"
+          },
+          {
+            "path": "src/pcbparse/pipeline/__init__.py",
+            "sha256": "add59b60a71cd25f439af3359917d5905ce8d09005325ea74cdee4ccfe14f12f"
+          },
+          {
+            "path": "src/pcbparse/pipeline/budget.py",
+            "sha256": "a43f31bdd393eff1185aa04ad53fbf530782a45c8a48d12d5bd12ccfb87a62e0"
+          },
+          {
+            "path": "src/pcbparse/pipeline/context.py",
+            "sha256": "e6af9d730bdf9ce7a7492868793a8fc383ab7eff512d917c51b38b9d8e17cb01"
+          },
+          {
+            "path": "src/pcbparse/pipeline/orchestrator.py",
+            "sha256": "227c318778c821abeb1bb818892b4c1b6a076d774437338d1c20a2a9fa052344"
+          },
+          {
+            "path": "src/pcbparse/pipeline/providers.py",
+            "sha256": "6b7a7a5c464f501164051773f1fd32786e3657a197c9a2399674fd9c0baa01fb"
+          },
+          {
+            "path": "src/pcbparse/pipeline/readiness.py",
+            "sha256": "e81a8c1fbf8f8e2f9ef9680af2aec3fdc9134403221e49a573955b25e7ea4e44"
+          },
+          {
+            "path": "src/pcbparse/reasoning/__init__.py",
+            "sha256": "c6092e9e77645ca467dad8e32ddd089f4be840498c50a7b14ce2d5bfe0cb8f8f"
+          },
+          {
+            "path": "src/pcbparse/reasoning/cache.py",
+            "sha256": "a7c7cfca764aacb28d0d156272d27f8ee1582fa5353540925994b94acf03debc"
+          },
+          {
+            "path": "src/pcbparse/reasoning/orchestrator.py",
+            "sha256": "29b58b29e3451eb945b04a9c2cf539ad7153a4d39909e85891b9a7daa7a26ce5"
+          },
+          {
+            "path": "src/pcbparse/reasoning/qwen_client.py",
+            "sha256": "b68ff870e197cd88383d320a7eeafce8aa38c0c80455de702533dd31c5ad98ee"
+          },
+          {
+            "path": "src/pcbparse/reasoning/router.py",
+            "sha256": "0a47248b7bc9527a4bbaf7992c76e731c14637aff771c5faafbd5b9f1e86af86"
+          },
+          {
+            "path": "src/pcbparse/reasoning/tasks.py",
+            "sha256": "5b318432a617f0009c2082f2926d39108213192fb3b48f0d5a324847b805f240"
+          },
+          {
+            "path": "src/pcbparse/resources/official_schema.json",
+            "sha256": "4d0fb1ea15686a95ce94987d2968ef652b37b8fb8e6b0f251609486a898be44a"
+          },
+          {
+            "path": "src/pcbparse/resources/pipeline.json",
+            "sha256": "01275bd0c6fd98adbd53718b7a03658a9bf2d11ab6f8868d2f09f7ef482480fe"
+          },
+          {
+            "path": "src/pcbparse/resources/profiles/baseline.json",
+            "sha256": "66d3294d0058ed54ce6f78b65ad3a0e267201d3bde0c0cad64a38f97bc4f7681"
+          },
+          {
+            "path": "src/pcbparse/resources/profiles/competition.json",
+            "sha256": "24c198fd4d4c76763284fa925f0e8bf6687547bf6773dfaaea2f24734227a30e"
+          },
+          {
+            "path": "src/pcbparse/resources/profiles/debug.json",
+            "sha256": "3aa7be323845d019726c88d6f3e66362d1f7602a4437933138c595e252f40a01"
+          },
+          {
+            "path": "src/pcbparse/service/__init__.py",
+            "sha256": "9ce5694eb6120da0e878384a89a88bc30ba76a6b6a6b8d5cab65905592f35595"
+          },
+          {
+            "path": "src/pcbparse/service/http_api.py",
+            "sha256": "2373c5ca1f902d66567e9ddae584ce4d303f9fb5365f3fa9922146d10b219c4c"
+          },
+          {
+            "path": "src/pcbparse/service/readiness.py",
+            "sha256": "26cee0b6da616facbdfbc7355f40da7c2cac1be84d6350374d3625281852e8e6"
+          },
+          {
+            "path": "src/pcbparse/training/__init__.py",
+            "sha256": "1e4d07e62f3a28e27eabc11bf36eadefa68f912d40124bbf5d883cdb316cbafe"
+          },
+          {
+            "path": "src/pcbparse/training/artifacts.py",
+            "sha256": "e17702bce6dfc9dad810e502fe5fa6fad9c322dba207536f00faefff25872f84"
+          },
+          {
+            "path": "src/pcbparse/training/component_pin_materialize.py",
+            "sha256": "3746c7d5d87ea55711b31c0df6e48e23a1a099a7ff25c87ac7372bd8299f8efb"
+          },
+          {
+            "path": "src/pcbparse/training/config.py",
+            "sha256": "cf52e75c4982256d7bace25ec99c35c61da12df70b6b19fc961c2b4a12dcd7c4"
+          },
+          {
+            "path": "src/pcbparse/training/ocr_materialize.py",
+            "sha256": "5fbcc45bc7235a5af9b9a853e02c48626178f7bcd9d75098356c928e905e8966"
+          },
+          {
+            "path": "src/pcbparse/training/preflight.py",
+            "sha256": "177d59c01d0c1006431c3a5d5381755f2f9ff39ddf0b62d4911337e4cd184b2b"
+          },
+          {
+            "path": "src/pcbparse/training/preflight_cli.py",
+            "sha256": "769ac05821423dc658c3e015748e80cbe608b338fd6475e27dd0947b3ca37c03"
+          },
+          {
+            "path": "src/pcbparse/training/rebind.py",
+            "sha256": "82c4139edbc37a0f46add50a1e60a19760de645ebafa3b3cbc3cf68029aa95e8"
+          },
+          {
+            "path": "src/pcbparse/training/runner.py",
+            "sha256": "ebdffa9139e8894f60846a44e0d8b03880197288d79b5e266246ea7458f8b118"
+          },
+          {
+            "path": "src/pcbparse/training/synthetic_junction.py",
+            "sha256": "19a4e03e6de3f8faeb99dae7c758a483a2915eefbde356750a6cf50ec25db40a"
+          },
+          {
+            "path": "src/pcbparse/training/torch_backend.py",
+            "sha256": "5323e1bebd867e98643c9da37789edcd9e5a25faa7e40cde16123fc7bd6625c2"
+          },
+          {
+            "path": "src/pcbparse/training/torch_component_model.py",
+            "sha256": "7ada904366cb6d6d6592bd5e515fec3b3c0538c6a2caaffe087e4c708f53be90"
+          },
+          {
+            "path": "src/pcbparse/training/torch_component_pin.py",
+            "sha256": "b2e3e59fec12a39cd0c76a55c0f721a5f055063c13e88059e739e1a459f12f78"
+          },
+          {
+            "path": "src/pcbparse/training/torch_junction_model.py",
+            "sha256": "bdec0bcd8a9f3837e9cbe089fef2699b3bb6ae2d4d477afa4e2966b07cee8ffc"
+          },
+          {
+            "path": "src/pcbparse/training/torch_ocr.py",
+            "sha256": "45961caf7f20955de269a18764df9bcfe0ec650087ce3d7e17f31dc846630b94"
+          },
+          {
+            "path": "src/pcbparse/training/torch_ocr_detection.py",
+            "sha256": "d8d143b0af45e82e586444a3a3f94811f68f5c9a27f3cc5a3d6388ac77cabea6"
+          },
+          {
+            "path": "src/pcbparse/training/torch_ocr_model.py",
+            "sha256": "6685836f87db66e65551a42cc58cee7359561d6fd56d051be6c0aa49652f62ea"
+          },
+          {
+            "path": "src/pcbparse/training/torch_pin_model.py",
+            "sha256": "9852a93d06de2bb7e421c6829a3902867656272eb6c5718c504ff041ddfb8710"
+          },
+          {
+            "path": "src/pcbparse/training/torch_train_cli.py",
+            "sha256": "5a3e3e904c48537c04b46b36941aad4700c78ff4f5ec14fc8961bd91d6249ce8"
+          },
+          {
+            "path": "src/pcbparse/training/torch_wire_junction.py",
+            "sha256": "78439e45b8864e63327a31ad7b5a506b1cdccaeda3f9090403f46c7a100ae4b6"
+          },
+          {
+            "path": "src/pcbparse/training/torch_wire_model.py",
+            "sha256": "8a21d4f11d6cb3f824f38690bec58df585f64bfe8ab38f9efe0f45b870b34302"
+          },
+          {
+            "path": "src/pcbparse/training/wire_junction_materialize.py",
+            "sha256": "2c524cc2de3aafe34bb40fed93d7d3b107f67dbed053e0439c5bc864fe1e2037"
+          },
+          {
+            "path": "src/pcbparse/validation/__init__.py",
+            "sha256": "8e0b17b6b314fbada4f2d379d333676499dd247140d4b551da40f1c46b888d12"
+          },
+          {
+            "path": "src/pcbparse/validation/api.py",
+            "sha256": "0a86cc6feaa953816a493a9e526c23cfd8d43afbe65bf7f0c712ecdb3310820d"
+          },
+          {
+            "path": "src/pcbparse/validation/common.py",
+            "sha256": "4e85dd1be6a95a31726ea7ce6f7e9cd2f752485138c0f0999e2d72b7d39e2443"
+          },
+          {
+            "path": "src/pcbparse/validation/geometry.py",
+            "sha256": "3b0f54445099cc67dd444e730d1b042ad3e7ca3582757bc27c7955800d0e11ca"
+          },
+          {
+            "path": "src/pcbparse/validation/graph.py",
+            "sha256": "3177d3c9d4cf64add3a975970d46fef079f03360dff1c186ba23e47ae21091d5"
+          },
+          {
+            "path": "src/pcbparse/validation/references.py",
+            "sha256": "57389d6afded5541bdea5ae3e837e690a76ac5e5739f5499a2dc0ad29f334ab0"
+          },
+          {
+            "path": "src/pcbparse/validation/repair.py",
+            "sha256": "1a8d96385fb6b91adbbf040f2c69b4cbabc414269783774796235dcce39413bc"
+          },
+          {
+            "path": "src/pcbparse/validation/schema.py",
+            "sha256": "6f5af718f523c5066c905109d9e7400fc6ce58072d13755376f5132ec087a49b"
+          }
+        ],
+        "manifest_sha256": "3846ab63f84b696e2ed6bda9385b7597a60fc1d5692ff304843e3c1ec132143e"
+      },
+      "container_image_digest": null,
+      "dockerfile": {
+        "path": "docker/Dockerfile",
+        "present": true,
+        "sha256": "e32082a3c01d8eb46a2e8381b30f546d9f1357d8d35c46fe40b0e0bc6317fc43"
+      },
+      "dockerfile_references_embedded_models_lock": true,
+      "formal_binding_required": true,
+      "network_mode": null,
+      "problems": [],
+      "production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "report": {
+        "path": null,
+        "present": false,
+        "sha256": null
+      },
+      "source_summary_binding": null,
+      "status": "unverified"
+    },
+    "same_environment_three_run_json_hash": {
+      "current_lock_inference_proven": false,
+      "direct_hash_subcheck": "fail",
+      "environment_evidence": {
+        "path": null,
+        "present": false,
+        "sha256": null
+      },
+      "environment_problems": [
+        "formal determinism environment manifest is missing"
+      ],
+      "evidence_scope": null,
+      "finding": null,
+      "formal_binding_required": true,
+      "formal_summary_bindings": [],
+      "identical_json_hashes": false,
+      "identical_relative_paths": false,
+      "nonempty_runs": false,
+      "production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "required_runs": 3,
+      "runs": [
+        {
+          "files": [],
+          "json_files": 0,
+          "path": "artifacts/determinism/__no_current_formal_evidence__/run1",
+          "present": false,
+          "run": "run1",
+          "tree_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "files": [],
+          "json_files": 0,
+          "path": "artifacts/determinism/__no_current_formal_evidence__/run2",
+          "present": false,
+          "run": "run2",
+          "tree_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "files": [],
+          "json_files": 0,
+          "path": "artifacts/determinism/__no_current_formal_evidence__/run3",
+          "present": false,
+          "run": "run3",
+          "tree_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        }
+      ],
+      "same_environment_proven": false,
+      "serializer_replay_subcheck": "unverified",
+      "status": "unverified"
+    },
+    "traceable_errors": {
+      "boundary": "The harness now emits hash-bound diagnostic errors, but no current-lock release probe has regenerated evidence.",
+      "current_lock_error_rows": 0,
+      "current_lock_traceable_rows": 0,
+      "formal_binding_required": true,
+      "harness": {
+        "path": "src/pcbparse/evaluation/infer_manifest.py",
+        "present": true,
+        "sha256": "cb70e478b6d60437c44b19b15d178dd5eac45b63fd7d8c1aa764f24c6020656c"
+      },
+      "harness_coverage": "pass",
+      "historic_error_rows": 3,
+      "historic_traceable_rows": 0,
+      "production_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+      "rows": [
+        {
+          "case_id": "0024",
+          "current_lock": false,
+          "current_production_binding": false,
+          "error_type": "PipelineError",
+          "path": "work/production-e2e-audit-calibrated-strict/predictions.jsonl",
+          "problems": [
+            "error.stage",
+            "error.error_id",
+            "error.diagnostic_count",
+            "error.diagnostic_codes",
+            "error.diagnostics"
+          ],
+          "summary_manifest_bound": false,
+          "traceable": false
+        },
+        {
+          "case_id": "0024",
+          "current_lock": false,
+          "current_production_binding": false,
+          "error_type": "PipelineError",
+          "path": "work/production-e2e-audit-run/predictions.jsonl",
+          "problems": [
+            "error.stage",
+            "error.error_id",
+            "error.diagnostic_count",
+            "error.diagnostic_codes",
+            "error.diagnostics"
+          ],
+          "summary_manifest_bound": false,
+          "traceable": false
+        },
+        {
+          "case_id": "0024",
+          "current_lock": false,
+          "current_production_binding": false,
+          "error_type": "PipelineError",
+          "path": "work/production-e2e-tile512-strict/predictions.jsonl",
+          "problems": [
+            "error.stage",
+            "error.error_id",
+            "error.diagnostic_count",
+            "error.diagnostic_codes",
+            "error.diagnostics"
+          ],
+          "summary_manifest_bound": false,
+          "traceable": false
+        }
+      ],
+      "status": "unverified"
+    }
+  },
+  "generated_at_utc": "2026-08-29T16:48:40.581973Z",
+  "harness_coverage": {
+    "coordinate_unit_only": true,
+    "dangling_reference_internal": true,
+    "files": {
+      "audit": {
+        "path": "tests/unit/test_release_hard_gate_audit.py",
+        "present": true,
+        "sha256": "ff91233a6c5894a296f327b01b83b5ecf3fe0f2b26aa9e46d33cef84f177b3c6"
+      },
+      "coordinate": {
+        "path": "tests/unit/test_ir_graph.py",
+        "present": true,
+        "sha256": "a54327b93aaa3cf9484e9f43aec10b4c0f09380564ce40acc0ca9105d2b15bce"
+      },
+      "production_e2e": {
+        "path": "tests/integration/test_production_eval_harness.py",
+        "present": true,
+        "sha256": "7cfedd64920049e1447678aad469bf6e9d28c2d9dcca6284fbcd04d3391d0434"
+      },
+      "readiness": {
+        "path": "tests/integration/test_http_readiness.py",
+        "present": true,
+        "sha256": "4d5dd6d8eef1bd3ca99aed103107688a729d412f0bdac6e48bf5c8620c1acb75"
+      },
+      "serializer": {
+        "path": "tests/unit/test_validation_serializer.py",
+        "present": true,
+        "sha256": "648fc322f17f7816db8935961d47114f1fa4b6194dfa1553604d68e07f29a450"
+      }
+    },
+    "hard_gate_audit_tests": true,
+    "model_readiness_fail_closed": true,
+    "official_exact_shape_internal": true,
+    "same_process_three_run_hash": true
+  },
+  "internal_guide_v1_subcheck": {
+    "dangling_references": 0,
+    "extra_fields": 0,
+    "outputs": [],
+    "outputs_checked": 0,
+    "problems": [],
+    "profile": {
+      "path": "src/pcbparse/resources/official_schema.json",
+      "present": true,
+      "sha256": "4d0fb1ea15686a95ce94987d2968ef652b37b8fb8e6b0f251609486a898be44a"
+    },
+    "profile_authority": "local_only_not_official",
+    "profile_component_fields": [
+      "type",
+      "Name",
+      "value",
+      "bbox"
+    ],
+    "profile_version": "official-guide-2026-example-spelling-v1",
+    "schema_errors": 0,
+    "status": "unverified"
+  },
+  "kind": "independent-release-hard-gate-audit",
+  "policy": {
+    "automatic_evidence_selection_policy": "current lock + current production config + formal status + embedded UTC time + byte manifests",
+    "coordinate_roundtrip_limit_px": 0.5,
+    "determinism_runs": 3,
+    "missing_evidence_policy": "unverified_and_blocking",
+    "missing_official_authority_policy": "unverified_and_blocking",
+    "performance_cases": 50,
+    "performance_deadline_seconds": 7200,
+    "performance_minimum_reserve_fraction": 0.1,
+    "performance_pass_seconds_lte": 6480.0
+  },
+  "production_configuration": {
+    "effective_config_sha256": "422237eeeac22aaafbc6b98cb5c7b363e3747a4a686e8c2e5cdc3c75315154e7",
+    "learned_junctions_enabled": false,
+    "pipeline": {
+      "path": "configs/pipeline.yaml",
+      "present": true,
+      "sha256": "01275bd0c6fd98adbd53718b7a03658a9bf2d11ab6f8868d2f09f7ef482480fe"
+    },
+    "problems": [],
+    "profile": {
+      "path": "configs/profiles/competition.yaml",
+      "present": true,
+      "sha256": "97d248f9fde5d57633a5e2c73376b215b97398fa868dcd808f13467a5a2f4050"
+    },
+    "profile_name": "competition",
+    "status": "valid"
+  },
+  "production_summary_inventory": [
+    {
+      "all_successful": true,
+      "completed_at_utc": null,
+      "config_hash": "29ca4af23cc2999e3aee54c56caa9b66569499e2a9454bb26d4723d6912e8865",
+      "elapsed_seconds": 5.046999999998661,
+      "failed": 0,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "297ed07f9559f41dce0dcc8c5f7cf85a3d8f736bcdc5fdecf6f77bad6b3942a3",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [
+        "e15a80736df268adfdb58c56e4948ce5096555af40106fccdb59fb0d6288416e"
+      ],
+      "official_output_manifest": [
+        {
+          "path": "0024.json",
+          "sha256": "e15a80736df268adfdb58c56e4948ce5096555af40106fccdb59fb0d6288416e"
+        }
+      ],
+      "path": "work/production-e2e-audit-calibrated-degraded/summary.json",
+      "prediction_manifest": "work/production-e2e-audit-calibrated-degraded/predictions.jsonl",
+      "prediction_manifest_sha256": "ae2dfd56fe92727147be2f80082c72ca5624225e77169ca6a3186868d2ef18f5",
+      "prediction_set_sha256": "ff45ca97caf6ad0393f025f13a51d5e12172719c772e47f53345473ca22bc4e1",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.pipeline_config is not the canonical release input",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 Circuit-IR model task plan differs",
+        "prediction row 0 Circuit-IR model_versions task set differs"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "33855ca8588738322ae6e7a13c3c50d1cf65a4facd4267b59545290de5d7f55e",
+      "status": "ok",
+      "succeeded": 1,
+      "timing": null,
+      "valid": false
+    },
+    {
+      "all_successful": false,
+      "completed_at_utc": null,
+      "config_hash": "4ed02fd5609d06d8a38e74bc3822b9d5509d49ab448d9fc50a2ba8efa807991a",
+      "elapsed_seconds": 6.76600000000326,
+      "failed": 1,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "297ed07f9559f41dce0dcc8c5f7cf85a3d8f736bcdc5fdecf6f77bad6b3942a3",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [],
+      "official_output_manifest": [],
+      "path": "work/production-e2e-audit-calibrated-strict/summary.json",
+      "prediction_manifest": "work/production-e2e-audit-calibrated-strict/predictions.jsonl",
+      "prediction_manifest_sha256": "c3362ef289386b005ba998ad6a354fdab960bf1276b0ef46ef2398516563799c",
+      "prediction_set_sha256": "a1e0ad13d34b138461037430be5ae228b134872a91979933314609e6bb62ae37",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "status",
+        "all_successful",
+        "failed",
+        "succeeded_equals_selected",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 is not successful",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 lacks official_path",
+        "prediction row 0 lacks ir_path"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "320d561acf6084acec72e766b27b616f47260886e30b9e8fa2ef23c039a643a0",
+      "status": "failed",
+      "succeeded": 0,
+      "timing": null,
+      "valid": false
+    },
+    {
+      "all_successful": true,
+      "completed_at_utc": null,
+      "config_hash": "29ca4af23cc2999e3aee54c56caa9b66569499e2a9454bb26d4723d6912e8865",
+      "elapsed_seconds": 6.889999999999418,
+      "failed": 0,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [
+        "8a4ea275ddecd0e995aeeb4e27e3a6f780f244ad560a27fb04c3ce830c029735"
+      ],
+      "official_output_manifest": [
+        {
+          "path": "0024.json",
+          "sha256": "8a4ea275ddecd0e995aeeb4e27e3a6f780f244ad560a27fb04c3ce830c029735"
+        }
+      ],
+      "path": "work/production-e2e-audit-degraded-rerun/summary.json",
+      "prediction_manifest": "work/production-e2e-audit-degraded-rerun/predictions.jsonl",
+      "prediction_manifest_sha256": "db06afbbbdbfd469e9cc06d185a153afb7fbce7911f5fcde52c65723c121d720",
+      "prediction_set_sha256": "aeec6edf7e5c9d405d0e60c69f64eb72270286b4fc4767ec19a88420caf898c2",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.pipeline_config is not the canonical release input",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 Circuit-IR model task plan differs",
+        "prediction row 0 Circuit-IR model_versions task set differs"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "4b06a25cd1508620cc57c15b237f81b0f5b54fccf08710cbf59cc49307dbcb88",
+      "status": "ok",
+      "succeeded": 1,
+      "timing": null,
+      "valid": false
+    },
+    {
+      "all_successful": true,
+      "completed_at_utc": null,
+      "config_hash": "29ca4af23cc2999e3aee54c56caa9b66569499e2a9454bb26d4723d6912e8865",
+      "elapsed_seconds": 5.514999999999418,
+      "failed": 0,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [
+        "8a4ea275ddecd0e995aeeb4e27e3a6f780f244ad560a27fb04c3ce830c029735"
+      ],
+      "official_output_manifest": [
+        {
+          "path": "0024.json",
+          "sha256": "8a4ea275ddecd0e995aeeb4e27e3a6f780f244ad560a27fb04c3ce830c029735"
+        }
+      ],
+      "path": "work/production-e2e-audit-degraded-rerun2/summary.json",
+      "prediction_manifest": "work/production-e2e-audit-degraded-rerun2/predictions.jsonl",
+      "prediction_manifest_sha256": "0b56888a885b6161499555815f210f1c3b6d6e9a402b3e40ce01900dd5a0d517",
+      "prediction_set_sha256": "aeec6edf7e5c9d405d0e60c69f64eb72270286b4fc4767ec19a88420caf898c2",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.pipeline_config is not the canonical release input",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 Circuit-IR model task plan differs",
+        "prediction row 0 Circuit-IR model_versions task set differs"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "f4c246140b7d2e4a509fdf523e924493b4b4ec6b3b4d1513c0d895b53a9d2272",
+      "status": "ok",
+      "succeeded": 1,
+      "timing": null,
+      "valid": false
+    },
+    {
+      "all_successful": true,
+      "completed_at_utc": null,
+      "config_hash": "29ca4af23cc2999e3aee54c56caa9b66569499e2a9454bb26d4723d6912e8865",
+      "elapsed_seconds": 5.077999999997701,
+      "failed": 0,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [
+        "8a4ea275ddecd0e995aeeb4e27e3a6f780f244ad560a27fb04c3ce830c029735"
+      ],
+      "official_output_manifest": [
+        {
+          "path": "0024.json",
+          "sha256": "8a4ea275ddecd0e995aeeb4e27e3a6f780f244ad560a27fb04c3ce830c029735"
+        }
+      ],
+      "path": "work/production-e2e-audit-degraded/summary.json",
+      "prediction_manifest": "work/production-e2e-audit-degraded/predictions.jsonl",
+      "prediction_manifest_sha256": "7b048bc8e957f7a346fd00a8ec1a620b0a32b93dfda95e9febaefed0dd998814",
+      "prediction_set_sha256": "aeec6edf7e5c9d405d0e60c69f64eb72270286b4fc4767ec19a88420caf898c2",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.pipeline_config is not the canonical release input",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 Circuit-IR model task plan differs",
+        "prediction row 0 Circuit-IR model_versions task set differs"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "1e7a8a26817db60a25e4ba9229cdc480c841b490a66865a392f739cc42331ca0",
+      "status": "ok",
+      "succeeded": 1,
+      "timing": null,
+      "valid": false
+    },
+    {
+      "all_successful": false,
+      "completed_at_utc": null,
+      "config_hash": "4ed02fd5609d06d8a38e74bc3822b9d5509d49ab448d9fc50a2ba8efa807991a",
+      "elapsed_seconds": 4.842999999997119,
+      "failed": 1,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [],
+      "official_output_manifest": [],
+      "path": "work/production-e2e-audit-run/summary.json",
+      "prediction_manifest": "work/production-e2e-audit-run/predictions.jsonl",
+      "prediction_manifest_sha256": "8cd265bce1c7b432d021cf06867043501ed7fd0190157f9cddffd0a8d54b9a33",
+      "prediction_set_sha256": "641143fe879f1be270dd4cac882ad2ac18c3563bac64cd9eb9ae03bcad4821e4",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "status",
+        "all_successful",
+        "failed",
+        "succeeded_equals_selected",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 is not successful",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 lacks official_path",
+        "prediction row 0 lacks ir_path"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "812b651c1e55a76285b7efb7fa519c87bea23eee04171492d6bca2eebd222fbd",
+      "status": "failed",
+      "succeeded": 0,
+      "timing": null,
+      "valid": false
+    },
+    {
+      "all_successful": true,
+      "completed_at_utc": null,
+      "config_hash": "29ca4af23cc2999e3aee54c56caa9b66569499e2a9454bb26d4723d6912e8865",
+      "elapsed_seconds": 13.48399999999674,
+      "failed": 0,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [
+        "37d9050b703679a7846ef67fadf95d734f047bbd9009663f424e7c5011ff55bc"
+      ],
+      "official_output_manifest": [
+        {
+          "path": "0024.json",
+          "sha256": "37d9050b703679a7846ef67fadf95d734f047bbd9009663f424e7c5011ff55bc"
+        }
+      ],
+      "path": "work/production-e2e-tile512-degraded/summary.json",
+      "prediction_manifest": "work/production-e2e-tile512-degraded/predictions.jsonl",
+      "prediction_manifest_sha256": "e2c955bb87ec5809453d06175100e2cedc2621e7f0067e1a0aab3c1a6ce97880",
+      "prediction_set_sha256": "61582787de03029a98c0cad0cf258b496ed934f60248697cc2ac335a3bd31252",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.pipeline_config is not the canonical release input",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 Circuit-IR model task plan differs",
+        "prediction row 0 Circuit-IR model_versions task set differs"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "5f17a21c770085364da400079d3811c80257fa1758a576c5a279f4b93411f8f2",
+      "status": "ok",
+      "succeeded": 1,
+      "timing": null,
+      "valid": false
+    },
+    {
+      "all_successful": false,
+      "completed_at_utc": null,
+      "config_hash": "87afd0be2f3dc7f4914b163ea0fded6496e14c0c54ce1f09693a9cb946a56402",
+      "elapsed_seconds": 11.875,
+      "failed": 1,
+      "formal": false,
+      "generated_at_utc": null,
+      "generated_timestamp": null,
+      "inference_run_id": null,
+      "junction_runtime_non_load_non_invocation": false,
+      "model_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4",
+      "model_task_plan": null,
+      "not_run": 0,
+      "official_output_hashes": [],
+      "official_output_manifest": [],
+      "path": "work/production-e2e-tile512-strict/summary.json",
+      "prediction_manifest": "work/production-e2e-tile512-strict/predictions.jsonl",
+      "prediction_manifest_sha256": "af6a1e60d0135bc67ff6a7f2ccb187f59fb7eba730b67828775b894bff263281",
+      "prediction_set_sha256": "431f34696d83a3989bb290ac2d3119fc77d168d707829f0532478e101af28649",
+      "present": true,
+      "problems": [
+        "model_lock_sha256",
+        "config_hash",
+        "resolved_perception_config",
+        "resolved_perception_config_sha256",
+        "model_task_plan",
+        "readiness_required_tasks",
+        "readiness_registered_tasks",
+        "readiness_verified_tasks",
+        "status",
+        "all_successful",
+        "failed",
+        "succeeded_equals_selected",
+        "production summary generated_at_utc is missing",
+        "production summary lacks a SHA-256 inference_run_id",
+        "production summary runtime_source_manifest is missing",
+        "production summary timing contract is missing",
+        "production summary control_inputs.profile is not the canonical release input",
+        "production summary control_inputs.models_lock is not the canonical release input",
+        "production summary split_manifest_sha256 does not match bytes",
+        "prediction row 0 is not bound to current models.lock",
+        "prediction row 0 is not bound to production config",
+        "prediction row 0 is not successful",
+        "prediction row 0 input_paths_read is not the exact release allowlist",
+        "prediction row 0 lacks official_path",
+        "prediction row 0 lacks ir_path"
+      ],
+      "runtime_source_manifest": null,
+      "runtime_source_manifest_sha256": null,
+      "selected_cases": 1,
+      "sha256": "df9d2dd5e61e0e914b44aeec4857ae201d9f89d8928bd3f617c6f6c07c38203f",
+      "status": "failed",
+      "succeeded": 0,
+      "timing": null,
+      "valid": false
+    }
+  ],
+  "schema_version": 2
+}

@@ -1,0 +1,118 @@
+{
+  "checks": [
+    {
+      "detail": "summary version, config hash, sample count, and split binding",
+      "name": "summary_lineage",
+      "ok": true
+    },
+    {
+      "detail": "300 samples; split counts {'test': 30, 'train': 240, 'val': 30}",
+      "name": "split_zero_leakage",
+      "ok": true
+    },
+    {
+      "detail": "600 image/annotation files verified by SHA-256",
+      "name": "source_files",
+      "ok": true
+    },
+    {
+      "detail": "validated 147758 records",
+      "name": "five_task_manifests",
+      "ok": true
+    }
+  ],
+  "config_path": "E:\\EDA挑战题目六\\configs\\train\\dataset300_v2_tiny.json",
+  "dataset": {
+    "config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+    "derivation_version": "dataset300-v2",
+    "sample_count": 300,
+    "source_files": {
+      "invalid": 0,
+      "verified": 600
+    },
+    "split_counts": {
+      "test": 30,
+      "train": 240,
+      "val": 30
+    }
+  },
+  "hashes": {
+    "source_manifest": "1282c9c6f7ae5df9647e5e49180cd98b16eeb781880193f386d44ce30eecd5b8",
+    "split_manifest": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1",
+    "summary": "43b69295534699b42640d7fb19e80afa7ab191e9a55ea0636235826140bf8e65"
+  },
+  "issues": [],
+  "ok": true,
+  "paths": {
+    "derived_root": "E:\\EDA挑战题目六\\data\\derived\\dataset300-v2",
+    "source_manifest": "E:\\EDA挑战题目六\\data\\manifests\\dataset300.jsonl",
+    "source_root": "E:\\EDA挑战题目六\\Dataset300\\Dataset300",
+    "split_manifest": "E:\\EDA挑战题目六\\data\\splits\\dataset300_split.jsonl",
+    "summary": "E:\\EDA挑战题目六\\data\\derived\\dataset300-v2\\summary.json"
+  },
+  "schema_version": 1,
+  "tasks": {
+    "component": {
+      "dataset_task": "component_detection",
+      "invalid_records": 0,
+      "path": "E:\\EDA挑战题目六\\data\\derived\\dataset300-v2\\component_detection.jsonl",
+      "records": 12789,
+      "sha256": "fe379b30be21bb63c90709841700689bcd793ba907f1b40d81a3e8b38cad52fe",
+      "splits": {
+        "test": 1443,
+        "train": 10234,
+        "val": 1112
+      }
+    },
+    "junction": {
+      "dataset_task": "junction_patches",
+      "invalid_records": 0,
+      "path": "E:\\EDA挑战题目六\\data\\derived\\dataset300-v2\\junction_patches.jsonl",
+      "records": 41962,
+      "sha256": "b7fd1d4107a1dd946dc2f010d6c3df07ca2e87304dc7a6c14631d5fa9832fd7d",
+      "splits": {
+        "test": 4719,
+        "train": 33337,
+        "val": 3906
+      }
+    },
+    "ocr": {
+      "dataset_task": "ocr_text",
+      "invalid_records": 0,
+      "path": "E:\\EDA挑战题目六\\data\\derived\\dataset300-v2\\ocr_text.jsonl",
+      "records": 48464,
+      "sha256": "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1",
+      "splits": {
+        "test": 5877,
+        "train": 38307,
+        "val": 4280
+      }
+    },
+    "pin": {
+      "dataset_task": "pin_keypoints",
+      "invalid_records": 0,
+      "path": "E:\\EDA挑战题目六\\data\\derived\\dataset300-v2\\pin_keypoints.jsonl",
+      "records": 29648,
+      "sha256": "b8ebd239121195a76ac94c5867c40c5b27d72795e42fecf10152cfe37b021377",
+      "splits": {
+        "test": 3407,
+        "train": 23601,
+        "val": 2640
+      }
+    },
+    "wire": {
+      "dataset_task": "wire_paths",
+      "invalid_records": 0,
+      "path": "E:\\EDA挑战题目六\\data\\derived\\dataset300-v2\\wire_paths.jsonl",
+      "records": 14895,
+      "sha256": "6deb93c959da75c26a4c93657e924e9785c52cbb11ab91b33128a96185c6438c",
+      "splits": {
+        "test": 1752,
+        "train": 11842,
+        "val": 1301
+      }
+    }
+  },
+  "training_config_sha256": "1f0a0dc9312262743872ae8cf10bdcd055332bff3d7a91c8dd5460d29877e3df",
+  "workspace_root": "E:\\EDA挑战题目六"
+}

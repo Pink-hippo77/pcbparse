@@ -1,0 +1,7 @@
+-r requirements.lock
+
+# Production adapters load PyTorch checkpoints/TorchScript and the pin adapter
+# may use ONNX Runtime.  The Docker base image supplies the CUDA-matched torch
+# runtime; these pins keep the Python-side packages aligned with the trained env.
+torchvision==0.27.1
+onnxruntime-gpu==1.28.0

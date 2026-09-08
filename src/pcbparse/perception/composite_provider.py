@@ -1,0 +1,959 @@
+from __future__ import annotations
+
+import hashlib
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from pcbparse.io import ImageView, load_image, make_component_view, tile_image_view
+from pcbparse.ir.models import BBox, CircuitIR, Component, Evidence, IRState, Junction, Pin, Point, TextToken, WireSegment
+from pcbparse.perception.protocols import ComponentProvider, JunctionProvider, OCRProvider, PinProvider, WireMask, WireProvider
+from pcbparse.perception.coordinate_binding import (
+    bind_bbox_evidence,
+    bind_point_evidence,
+    bind_segment_evidence,
+)
+from pcbparse.perception.ocr_multilevel import MultilevelOCRConfig, run_multilevel_ocr
+from pcbparse.perception.wire_vectorizer import (
+    SkeletonPolyline,
+    WireVectorizerConfig,
+    WireJunctionCandidate,
+    deduplicate_polylines,
+    vectorize_wire_mask,
+)
+from pcbparse.pipeline.context import RunContext
+
+
+@dataclass(slots=True)
+class CompositeProviderConfig:
+    tile_size: int = 1024
+    tile_overlap: int = 160
+    component_tile_size: int | None = None
+    component_tile_overlap: int | None = None
+    wire_tile_size: int | None = None
+    wire_tile_overlap: int | None = None
+    # OCR detector is trained at 512px; tiling at the same size preserves text
+    # resolution instead of downscaling 1024px tiles by 2x.
+    ocr_tile_size: int = 512
+    ocr_tile_overlap: int = 160
+    component_nms_iou: float = 0.55
+    component_roi_padding_factor: float = 0.15
+    # Legacy shared absolute padding.  The task-specific values below fall
+    # back to this field so existing configurations keep identical geometry.
+    component_roi_padding_px: float = 0.0
+    ocr_component_roi_padding_px: float | None = None
+    pin_component_roi_padding_px: float | None = None
+    # Backwards-compatible name: this is now the skeleton path pixel minimum,
+    # not a scanline-run threshold.
+    wire_minimum_run_px: int = 4
+    wire_rdp_epsilon_px: float = 0.75
+    wire_gap_closing_radius_px: int = 0
+    wire_maximum_hole_area_px: int = 0
+    wire_maximum_component_pixels: int = 0
+    wire_tile_dedup_tolerance_px: float = 1.0
+    # Learned Junction remains quarantined until all six real validation
+    # classes are reviewed and its graph-level false-positive gate passes.
+    # Deterministic vectorizer endpoints/T-junctions remain available.
+    learned_junctions_enabled: bool = False
+    ocr_global_batch_size: int = 8
+    ocr_component_batch_size: int = 16
+    ocr_strip_batch_size: int = 32
+    ocr_nms_iou: float = 0.5
+    ocr_nms_center_distance_px: float = 3.0
+    # Conflicting strings from the same high-overlap OCR view are merged only
+    # by explicit opt-in; the stricter IoU gate protects adjacent glyphs.
+    ocr_merge_conflicting_text: bool = False
+    ocr_conflicting_text_iou: float = 0.85
+    # Component detections are the fan-out point for both OCR and Pin. Keep
+    # this gate in the composite provider as a second line of defence: an
+    # adapter may expose low-score candidates for calibration, but production
+    # must not create an unbounded number of downstream ROIs.
+    component_candidate_min_score: float = 0.0
+    component_max_candidates: int | None = None
+    # Image-only dense-layout fallback. The primary component pass remains
+    # authoritative unless it emits a sparse, non-Box-heavy result. This
+    # avoids using dataset/source labels while recovering small components in
+    # layouts whose first pass is visibly under-populated.
+    component_adaptive_fallback_enabled: bool = False
+    component_fallback_tile_size: int = 256
+    component_fallback_tile_overlap: int = 32
+    component_fallback_trigger_max_count: int = 24
+    component_fallback_trigger_max_box_fraction: float = 0.20
+    component_fallback_trigger_max_bbox_area_fraction: float = 0.02
+    # Runtime-only Pin decoder overrides. The model lock remains authoritative
+    # for artifact identity; overrides are explicit in the pipeline config and
+    # included in the resolved perception trace.
+    pin_inference_overrides: dict[str, Any] = field(default_factory=dict)
+    # Runtime-only Wire decoder overrides. The model lock remains authoritative
+    # for artifact identity; the threshold is explicit in the pipeline trace.
+    wire_inference_overrides: dict[str, Any] = field(default_factory=dict)
+    # Runtime-only OCR decoder overrides. Model identity remains in the lock;
+    # detector threshold and candidate recovery are explicit in the resolved
+    # perception trace. Candidate recovery is disabled by default.
+    ocr_inference_overrides: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        nms_iou = self.component_nms_iou
+        if type(nms_iou) not in {int, float} or not np.isfinite(float(nms_iou)) or not 0.0 <= float(nms_iou) <= 1.0:
+            raise ValueError("component_nms_iou must be finite in [0,1]")
+        threshold = self.component_candidate_min_score
+        if type(threshold) not in {int, float} or not np.isfinite(float(threshold)) or not 0.0 <= float(threshold) <= 1.0:
+            raise ValueError("component_candidate_min_score must be finite in [0,1]")
+        if self.component_max_candidates is not None and (
+            type(self.component_max_candidates) is not int
+            or self.component_max_candidates <= 0
+        ):
+            raise ValueError("component_max_candidates must be a positive integer")
+        if type(self.ocr_merge_conflicting_text) is not bool:
+            raise ValueError("ocr_merge_conflicting_text must be a boolean")
+        if (
+            type(self.ocr_conflicting_text_iou) not in {int, float}
+            or not np.isfinite(float(self.ocr_conflicting_text_iou))
+            or not 0.0 <= float(self.ocr_conflicting_text_iou) <= 1.0
+        ):
+            raise ValueError("ocr_conflicting_text_iou must be finite in [0,1]")
+        if type(self.component_adaptive_fallback_enabled) is not bool:
+            raise ValueError("component_adaptive_fallback_enabled must be a boolean")
+        if type(self.component_fallback_tile_size) is not int or self.component_fallback_tile_size <= 0:
+            raise ValueError("component_fallback_tile_size must be a positive integer")
+        if type(self.component_fallback_tile_overlap) is not int or not 0 <= self.component_fallback_tile_overlap < self.component_fallback_tile_size:
+            raise ValueError("component_fallback_tile_overlap must satisfy 0 <= overlap < tile_size")
+        if type(self.component_fallback_trigger_max_count) is not int or self.component_fallback_trigger_max_count <= 0:
+            raise ValueError("component_fallback_trigger_max_count must be a positive integer")
+        if (
+            type(self.component_fallback_trigger_max_box_fraction) not in {int, float}
+            or not np.isfinite(float(self.component_fallback_trigger_max_box_fraction))
+            or not 0.0 <= float(self.component_fallback_trigger_max_box_fraction) <= 1.0
+        ):
+            raise ValueError("component_fallback_trigger_max_box_fraction must be finite in [0,1]")
+        if (
+            type(self.component_fallback_trigger_max_bbox_area_fraction) not in {int, float}
+            or not np.isfinite(float(self.component_fallback_trigger_max_bbox_area_fraction))
+            or not 0.0 <= float(self.component_fallback_trigger_max_bbox_area_fraction) <= 1.0
+        ):
+            raise ValueError("component_fallback_trigger_max_bbox_area_fraction must be finite in [0,1]")
+        if type(self.wire_minimum_run_px) is not int or self.wire_minimum_run_px <= 0:
+            raise ValueError("wire_minimum_run_px must be a positive integer")
+        for value, name in (
+            (self.wire_gap_closing_radius_px, "wire_gap_closing_radius_px"),
+            (self.wire_maximum_hole_area_px, "wire_maximum_hole_area_px"),
+            (self.wire_maximum_component_pixels, "wire_maximum_component_pixels"),
+        ):
+            if type(value) is not int or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if not isinstance(self.pin_inference_overrides, dict):
+            raise ValueError("pin_inference_overrides must be an object")
+        allowed_pin_keys = {
+            "score_threshold",
+            "max_detections_per_component",
+            "box_margin_px",
+            "box_prior_mode",
+            "nms_kernel",
+            "nms_radius_heatmap",
+            "base_length_pixels",
+        }
+        unknown_pin_keys = sorted(set(self.pin_inference_overrides) - allowed_pin_keys)
+        if unknown_pin_keys:
+            raise ValueError(f"unsupported Pin inference override(s): {unknown_pin_keys}")
+        self.pin_inference_overrides = dict(self.pin_inference_overrides)
+        if not isinstance(self.wire_inference_overrides, dict):
+            raise ValueError('wire_inference_overrides must be an object')
+        unknown_wire_keys = sorted(set(self.wire_inference_overrides) - {'threshold'})
+        if unknown_wire_keys:
+            raise ValueError(f'unsupported Wire inference override(s): {unknown_wire_keys}')
+        if 'threshold' in self.wire_inference_overrides:
+            threshold = self.wire_inference_overrides['threshold']
+            if (
+                isinstance(threshold, bool)
+                or not isinstance(threshold, (int, float))
+                or not np.isfinite(float(threshold))
+                or not 0.0 <= float(threshold) <= 1.0
+            ):
+                raise ValueError('wire threshold override must be finite in [0,1]')
+        self.wire_inference_overrides = dict(self.wire_inference_overrides)
+        if not isinstance(self.ocr_inference_overrides, dict):
+            raise ValueError("ocr_inference_overrides must be an object")
+        unknown_ocr_keys = sorted(
+            set(self.ocr_inference_overrides)
+            - {"detector_threshold", "detector_min_area", "recognition_candidate_count"}
+        )
+        if unknown_ocr_keys:
+            raise ValueError(f"unsupported OCR inference override(s): {unknown_ocr_keys}")
+        if "detector_threshold" in self.ocr_inference_overrides:
+            threshold = self.ocr_inference_overrides["detector_threshold"]
+            if (
+                isinstance(threshold, bool)
+                or not isinstance(threshold, (int, float))
+                or not np.isfinite(float(threshold))
+                or not 0.0 <= float(threshold) <= 1.0
+            ):
+                raise ValueError("ocr detector threshold override must be finite in [0,1]")
+        if "detector_min_area" in self.ocr_inference_overrides:
+            min_area = self.ocr_inference_overrides["detector_min_area"]
+            if type(min_area) is not int or min_area <= 0:
+                raise ValueError(
+                    "ocr detector min area override must be a positive integer"
+                )
+        if "recognition_candidate_count" in self.ocr_inference_overrides:
+            candidate_count = self.ocr_inference_overrides["recognition_candidate_count"]
+            if type(candidate_count) is not int or candidate_count < 0:
+                raise ValueError(
+                    "ocr recognition candidate count must be a non-negative integer"
+                )
+        self.ocr_inference_overrides = dict(self.ocr_inference_overrides)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the fully resolved, JSON-safe perception configuration."""
+
+        payload = asdict(self)
+        payload["component_tile_size"] = self.resolved_component_tile_size
+        payload["component_tile_overlap"] = self.resolved_component_tile_overlap
+        payload["wire_tile_size"] = self.resolved_wire_tile_size
+        payload["wire_tile_overlap"] = self.resolved_wire_tile_overlap
+        payload["ocr_component_roi_padding_px"] = self.resolved_ocr_component_roi_padding_px
+        payload["pin_component_roi_padding_px"] = self.resolved_pin_component_roi_padding_px
+        return payload
+
+    @property
+    def resolved_component_tile_size(self) -> int:
+        return self.tile_size if self.component_tile_size is None else self.component_tile_size
+
+    @property
+    def resolved_component_tile_overlap(self) -> int:
+        return self.tile_overlap if self.component_tile_overlap is None else self.component_tile_overlap
+
+    @property
+    def resolved_wire_tile_size(self) -> int:
+        return self.tile_size if self.wire_tile_size is None else self.wire_tile_size
+
+    @property
+    def resolved_wire_tile_overlap(self) -> int:
+        return self.tile_overlap if self.wire_tile_overlap is None else self.wire_tile_overlap
+
+    @property
+    def resolved_ocr_component_roi_padding_px(self) -> float:
+        return (
+            self.component_roi_padding_px
+            if self.ocr_component_roi_padding_px is None
+            else self.ocr_component_roi_padding_px
+        )
+
+    @property
+    def resolved_pin_component_roi_padding_px(self) -> float:
+        return (
+            self.component_roi_padding_px
+            if self.pin_component_roi_padding_px is None
+            else self.pin_component_roi_padding_px
+        )
+
+
+class CompositePerceptionProvider:
+    """Connect independent learned/heuristic providers through Circuit-IR."""
+
+    version = "composite-v1"
+
+    def __init__(
+        self,
+        *,
+        component_provider: ComponentProvider,
+        ocr_provider: OCRProvider,
+        pin_provider: PinProvider,
+        wire_provider: WireProvider,
+        junction_provider: JunctionProvider | None = None,
+        config: CompositeProviderConfig | None = None,
+    ) -> None:
+        self.component_provider = component_provider
+        self.ocr_provider = ocr_provider
+        self.pin_provider = pin_provider
+        self.wire_provider = wire_provider
+        self.junction_provider = junction_provider
+        self.config = config or CompositeProviderConfig()
+
+    @property
+    def model_task_plan(self) -> dict[str, Any]:
+        """Describe exactly which learned adapters this provider can execute."""
+
+        learned_junction_required = self.config.learned_junctions_enabled
+        learned_junction_loaded = self.junction_provider is not None
+        base_tasks = {"component", "ocr", "pin", "wire"}
+        required_tasks = base_tasks | ({"junction"} if learned_junction_required else set())
+        loaded_tasks = base_tasks | ({"junction"} if learned_junction_loaded else set())
+        return {
+            "contract": "production_model_task_plan_v1",
+            "junction_mode": (
+                "learned_model_plus_deterministic_vectorizer"
+                if learned_junction_required
+                else "deterministic_vectorizer"
+            ),
+            "required_model_tasks": sorted(required_tasks),
+            "loaded_model_tasks": sorted(loaded_tasks),
+            "learned_junction_model_required": learned_junction_required,
+            "learned_junction_model_loaded": learned_junction_loaded,
+            "learned_junction_model_invoked": (
+                learned_junction_required and learned_junction_loaded
+            ),
+        }
+
+    def build_ir(self, input_path: str | Path, ctx: RunContext | None = None) -> CircuitIR:
+        original = load_image(input_path)
+        component_tiles = tile_image_view(
+            original,
+            tile_size=self.config.resolved_component_tile_size,
+            overlap=self.config.resolved_component_tile_overlap,
+        )
+        wire_views = tile_image_view(
+            original,
+            tile_size=self.config.resolved_wire_tile_size,
+            overlap=self.config.resolved_wire_tile_overlap,
+        )
+        wire_view_index = {view.view_id: view for view in wire_views}
+        wire_view_index[original.view_id] = original
+
+        component_candidates: list[Component] = []
+        raw_component_count = 0
+        score_filtered_component_count = 0
+        for view in component_tiles:
+            predicted = self.component_provider.predict(view, ctx)
+            restored = _restore_components(predicted, view)
+            raw_component_count += len(restored)
+            gated = _filter_component_candidates(
+                restored,
+                min_score=self.config.component_candidate_min_score,
+            )
+            score_filtered_component_count += len(restored) - len(gated)
+            component_candidates.extend(gated)
+        components = _class_aware_nms(component_candidates, self.config.component_nms_iou)
+        nms_component_count = len(components)
+        primary_component_count = len(components)
+        primary_box_count = sum(
+            str(item.category).casefold() == "box" for item in components
+        )
+        primary_box_fraction = primary_box_count / max(1, primary_component_count)
+        primary_bbox_area = sum(
+            max(0.0, float(item.bbox.x2) - float(item.bbox.x1))
+            * max(0.0, float(item.bbox.y2) - float(item.bbox.y1))
+            for item in components
+        )
+        primary_bbox_area_fraction = primary_bbox_area / max(
+            1.0, float(original.width) * float(original.height)
+        )
+        fallback_triggered = (
+            self.config.component_adaptive_fallback_enabled
+            and primary_component_count <= self.config.component_fallback_trigger_max_count
+            and primary_box_fraction <= self.config.component_fallback_trigger_max_box_fraction
+            and primary_bbox_area_fraction <= self.config.component_fallback_trigger_max_bbox_area_fraction
+        )
+        fallback_raw_component_count = 0
+        fallback_score_filtered_component_count = 0
+        if fallback_triggered:
+            fallback_candidates: list[Component] = []
+            fallback_tiles = tile_image_view(
+                original,
+                tile_size=self.config.component_fallback_tile_size,
+                overlap=self.config.component_fallback_tile_overlap,
+            )
+            for view in fallback_tiles:
+                predicted = self.component_provider.predict(view, ctx)
+                restored = _restore_components(predicted, view)
+                fallback_raw_component_count += len(restored)
+                gated = _filter_component_candidates(
+                    restored,
+                    min_score=self.config.component_candidate_min_score,
+                )
+                fallback_score_filtered_component_count += len(restored) - len(gated)
+                fallback_candidates.extend(gated)
+            components = _class_aware_nms(fallback_candidates, self.config.component_nms_iou)
+            nms_component_count = len(components)
+        cap_filtered_component_count = 0
+        if self.config.component_max_candidates is not None:
+            ranked = sorted(
+                components,
+                key=lambda item: (
+                    -item.score,
+                    item.bbox.y1,
+                    item.bbox.x1,
+                    item.bbox.y2,
+                    item.bbox.x2,
+                    item.category,
+                    item.internal_id,
+                ),
+            )
+            kept = ranked[: self.config.component_max_candidates]
+            cap_filtered_component_count = len(ranked) - len(kept)
+            components = sorted(
+                kept,
+                key=lambda item: (
+                    item.bbox.y1,
+                    item.bbox.x1,
+                    item.category,
+                    item.internal_id,
+                ),
+            )
+        _assign_global_ids(components, "component")
+
+        ocr_component_views = [
+            make_component_view(
+                original,
+                component,
+                padding=max(
+                    max(component.bbox.width, component.bbox.height)
+                    * self.config.component_roi_padding_factor,
+                    self.config.resolved_ocr_component_roi_padding_px,
+                ),
+                view_id_prefix="component-ocr",
+            )
+            for component in components
+        ]
+        pin_component_views = [
+            make_component_view(
+                original,
+                component,
+                padding=max(
+                    max(component.bbox.width, component.bbox.height)
+                    * self.config.component_roi_padding_factor,
+                    self.config.resolved_pin_component_roi_padding_px,
+                ),
+                view_id_prefix="component-pin",
+            )
+            for component in components
+        ]
+        ocr_views = tile_image_view(
+            original,
+            tile_size=self.config.ocr_tile_size,
+            overlap=self.config.ocr_tile_overlap,
+        )
+        texts = run_multilevel_ocr(
+            self.ocr_provider,
+            ocr_views,
+            ocr_component_views,
+            ctx,
+            MultilevelOCRConfig(
+                global_batch_size=self.config.ocr_global_batch_size,
+                component_batch_size=self.config.ocr_component_batch_size,
+                strip_batch_size=self.config.ocr_strip_batch_size,
+                nms_iou_threshold=self.config.ocr_nms_iou,
+                nms_center_distance_px=self.config.ocr_nms_center_distance_px,
+                merge_conflicting_text=self.config.ocr_merge_conflicting_text,
+                conflicting_text_iou_threshold=self.config.ocr_conflicting_text_iou,
+            ),
+        )
+        pin_view_index = {
+            view.view_id: view
+            for item in pin_component_views
+            for view in [item.full_roi, *item.side_strips.values()]
+        }
+        pin_view_owners = {
+            view.view_id: item.component_id
+            for item in pin_component_views
+            for view in [item.full_roi, *item.side_strips.values()]
+        }
+        pins = _restore_pins(
+            self.pin_provider.predict(pin_component_views, ctx),
+            pin_view_index,
+            pin_view_owners,
+        )
+        _assign_global_ids(pins, "pin")
+
+        wire_masks = self.wire_provider.segment(wire_views, ctx)
+        segments, vectorized_junctions = _vectorize_masks(
+            wire_masks,
+            wire_view_index,
+            self.config,
+        )
+        model_junctions = (
+            _restore_junctions(
+                self.junction_provider.classify(wire_views, segments, ctx),
+                wire_view_index,
+            )
+            if (
+                self.junction_provider is not None
+                and self.config.learned_junctions_enabled
+            )
+            else []
+        )
+        # A learned classifier is authoritative where it emits a candidate;
+        # deterministic skeleton endpoints/T/crosses remain available as graph
+        # topology evidence elsewhere.
+        junctions = _merge_junctions(
+            vectorized_junctions,
+            model_junctions,
+            tolerance=self.config.wire_tile_dedup_tolerance_px,
+        )
+        _assign_global_ids(junctions, "junction")
+        image_info = original.image_info(image_id=ctx.image_id if ctx else Path(input_path).stem)
+        return CircuitIR(
+            state=IRState.PERCEIVED,
+            image=image_info,
+            transforms=original.transform.to_records(),
+            components=components,
+            pins=pins,
+            texts=texts,
+            segments=segments,
+            junctions=junctions,
+            metadata={
+                "provider": {"name": type(self).__name__, "version": self.version},
+                "perception_config": self.config.to_dict(),
+                "model_task_plan": self.model_task_plan,
+                "model_versions": {
+                    "component": self.component_provider.version,
+                    "ocr": self.ocr_provider.version,
+                    "pin": self.pin_provider.version,
+                    "wire": self.wire_provider.version,
+                    **(
+                        {"junction": self.junction_provider.version}
+                        if (
+                            self.junction_provider is not None
+                            and self.config.learned_junctions_enabled
+                        )
+                        else {}
+                    ),
+                },
+                "quarantined_model_versions": (
+                    {"junction": self.junction_provider.version}
+                    if (
+                        self.junction_provider is not None
+                        and not self.config.learned_junctions_enabled
+                    )
+                    else {}
+                ),
+                "views": [view.view_id for view in wire_views],
+                "component_views": [view.view_id for view in component_tiles],
+                "wire_views": [view.view_id for view in wire_views],
+                "ocr_component_views": [
+                    view.full_roi.view_id for view in ocr_component_views
+                ],
+                "pin_component_views": [
+                    view.full_roi.view_id for view in pin_component_views
+                ],
+                "component_candidate_gate": {
+                    "raw_count": raw_component_count,
+                    "score_threshold": self.config.component_candidate_min_score,
+                    "score_filtered_count": score_filtered_component_count,
+                    "primary_count": primary_component_count,
+                    "primary_box_fraction": primary_box_fraction,
+                    "primary_bbox_area_fraction": primary_bbox_area_fraction,
+                    "adaptive_fallback": {
+                        "enabled": self.config.component_adaptive_fallback_enabled,
+                        "triggered": fallback_triggered,
+                        "tile_size": self.config.component_fallback_tile_size,
+                        "tile_overlap": self.config.component_fallback_tile_overlap,
+                        "trigger_max_count": self.config.component_fallback_trigger_max_count,
+                        "trigger_max_box_fraction": self.config.component_fallback_trigger_max_box_fraction,
+                        "trigger_max_bbox_area_fraction": self.config.component_fallback_trigger_max_bbox_area_fraction,
+                        "raw_count": fallback_raw_component_count,
+                        "score_filtered_count": fallback_score_filtered_component_count,
+                    },
+                    "after_nms_count": nms_component_count,
+                    "max_candidates": self.config.component_max_candidates,
+                    "cap_filtered_count": cap_filtered_component_count,
+                    "final_count": len(components),
+                },
+            },
+        )
+
+
+def _restore_components(candidates: list[Component], view: ImageView) -> list[Component]:
+    restored: list[Component] = []
+    for candidate in candidates:
+        item = candidate.model_copy(deep=True)
+        local_bbox = item.bbox.model_copy(deep=True)
+        corners = [
+            view.to_original(Point(x=item.bbox.x1, y=item.bbox.y1)),
+            view.to_original(Point(x=item.bbox.x2, y=item.bbox.y1)),
+            view.to_original(Point(x=item.bbox.x1, y=item.bbox.y2)),
+            view.to_original(Point(x=item.bbox.x2, y=item.bbox.y2)),
+        ]
+        item.bbox = BBox(
+            x1=min(point.x for point in corners),
+            y1=min(point.y for point in corners),
+            x2=max(point.x for point in corners),
+            y2=max(point.y for point in corners),
+        )
+        if not item.evidence:
+            item.evidence = [
+                Evidence(
+                    evidence_id=f"component-provider:{view.view_id}:{item.internal_id}",
+                    source="detector",
+                    view_id=view.view_id,
+                    score=item.score,
+                )
+            ]
+        for evidence in item.evidence:
+            evidence.metadata.setdefault("provider_local_id", candidate.internal_id)
+        bind_bbox_evidence(
+            item.evidence,
+            view=view,
+            local_bbox=local_bbox,
+            original_bbox=item.bbox,
+            object_kind="component",
+        )
+        restored.append(item)
+    return restored
+
+
+def _restore_pins(
+    pins: list[Pin],
+    views: dict[str, ImageView],
+    view_owners: dict[str, str],
+) -> list[Pin]:
+    output: list[Pin] = []
+    for pin in pins:
+        item = pin.model_copy(deep=True)
+        local_point = item.point.model_copy(deep=True)
+        local_base = item.base.model_copy(deep=True) if item.base is not None else None
+        view = _source_view(item.evidence, views, object_id=item.internal_id, required=True)
+        if view is not None:
+            expected_owner = view_owners.get(view.view_id)
+            if expected_owner is None:
+                raise ValueError(
+                    f"pin {item.internal_id} source view has no component owner"
+                )
+            if item.component_id is None:
+                # The ComponentView is an explicit inference context, so this
+                # is provenance restoration rather than semantic guessing.
+                item.component_id = expected_owner
+            elif item.component_id != expected_owner:
+                raise ValueError(
+                    f"pin {item.internal_id} component owner {item.component_id!r} "
+                    f"conflicts with source view owner {expected_owner!r}"
+                )
+            for evidence in item.evidence:
+                evidence.metadata.setdefault("component_id", expected_owner)
+            item.point = view.to_original(item.point)
+            if item.base is not None:
+                item.base = view.to_original(item.base)
+            bind_point_evidence(
+                item.evidence,
+                view=view,
+                local_point=local_point,
+                original_point=item.point,
+                object_kind="pin",
+                local_base=local_base,
+                original_base=item.base,
+            )
+        output.append(item)
+    return output
+
+
+def _source_view(
+    evidence: list[Evidence],
+    views: dict[str, ImageView],
+    *,
+    object_id: str,
+    required: bool = False,
+) -> ImageView | None:
+    identifiers = {item.view_id for item in evidence}
+    if not identifiers:
+        if required:
+            raise ValueError(f"object {object_id} has no source view evidence")
+        return None
+    if len(identifiers) != 1:
+        raise ValueError(f"object {object_id} has ambiguous source views: {sorted(identifiers)}")
+    identifier = next(iter(identifiers))
+    if identifier not in views:
+        raise ValueError(f"object {object_id} references unknown source view {identifier}")
+    return views[identifier]
+
+
+def _restore_junctions(junctions: list[Junction], views: dict[str, ImageView]) -> list[Junction]:
+    output: list[Junction] = []
+    for junction in junctions:
+        item = junction.model_copy(deep=True)
+        local_point = item.point.model_copy(deep=True)
+        view = _source_view(item.evidence, views, object_id=item.internal_id, required=True)
+        if view is not None:
+            item.point = view.to_original(item.point)
+            bind_point_evidence(
+                item.evidence,
+                view=view,
+                local_point=local_point,
+                original_point=item.point,
+                object_kind="junction",
+            )
+        output.append(item)
+    return output
+
+
+def _assign_global_ids(items: list[Any], prefix: str) -> None:
+    ordered = sorted(items, key=_object_sort_key)
+    for index, item in enumerate(ordered, start=1):
+        local_id = item.internal_id
+        item.internal_id = f"{prefix}:{index:06d}"
+        for evidence in item.evidence:
+            evidence.metadata.setdefault("provider_local_id", local_id)
+
+
+def _object_sort_key(item: Any) -> tuple[Any, ...]:
+    bbox = getattr(item, "bbox", None)
+    point = getattr(item, "point", None)
+    if bbox is not None:
+        geometry = (bbox.y1, bbox.x1, bbox.y2, bbox.x2)
+    elif point is not None:
+        geometry = (point.y, point.x, point.y, point.x)
+    else:
+        geometry = (0.0, 0.0, 0.0, 0.0)
+    return (*geometry, str(getattr(item, "category", "")), str(item.internal_id))
+
+
+def _class_aware_nms(candidates: list[Component], threshold: float) -> list[Component]:
+    kept: list[Component] = []
+    ranked = sorted(candidates, key=lambda item: (-item.score, item.category, item.internal_id))
+    for candidate in ranked:
+        if any(
+            existing.category == candidate.category and _iou(existing.bbox, candidate.bbox) > threshold
+            for existing in kept
+        ):
+            continue
+        kept.append(candidate)
+    return sorted(kept, key=lambda item: (item.bbox.y1, item.bbox.x1, item.category, item.internal_id))
+
+
+def _iou(left: BBox, right: BBox) -> float:
+    width = max(0.0, min(left.x2, right.x2) - max(left.x1, right.x1))
+    height = max(0.0, min(left.y2, right.y2) - max(left.y1, right.y1))
+    intersection = width * height
+    union = left.width * left.height + right.width * right.height - intersection
+    return intersection / union if union > 0.0 else 0.0
+
+
+def _filter_component_candidates(
+    candidates: list[Component],
+    *,
+    min_score: float,
+) -> list[Component]:
+    """Apply the downstream fan-out gate without mutating provider results."""
+
+    if not isinstance(min_score, (int, float)) or isinstance(min_score, bool):
+        raise ValueError("component_candidate_min_score must be a number")
+    threshold = float(min_score)
+    if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError("component_candidate_min_score must be finite in [0,1]")
+    return [item for item in candidates if item.score >= threshold]
+
+
+def _vectorize_masks(
+    masks: list[WireMask],
+    views: dict[str, ImageView],
+    config: CompositeProviderConfig,
+) -> tuple[list[WireSegment], list[Junction]]:
+    polylines: list[SkeletonPolyline] = []
+    junction_candidates: list[tuple[WireJunctionCandidate, str, list[Evidence], float]] = []
+    vectorizer_config = WireVectorizerConfig(
+        gap_closing_radius=config.wire_gap_closing_radius_px,
+        maximum_hole_area=config.wire_maximum_hole_area_px,
+        maximum_component_pixels=config.wire_maximum_component_pixels,
+        minimum_component_pixels=2,
+        minimum_polyline_pixels=max(2, config.wire_minimum_run_px),
+        rdp_epsilon=config.wire_rdp_epsilon_px,
+    )
+    polyline_metadata: dict[
+        str, tuple[float, list[Evidence], str, tuple[tuple[float, float], ...]]
+    ] = {}
+    for mask_index, wire_mask in enumerate(sorted(masks, key=lambda item: item.view_id)):
+        view = views.get(wire_mask.view_id)
+        if view is None:
+            raise ValueError(f"wire mask references unknown view {wire_mask.view_id}")
+        array = np.asarray(wire_mask.mask)
+        if array.shape != (view.height, view.width):
+            raise ValueError(
+                f"wire mask shape {array.shape} does not match view {view.view_id} {(view.height, view.width)}"
+            )
+        result = vectorize_wire_mask(
+            array,
+            config=vectorizer_config,
+            id_namespace=f"mask-{mask_index:04d}-{wire_mask.view_id}",
+        )
+        local_to_global: dict[str, str] = {}
+        for polyline in result.polylines:
+            points = tuple(
+                (restored.x, restored.y)
+                for restored in (
+                    view.to_original(Point(x=x, y=y)) for x, y in polyline.points
+                )
+            )
+            global_polyline = SkeletonPolyline(
+                internal_id=polyline.internal_id,
+                points=points,
+                pixel_count=polyline.pixel_count,
+                length=sum(
+                    ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+                    for (x1, y1), (x2, y2) in zip(points, points[1:])
+                ),
+            )
+            polylines.append(global_polyline)
+            local_to_global[polyline.internal_id] = global_polyline.internal_id
+            polyline_metadata[global_polyline.internal_id] = (
+                wire_mask.score,
+                list(wire_mask.evidence),
+                wire_mask.view_id,
+                tuple((float(x), float(y)) for x, y in polyline.points),
+            )
+        for junction in result.junctions:
+            junction_candidates.append(
+                (junction, wire_mask.view_id, list(wire_mask.evidence), wire_mask.score)
+            )
+
+    kept = deduplicate_polylines(
+        polylines,
+        tolerance=config.wire_tile_dedup_tolerance_px,
+    )
+    segments: list[WireSegment] = []
+    polyline_to_segments: dict[str, list[str]] = {}
+    for polyline_index, polyline in enumerate(kept, start=1):
+        score, evidence, source_view, local_points = polyline_metadata[
+            polyline.internal_id
+        ]
+        if len(local_points) != len(polyline.points):
+            raise ValueError(
+                f"polyline {polyline.internal_id} local/global point counts differ"
+            )
+        source_image_view = views[source_view]
+        segment_ids: list[str] = []
+        for segment_index, ((start, end), (local_start, local_end)) in enumerate(
+            zip(
+                zip(polyline.points, polyline.points[1:]),
+                zip(local_points, local_points[1:]),
+            ),
+            start=1,
+        ):
+            if start == end:
+                continue
+            segment_id = f"mask-segment:{polyline_index:06d}:{segment_index:04d}"
+            segment_ids.append(segment_id)
+            dx, dy = end[0] - start[0], end[1] - start[1]
+            # Channel identity is used to keep an unproven crossing split.
+            # Collapsing both diagonal slopes into one generic channel made an
+            # X-shaped non-connected crossing self-connect before the Junction
+            # classifier could veto it.  The sign of dx*dy is invariant to
+            # endpoint order and distinguishes the two undirected diagonals.
+            channel = (
+                "horizontal"
+                if abs(dy) <= 1e-9
+                else "vertical"
+                if abs(dx) <= 1e-9
+                else "diagonal_positive"
+                if dx * dy > 0
+                else "diagonal_negative"
+            )
+            segment = WireSegment(
+                    internal_id=segment_id,
+                    start=Point(x=start[0], y=start[1]),
+                    end=Point(x=end[0], y=end[1]),
+                    score=score,
+                    source_polyline_id=polyline.internal_id,
+                    channel=channel,
+                    evidence=[
+                        *evidence,
+                        Evidence(
+                            evidence_id=f"wire-vectorizer:{segment_id}",
+                            source="geometry",
+                            view_id=source_view,
+                            score=score,
+                            metadata={"vectorizer": "skeleton-pixel-graph-rdp-v1"},
+                        ),
+                    ],
+                )
+            bind_segment_evidence(
+                segment.evidence,
+                view=source_image_view,
+                local_start=Point(x=local_start[0], y=local_start[1]),
+                local_end=Point(x=local_end[0], y=local_end[1]),
+                original_start=segment.start,
+                original_end=segment.end,
+            )
+            segments.append(segment)
+        polyline_to_segments[polyline.internal_id] = segment_ids
+
+    junctions: list[Junction] = []
+    kept_polyline_ids = set(polyline_to_segments)
+    for candidate, view_id, evidence, score in junction_candidates:
+        view = views[view_id]
+        restored = view.to_original(Point(x=candidate.point[0], y=candidate.point[1]))
+        member_ids = [
+            member for member in candidate.polyline_ids if member in kept_polyline_ids
+        ]
+        segment_ids = sorted(
+            {
+                segment_id
+                for member in member_ids
+                for segment_id in polyline_to_segments.get(member, [])
+                if _segment_touches_point(
+                    next(segment for segment in segments if segment.internal_id == segment_id),
+                    restored,
+                    tolerance=max(1.5, config.wire_tile_dedup_tolerance_px),
+                )
+            }
+        )
+        minimum = {"t_junction": 3, "connected_cross": 4}.get(candidate.kind, 1)
+        if len(segment_ids) < minimum:
+            continue
+        # Four-way raster intersections do not by themselves prove electrical
+        # connectivity (a bridge/no-dot crossing may look identical).  Keep the
+        # geometry but require the learned junction provider to decide.
+        kind = "ambiguous" if candidate.kind == "connected_cross" else candidate.kind
+        junction = Junction(
+                internal_id=candidate.internal_id,
+                point=restored,
+                kind=kind,
+                segment_ids=segment_ids,
+                score=score,
+                evidence=[
+                    *evidence,
+                    Evidence(
+                        evidence_id=f"wire-vectorizer:{candidate.internal_id}",
+                        source="geometry",
+                        view_id=view_id,
+                        score=score,
+                        metadata={"vectorizer": "skeleton-pixel-graph-rdp-v1"},
+                    ),
+                ],
+            )
+        bind_point_evidence(
+            junction.evidence,
+            view=view,
+            local_point=Point(x=candidate.point[0], y=candidate.point[1]),
+            original_point=junction.point,
+            object_kind="junction",
+        )
+        junctions.append(junction)
+    return segments, _merge_junctions([], junctions, tolerance=config.wire_tile_dedup_tolerance_px)
+
+
+def _segment_touches_point(segment: WireSegment, point: Point, *, tolerance: float) -> bool:
+    return min(
+        ((segment.start.x - point.x) ** 2 + (segment.start.y - point.y) ** 2) ** 0.5,
+        ((segment.end.x - point.x) ** 2 + (segment.end.y - point.y) ** 2) ** 0.5,
+    ) <= tolerance
+
+
+def _merge_junctions(
+    vectorized: list[Junction],
+    model: list[Junction],
+    *,
+    tolerance: float,
+) -> list[Junction]:
+    output: list[Junction] = []
+    # Classifier results always enter first and therefore own the semantic kind;
+    # skeleton candidates contribute branch IDs/evidence at the same point.
+    ranked = [
+        *sorted(model, key=lambda item: (-item.score, item.point.y, item.point.x, item.internal_id)),
+        *sorted(vectorized, key=lambda item: (-item.score, item.point.y, item.point.x, item.internal_id)),
+    ]
+    for candidate in ranked:
+        duplicate = next(
+            (
+                item
+                for item in output
+                if ((item.point.x - candidate.point.x) ** 2 + (item.point.y - candidate.point.y) ** 2) ** 0.5
+                <= tolerance
+            ),
+            None,
+        )
+        if duplicate is None:
+            output.append(candidate)
+        else:
+            duplicate.segment_ids = sorted(set(duplicate.segment_ids) | set(candidate.segment_ids))
+            duplicate.evidence.extend(candidate.evidence)
+    return sorted(output, key=_object_sort_key)

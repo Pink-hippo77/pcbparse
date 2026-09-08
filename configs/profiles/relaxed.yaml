@@ -1,0 +1,7 @@
+{
+    "strict_validation":  false,
+    "provider":  "production",
+    "qwen_enabled":  false,
+    "name":  "relaxed",
+    "artifact_policy":  "error"
+}

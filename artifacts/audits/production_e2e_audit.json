@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "kind": "production-readiness-image-only-e2e-audit",
+  "generated_at_utc": "2026-08-23T12:50:17.3599670Z",
+  "scope": {
+    "dataset": "Dataset300",
+    "case_id": "0024",
+    "source_domain": "datasheet",
+    "image_path": "Dataset300/Dataset300/0024/0024-other.png",
+    "image_sha256": "ba5066550c7675b5fd9d652904c9d52429de818a85e027e6077fef3fd4f3d183",
+    "image_width": 916,
+    "image_height": 515,
+    "input_policy": "raster image only during inference",
+    "sidecar_access": false,
+    "sample_limit": "One official test image; accuracy and latency are diagnostic, not statistically representative."
+  },
+  "authoritative_readiness": {
+    "models_lock": "models/models.lock.json",
+    "models_lock_sha256": "0aae3bbc4fb771f01b470d5e2bdc3c4692312287252529d74ebeba883e5bda3b",
+    "ready": false,
+    "status": "unready",
+    "registered_tasks": ["component", "junction", "ocr", "pin", "wire"],
+    "verified_tasks": [],
+    "issue_counts": {
+      "status_not_blessed": 5,
+      "blessed_not_true": 5
+    },
+    "cli_fail_closed": {
+      "exit_code": 2,
+      "output_directory_created": false,
+      "evidence": "work/production-e2e-authority-lock-must-not-run"
+    },
+    "conclusion": "The authoritative production entry point correctly refuses all candidate-only artifacts."
+  },
+  "temporary_benchmark_lock": {
+    "models_lock": "work/models.lock.bench.json",
+    "models_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4",
+    "authority": false,
+    "ready": true,
+    "verified_tasks": ["component", "junction", "ocr", "pin", "wire"],
+    "adapter_load": {
+      "success": true,
+      "total_seconds": 2.781121700001677,
+      "cuda_device": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+      "cuda_allocated_bytes_after_load": 82528768,
+      "cuda_reserved_bytes_after_load": 94371840,
+      "versions": {
+        "component": "torch-component/fasterrcnn_mobilenet_v3_large_320_fpn/fc9bbf8d2cd3",
+        "junction": "junction-v1.0",
+        "ocr": "torch-ocr/tiny-ocr-8136d52fd29960e0",
+        "pin": "pin-v1.0",
+        "wire": "wire-v1.0"
+      }
+    },
+    "runtime_precision_audit": {
+      "declared_in_lock": "fp16 for all five tasks",
+      "observed_parameter_dtype": "torch.float32 for all loaded modules",
+      "autocast_in_adapter_code": false,
+      "observed_devices": ["cuda:0"],
+      "module_parameter_counts": {
+        "component": 19123754,
+        "junction": 211510,
+        "ocr_detector": 29921,
+        "ocr_recognizer": 196410,
+        "pin": 636021,
+        "wire": 118593
+      },
+      "conclusion": "Registry precision metadata does not describe actual inference precision."
+    }
+  },
+  "formal_training_evidence": {
+    "component": {
+      "status_path": "work/train-component-v3/torch_run_status.json",
+      "artifact_sha256": "fc9bbf8d2cd39ba0d7841f5ea2f10e8510bb3e06b660bb92820459f0af85804e",
+      "registry_artifact_matches": true,
+      "gates_passed": false,
+      "bbox_map50": 0.21241696788143036,
+      "gate_threshold": 0.25
+    },
+    "junction": {
+      "status_path": "work/train-junction-formal/torch_run_status.json",
+      "registry_artifact_matches_formal_export": false,
+      "registry_checkpoint_sha256": "343e9728fcdb681d0ac797558680a1f3054e6011657646fff94c4d1250a89be7",
+      "formal_export_sha256": "b3374ad89c610275cdfa1fc19896a8aa42d9aa478c16e22afab42f6d8ca31307",
+      "gates_passed": false,
+      "macro_f1_six_class": 0.42797864150452497,
+      "gate_threshold": 0.65,
+      "macro_f1_observed_three_class": 0.8559572830090499,
+      "missing_trusted_validation_classes": ["connected_cross", "non_connected_cross", "noise"]
+    },
+    "pin": {
+      "status_path": "work/train-pin-formal/torch_run_status.json",
+      "gates_passed": true,
+      "pck_4px": 0.5189393939393939,
+      "gate_threshold": 0.5,
+      "registry_artifact_matches_formal_export": false,
+      "registry_checkpoint_sha256": "631398a779546b82d4488018c576fba03d35129b98024a31808c935b81b67434",
+      "formal_export_sha256": "fcb5cd89125c842947be7e0522ca6ae71fc05dfc546680c20ec7797de97db1aa"
+    },
+    "ocr": {
+      "status_path": "work/train-ocr-v2c/torch_run_status.json",
+      "artifact_sha256": "8136d52fd29960e0c112f4d0fa8bdfe7ec74e32ef53917272a08fbe8be333848",
+      "registry_artifact_matches": true,
+      "gates_passed": true,
+      "normalized_exact_match": 0.6785129763853168,
+      "detector_hmean": 0.4208484848484848,
+      "charset_coverage_record_rate": 0.9960252513444002
+    },
+    "wire": {
+      "status_path": "work/train-wire-formal4/torch_run_status.json",
+      "artifact_sha256": "04b0e9f5c1d584a64d584aeb2e44e6634e80c4b1bbadd7b6c74bdbe0e6c40f4d",
+      "registry_artifact_matches": true,
+      "gates_passed": true,
+      "skeleton_f1": 0.8560208416991419,
+      "connectivity_score": 0.5810605265538926
+    },
+    "conclusion": "Only OCR, Pin, and Wire pass their task-local gates; Component and six-class Junction do not. Passing task-local gates did not prove strict end-to-end usability."
+  },
+  "strict_image_only_run": {
+    "output_dir": "work/production-e2e-audit-run",
+    "summary_path": "work/production-e2e-audit-run/summary.json",
+    "success_rate": 0.0,
+    "succeeded": 0,
+    "attempted": 1,
+    "elapsed_seconds": 4.827999999997701,
+    "perception_probe": {
+      "perceived_counts": {
+        "components": 4,
+        "pins": 66,
+        "texts": 286,
+        "wire_masks": 1,
+        "segments": 606,
+        "junctions": 689
+      },
+      "final_graph_counts": {
+        "physical_nets": 110,
+        "electrical_nets": 110
+      },
+      "adapter_calls": {
+        "component": {"calls": 1, "returned_items": 4, "elapsed_seconds": 0.7755862999983947},
+        "ocr": {"calls": 3, "returned_items_before_multilevel_dedup": 504, "elapsed_seconds": 2.3529795999966154},
+        "pin": {"calls": 1, "returned_items": 66, "elapsed_seconds": 0.16364090000206488},
+        "wire": {"calls": 1, "returned_masks": 1, "elapsed_seconds": 0.18478930000128457},
+        "junction": {"calls": 1, "returned_items": 674, "elapsed_seconds": 1.1120028000004822}
+      },
+      "cuda_peak_allocated_bytes": 485317120,
+      "cuda_reserved_bytes": 595591168,
+      "snap_decisions": {"accepted": 62, "unmatched": 4},
+      "ocr_association": {
+        "component_keys_assigned": 1,
+        "component_count": 4,
+        "pin_fields_assigned": 7,
+        "pin_count": 66,
+        "association_diagnostics": 134
+      }
+    },
+    "validation": {
+      "errors": 87,
+      "warnings": 104,
+      "info": 124,
+      "hard_error_counts": {
+        "COMPONENT.MISSING_KEY": 3,
+        "PIN.MISSING_NUMBER": 60,
+        "NET.DISCONNECTED_SEGMENTS": 24
+      }
+    },
+    "serializer": {
+      "success": false,
+      "error_type": "OfficialSchemaError",
+      "message": "official serialization requires VALIDATED IR, got SEMANTIC"
+    }
+  },
+  "degraded_diagnostic_run": {
+    "output_dir": "work/production-e2e-audit-degraded",
+    "summary_path": "work/production-e2e-audit-degraded/summary.json",
+    "raw_v1_path": "work/production-e2e-audit-degraded/raw-v1.json",
+    "success_rate": 1.0,
+    "elapsed_seconds_runs": [5.077999999997701, 6.860000000000582, 5.485000000000582],
+    "mean_elapsed_seconds": 5.807666666666288,
+    "deterministic_runs": 3,
+    "unique_official_output_hashes": 1,
+    "official_output_sha256": "8a4ea275ddecd0e995aeeb4e27e3a6f780f244ad560a27fb04c3ce830c029735",
+    "pruned": {"components": 3, "pins": 64},
+    "serialized_counts": {"components": 1, "pins": 2, "nets": 106},
+    "ground_truth_counts": {"components": 27, "pins": 67, "texts": 193, "edges": 41, "expected_nets_raw_v1": 38},
+    "raw_v1": {
+      "component_detection_f1": 0.0,
+      "component_tp": 0,
+      "component_fp": 1,
+      "component_fn": 27,
+      "pin_detection_f1": 0.0,
+      "pin_tp": 0,
+      "pin_fp": 2,
+      "pin_fn": 67,
+      "wire_f1": 0.8010354750744563,
+      "wire_precision": 0.6716115981119353,
+      "wire_recall": 0.9922480620155039,
+      "graph_pairwise_connectivity_f1": 0.0,
+      "semantic_field_end_to_end_accuracies": 0.0
+    },
+    "interpretation": "The fallback is schema-valid and deterministic, but it achieves this by discarding almost all component/pin semantics; it is not competition-usable."
+  },
+  "calibration_ablation": {
+    "models_lock": "work/models.lock.audit-calibrated.json",
+    "models_lock_sha256": "297ed07f9559f41dce0dcc8c5f7cf85a3d8f736bcdc5fdecf6f77bad6b3942a3",
+    "changes": {
+      "pin": "input 512->384, score threshold 0.45->0.15, max detections 96->128",
+      "ocr": "lock overrides removed, restoring bundle detector threshold 0.5 and minimum area 4",
+      "component": "score threshold 0.25->0.05",
+      "precision_metadata": "fp16->fp32"
+    },
+    "strict_errors_before": 87,
+    "strict_errors_after": 125,
+    "hard_error_counts_after": {
+      "COMPONENT.MISSING_KEY": 1,
+      "PIN.MISSING_NUMBER": 100,
+      "NET.DISCONNECTED_SEGMENTS": 24
+    },
+    "perceived_after": {"components": 4, "pins": 106, "texts": 299, "segments": 606, "junctions": 689},
+    "degraded_after": {"components": 3, "pins": 4, "nets": 107},
+    "raw_v1_after": {
+      "component_detection_f1": 0.0,
+      "pin_detection_f1": 0.0,
+      "wire_f1": 0.8010354750744563,
+      "graph_pairwise_connectivity_f1": 0.0
+    },
+    "conclusion": "Restoring task-training parameters alone worsened end-to-end validation. Joint calibration must optimize strict end-to-end metrics, not per-task recall in isolation."
+  },
+  "component_threshold_scan": {
+    "report_path": "artifacts/audits/component_threshold_scan_0024.json",
+    "thresholds": [0.0, 0.01, 0.05, 0.1, 0.25],
+    "candidate_counts": [300, 11, 4, 4, 4],
+    "true_positives": [1, 1, 1, 1, 1],
+    "false_positives": [299, 10, 3, 3, 3],
+    "false_negatives": [26, 26, 26, 26, 26],
+    "f1": [0.0061162079510703364, 0.05263157894736842, 0.06451612903225806, 0.06451612903225806, 0.06451612903225806],
+    "best_thresholds_by_f1": [0.05, 0.1, 0.25],
+    "recommended_threshold_for_this_case": 0.25,
+    "conclusion": "The plateau proves the dominant issue is missed detections, not the current 0.25 threshold."
+  },
+  "shared_tile_ablation_512_64": {
+    "change": {
+      "shared_component_wire_tile_before": [1024, 160],
+      "shared_component_wire_tile_after": [512, 64],
+      "ocr_tile_unchanged": [512, 160],
+      "models_lock_unchanged": "work/models.lock.bench.json",
+      "models_lock_sha256": "d5508f8fa6f90f67a57c96e2b8b2f332bed97df78658daed48566db87bc82fd4"
+    },
+    "strict_image_only": {
+      "output_dir": "work/production-e2e-tile512-strict",
+      "success_before": false,
+      "success_after": false,
+      "elapsed_seconds_before": 4.827999999997701,
+      "elapsed_seconds_after": 11.85899999999674,
+      "elapsed_multiplier": 2.456296603144336,
+      "strict_errors_before": 87,
+      "strict_errors_after": 307,
+      "hard_error_counts_before": {
+        "COMPONENT.MISSING_KEY": 3,
+        "PIN.MISSING_NUMBER": 60,
+        "NET.DISCONNECTED_SEGMENTS": 24
+      },
+      "hard_error_counts_after": {
+        "COMPONENT.MISSING_KEY": 17,
+        "PIN.MISSING_NUMBER": 274,
+        "NET.DISCONNECTED_SEGMENTS": 16
+      }
+    },
+    "raw_provider_probe": {
+      "perception_seconds_before": 5.647626599999057,
+      "perception_seconds_after": 10.860126600000513,
+      "perceived_counts_before": {
+        "components": 4,
+        "pins": 66,
+        "texts": 286,
+        "segments": 606,
+        "junctions": 689
+      },
+      "perceived_counts_after": {
+        "components": 20,
+        "pins": 305,
+        "texts": 754,
+        "segments_before_validation_repair": 926,
+        "segments_after_validation_repair": 887,
+        "junctions": 900
+      },
+      "graph_counts_after": {
+        "physical_nets": 159,
+        "electrical_nets": 159
+      },
+      "association_diagnostics_before": 134,
+      "association_diagnostics_after": 689,
+      "adapter_telemetry_after": {
+        "component": {"calls": 4, "returned_items": 45, "elapsed_seconds": 0.6648117999939132},
+        "ocr": {"calls": 6, "returned_items_before_multilevel_dedup": 1068, "elapsed_seconds": 4.532263299999613},
+        "pin": {"calls": 1, "returned_items": 305, "elapsed_seconds": 0.4785291000007419},
+        "wire": {"calls": 1, "returned_masks": 4, "elapsed_seconds": 0.2256003000002238},
+        "junction": {"calls": 1, "returned_items": 826, "elapsed_seconds": 1.8067178999990574}
+      },
+      "cuda_peak_allocated_bytes_before": 485317120,
+      "cuda_peak_allocated_bytes_after": 506286080,
+      "cuda_reserved_bytes_before": 595591168,
+      "cuda_reserved_bytes_after": 895483904
+    },
+    "degraded_image_only": {
+      "output_dir": "work/production-e2e-tile512-degraded",
+      "raw_v1_path": "work/production-e2e-tile512-degraded/raw-v1.json",
+      "elapsed_seconds": 13.48399999999674,
+      "pruned": {"components": 17, "pins": 299},
+      "serialized_counts": {"components": 3, "pins": 6, "nets": 132},
+      "raw_v1_before": {
+        "component_detection": {"tp": 0, "fp": 1, "fn": 27, "precision": 0.0, "recall": 0.0, "f1": 0.0},
+        "pin_detection": {"tp": 0, "fp": 2, "fn": 67, "precision": 0.0, "recall": 0.0, "f1": 0.0},
+        "wire": {"precision": 0.6716115981119353, "recall": 0.9922480620155039, "f1": 0.8010354750744563},
+        "graph_pairwise_connectivity_f1": 0.0
+      },
+      "raw_v1_after": {
+        "component_detection": {"tp": 3, "fp": 0, "fn": 24, "precision": 1.0, "recall": 0.1111111111111111, "f1": 0.19999999999999998},
+        "component_category_accuracy": 1.0,
+        "pin_detection": {"tp": 2, "fp": 4, "fn": 65, "precision": 0.3333333333333333, "recall": 0.029850746268656716, "f1": 0.05479452054794521},
+        "pin_number_exact_accuracy_end_to_end": 0.02127659574468085,
+        "wire": {"precision": 0.6355454545454545, "recall": 0.9908637873754153, "f1": 0.7743917827180888},
+        "graph_pairwise_connectivity_f1": 0.0
+      }
+    },
+    "assessment": {
+      "component_detection_improved": true,
+      "pin_detection_improved": true,
+      "wire_pixel_f1_improved": false,
+      "graph_connectivity_improved": false,
+      "strict_usability_improved": false,
+      "conclusion": "The smaller shared tile exposes real Component/Pin true positives, but also multiplies low-quality component owners, Pin predictions, multilevel OCR tokens, and semantic ambiguity. It is a useful direction only with candidate filtering and joint calibration; as a standalone default change it worsens strict availability and latency."
+    },
+    "recommended_follow_up": [
+      "Retain 512 tiling as an experiment for Component recall, but add calibrated component confidence/class filters before constructing Pin and component-level OCR views.",
+      "Cap or batch downstream per-component Pin/OCR work using a validation-calibrated owner-quality gate; the current 20 components produce 305 pins and 754 final texts.",
+      "Decouple Component and Wire tiling if validation shows Wire 1024 tiles preserve better precision; 512 reduced wire F1 from 0.8010 to 0.7744 on this case.",
+      "Re-run domain-stratified validation before keeping either default; one case cannot establish the optimal tile policy."
+    ]
+  },
+  "prior_production_report_search": {
+    "searched_roots": ["artifacts", "work"],
+    "prior_machine_readable_production_reports_found": [],
+    "empty_directories_found": ["work/prod-bench", "work/prod-bench-small", "work/prod-bench-tuned"]
+  },
+  "critical_breakpoints": [
+    {
+      "priority": 0,
+      "module": "component",
+      "finding": "The registered Component artifact failed its 0.25 mAP50 gate (0.2124), emitted only four Box candidates on case 0024, and no serialized candidate matched any of 27 raw components at IoU 0.5.",
+      "impact": "Component owner errors cascade into Pin ownership, OCR semantic association, graph connectivity, and serializer key requirements."
+    },
+    {
+      "priority": 0,
+      "module": "junction_graph",
+      "finding": "The six-class Junction artifact failed its formal gate, three real validation classes are absent, and the end-to-end graph contains 606 micro-segments, 689 junctions, 110 nets, and 24 disconnected-net errors for a case with 41 raw edges and 38 expected raw-v1 nets.",
+      "impact": "Wire pixels are strong but topology is not competition-usable."
+    },
+    {
+      "priority": 0,
+      "module": "association_semantics",
+      "finding": "Only one of four components received a key and six of 66 pins received numbers in the baseline strict probe; 134 association diagnostics were emitted.",
+      "impact": "Strict serialization fails even when perception completes."
+    },
+    {
+      "priority": 1,
+      "module": "registry_packaging",
+      "finding": "Pin/Junction registry paths differ from their selected formal exports, all declared fp16 artifacts execute with fp32 parameters, and Pin/OCR inference settings drift from checkpoint lineage.",
+      "impact": "The readiness gate proves file integrity, but not gate provenance or runtime configuration fidelity."
+    },
+    {
+      "priority": 1,
+      "module": "benchmark_coverage",
+      "finding": "No prior production image-only benchmark report existed, and this audit covers only one small datasheet image.",
+      "impact": "Neither 50-case latency nor domain-stratified competition accuracy is proven."
+    }
+  ],
+  "recommended_actions": [
+    "Keep models/models.lock.json candidate-only; do not bless the current five-task set.",
+    "Retrain or replace Component detection until its formal gate passes, then evaluate directly on full official images with domain-stratified per-class AP/recall and the same tiling used in production.",
+    "Build a joint validation sweep over Component threshold/tiling, Pin input/threshold/count, OCR detector threshold, and association thresholds; optimize strict output coverage and raw-v1 end-to-end metrics rather than task-local recall.",
+    "Add trusted validation evidence for connected_cross, non_connected_cross, and noise; keep the Junction six-class gate fail-closed until all classes are observed or an explicitly justified competition-valid validation set exists.",
+    "Improve Wire-to-graph topology with collinear fragment merging, symbol/text suppression, component-body masking, and connectivity-aware vectorizer calibration; gate disconnected nets and component-count error in addition to pixel F1.",
+    "Generate model locks from candidate bundle manifests and checkpoint lineage. Reject artifact-format, export-hash, input-size, preprocessing, threshold, precision, and gate-status mismatches during readiness.",
+    "Run strict image-only raw-v1 over the full 30-case test split, then the manual-required 50-case two-environment performance suite; record per-domain failure rate, latency percentiles, peak VRAM, validation codes, and output determinism."
+  ],
+  "overall_assessment": {
+    "production_ready": false,
+    "competition_highly_usable": false,
+    "strongest_module": "wire pixel segmentation",
+    "most_important_next_step": "Fix Component detection and topology/semantic cascades before any blessing or large-scale packaging work."
+  }
+}

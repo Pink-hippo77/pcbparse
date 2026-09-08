@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "kind": "component-adapter-threshold-scan",
+  "case_id": "0024",
+  "image_path": "Dataset300/Dataset300/0024/0024-other.png",
+  "image_only_inference": true,
+  "annotation_read_after_inference_for_evaluation": true,
+  "model_sha256": "fc9bbf8d2cd39ba0d7841f5ea2f10e8510bb3e06b660bb92820459f0af85804e",
+  "tile_size": 1024,
+  "tile_overlap": 160,
+  "component_nms_iou": 0.55,
+  "eligible_gt_components": 27,
+  "match_policy": "normalized class equal AND IoU >= 0.5; deterministic maximum-cardinality one-to-one matching",
+  "rows": [
+    {
+      "threshold": 0.0,
+      "adapter_candidate_count": 300,
+      "post_class_aware_nms_candidate_count": 300,
+      "tp": 1,
+      "fp": 299,
+      "fn": 26,
+      "precision": 0.0033333333333333335,
+      "recall": 0.037037037037037035,
+      "f1": 0.0061162079510703364,
+      "matched_ious": [0.5492263593855329]
+    },
+    {
+      "threshold": 0.01,
+      "adapter_candidate_count": 11,
+      "post_class_aware_nms_candidate_count": 11,
+      "tp": 1,
+      "fp": 10,
+      "fn": 26,
+      "precision": 0.09090909090909091,
+      "recall": 0.037037037037037035,
+      "f1": 0.05263157894736842,
+      "matched_ious": [0.5492263593855329]
+    },
+    {
+      "threshold": 0.05,
+      "adapter_candidate_count": 4,
+      "post_class_aware_nms_candidate_count": 4,
+      "tp": 1,
+      "fp": 3,
+      "fn": 26,
+      "precision": 0.25,
+      "recall": 0.037037037037037035,
+      "f1": 0.06451612903225806,
+      "matched_ious": [0.5492263593855329]
+    },
+    {
+      "threshold": 0.1,
+      "adapter_candidate_count": 4,
+      "post_class_aware_nms_candidate_count": 4,
+      "tp": 1,
+      "fp": 3,
+      "fn": 26,
+      "precision": 0.25,
+      "recall": 0.037037037037037035,
+      "f1": 0.06451612903225806,
+      "matched_ious": [0.5492263593855329]
+    },
+    {
+      "threshold": 0.25,
+      "adapter_candidate_count": 4,
+      "post_class_aware_nms_candidate_count": 4,
+      "tp": 1,
+      "fp": 3,
+      "fn": 26,
+      "precision": 0.25,
+      "recall": 0.037037037037037035,
+      "f1": 0.06451612903225806,
+      "matched_ious": [0.5492263593855329]
+    }
+  ],
+  "best_thresholds_by_f1": [0.05, 0.1, 0.25],
+  "recommended_threshold_for_this_case": 0.25,
+  "recommendation_basis": "The 0.05-0.25 plateau has identical candidates and metrics; retain the highest threshold to avoid admitting lower-score false positives without losing this case's sole true positive.",
+  "conclusion": "Threshold tuning cannot recover the missing 26 of 27 eligible components. At threshold 0, recall remains 3.70% while false positives rise to 299; the detector, scale/domain fit, or category head must improve."
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "runtime_ready": true,
+  "production_ready": false,
+  "production_ready_reason": "Runtime model lock and adapters are verified; formal 50-case E2E release gate is still pending.",
+  "authoritative_lock": "models/models.lock.json",
+  "note": "Annotation providers are debug/oracle tools and are never blessed production models.",
+  "models": {
+    "component": {"provider": null, "version": null, "status": "missing", "blessed": false},
+    "pin": {"provider": null, "version": null, "status": "missing", "blessed": false},
+    "wire": {"provider": null, "version": null, "status": "missing", "blessed": false},
+    "junction": {"provider": null, "version": null, "status": "missing", "blessed": false},
+    "ocr": {"provider": null, "version": null, "status": "missing", "blessed": false},
+    "qwen": {"provider": "disabled", "version": null, "status": "disabled", "blessed": false}
+  },
+  "debug_providers": {
+    "dataset_golden": {"version": "annotation-v1", "submission_safe": false},
+    "dataset_debug": {"version": "annotation-v1", "submission_safe": false},
+    "heuristic": {"version": "heuristic-v1", "submission_safe": false}
+  }
+}

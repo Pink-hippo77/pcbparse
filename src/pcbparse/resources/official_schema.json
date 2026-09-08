@@ -1,0 +1,12 @@
+{
+  "official_schema": {
+    "version": "official-guide-2026-example-spelling-v1",
+    "top_level_keys": ["components", "pins", "nets"],
+    "component": {"fields": ["type", "Name", "value", "bbox"], "bbox_encoding": "xyxy_list", "type_aliases": {"Box": "ic", "box": "ic", "BoxIc": "ic", "boxic": "ic", "R": "resistor", "C": "capacitor", "L": "inductor", "Crystal": "crystal", "Switch": "switch", "Gnd": "gnd", "GND": "gnd", "NET_input": "vbus_in", "Net_input": "vbus_in"}},
+    "pin": {"key_template": "pin_{number}", "fields": ["pinname", "point"], "point_encoding": "object_xy"},
+    "net": {"key_template": "net_{index}", "fields": ["hyperGraph", "edges"], "hypergraph_pin_template": "{component_key}.{pin_number}", "edge_key_template": "edge_{index}", "edge_encoding": "two_point_array"},
+    "numbers": {"coordinate_type": "number", "coordinate_system": "original_bottom_left_xy", "source_coordinate_system": "image_top_left_xy"},
+    "ordering": {"deterministic": true, "natural_sort_keys": true},
+    "extra_fields": "forbid"
+  }
+}

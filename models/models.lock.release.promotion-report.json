@@ -1,0 +1,165 @@
+{
+  "checks": {
+    "adapter_imports_revalidated": true,
+    "artifact_and_model_card_bytes_verified": true,
+    "deterministic_junction_config_and_vectorizer_contract": true,
+    "evaluation_and_export_gates_revalidated": true,
+    "exactly_one_candidate_per_task": true,
+    "junction_official_real_val_six_class_human_review": false,
+    "production_adapter_load_and_fixture_smoke": true,
+    "shared_dataset_lineage": true
+  },
+  "created_at_utc": "2026-08-27T04:28:11.717498Z",
+  "deterministic_junction_contract": {
+    "contract_payload_sha256": "822755ec79dd0559912555504952e8568bcbcaedd06fdf0f7a943fbc78de2274",
+    "kind": "deterministic_junction_promotion_contract",
+    "model_task_plan": {
+      "contract": "production_model_task_plan_v1",
+      "junction_mode": "deterministic_vectorizer",
+      "learned_junction_model_invoked": false,
+      "learned_junction_model_loaded": false,
+      "learned_junction_model_required": false,
+      "loaded_model_tasks": [
+        "component",
+        "ocr",
+        "pin",
+        "wire"
+      ],
+      "required_model_tasks": [
+        "component",
+        "ocr",
+        "pin",
+        "wire"
+      ]
+    },
+    "production_config_path": "E:\\EDA挑战题目六\\configs\\pipeline.yaml",
+    "production_config_sha256": "b76783b630be12158dd036a8abcb4e6aa244490410e86405ce57cf986a5426e9",
+    "runtime_sources": [
+      {
+        "path": "src/pcbparse/perception/production_provider.py",
+        "sha256": "ecf55267d0966408adefd1da6a61c18f6d4debb2fdba4fd53b831bb0cff52705"
+      },
+      {
+        "path": "src/pcbparse/perception/composite_provider.py",
+        "sha256": "5f7484a300e908bc8cf5b77b14a8a63f225805158fba07b0493f0bf55988b699"
+      },
+      {
+        "path": "src/pcbparse/perception/wire_vectorizer.py",
+        "sha256": "356b76f13ab1f1b756ac7488c2f38656a6d2944ba10aa424797e270a6b4c48f0"
+      },
+      {
+        "path": "src/pcbparse/service/readiness.py",
+        "sha256": "26cee0b6da616facbdfbc7355f40da7c2cac1be84d6350374d3625281852e8e6"
+      }
+    ],
+    "schema_version": 1,
+    "vectorizer_fixture": {
+      "foreground_pixels": 16,
+      "junction_kinds": [
+        "endpoint",
+        "endpoint",
+        "endpoint",
+        "t_junction"
+      ],
+      "polylines": 3,
+      "shape": [
+        17,
+        17
+      ]
+    }
+  },
+  "fixture": {
+    "name": "pcbparse-promotion-fixture-v1",
+    "sha256": "2718c5f7df65ef3a4876d84908f068f8b62a0206e23ea9c2da611800665f3166",
+    "smoke_results": [
+      {
+        "adapter": "pcbparse.perception.torch_component_adapter:factory",
+        "fixture_sha256": "2718c5f7df65ef3a4876d84908f068f8b62a0206e23ea9c2da611800665f3166",
+        "output_count": 0,
+        "passed": true,
+        "provider_version": "torch-component/fasterrcnn_mobilenet_v3_large_320_fpn/34d79a6dfa43",
+        "task": "component"
+      },
+      {
+        "adapter": "pcbparse.perception.torch_ocr_adapter:factory",
+        "fixture_sha256": "2718c5f7df65ef3a4876d84908f068f8b62a0206e23ea9c2da611800665f3166",
+        "output_count": 0,
+        "passed": true,
+        "provider_version": "torch-ocr/tiny-ocr-e4212287d6ac31d2",
+        "task": "ocr"
+      },
+      {
+        "adapter": "pcbparse.perception.torch_pin_adapter:factory",
+        "fixture_sha256": "2718c5f7df65ef3a4876d84908f068f8b62a0206e23ea9c2da611800665f3166",
+        "output_count": 0,
+        "passed": true,
+        "provider_version": "pin-ec3c50dc22b8c4e2",
+        "task": "pin"
+      },
+      {
+        "adapter": "pcbparse.perception.torch_wire_adapter:factory",
+        "fixture_sha256": "2718c5f7df65ef3a4876d84908f068f8b62a0206e23ea9c2da611800665f3166",
+        "output_count": 1,
+        "passed": true,
+        "provider_version": "wire-3235b9e083190e8d",
+        "task": "wire"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "artifact_bytes": 76705707,
+      "artifact_sha256": "34d79a6dfa4340e64dc96de4945bcfea6e376d9a6f4949876b58d7e719697af5",
+      "candidate_manifest_path": "E:\\EDA挑战题目六\\models\\releases\\v8-portable\\component\\train-component-v5-fullmix\\bundle.manifest.json",
+      "candidate_manifest_sha256": "30711359864a5e373c1bfbd01b62e31a9ef16b9adbd866c3f3e0f22c9aa86eef",
+      "evaluation_predictions_sha256": "153883e3834809539b7fb3ddc309bc1a480cf25bbc1b5f199fa689e429108f92",
+      "export_input_manifest_sha256": "fe379b30be21bb63c90709841700689bcd793ba907f1b40d81a3e8b38cad52fe",
+      "model_card_sha256": "dc54b301b478916a509990f37ded027af37495c7fcebe4700a27dde4122de4d0",
+      "task": "component"
+    },
+    {
+      "artifact_bytes": 936936,
+      "artifact_sha256": "e4212287d6ac31d2b45e20bb0c6f273bf6328299fb7746ea75a01e2bf180fe78",
+      "candidate_manifest_path": "E:\\EDA挑战题目六\\models\\releases\\v8-portable\\ocr\\train-ocr-resume\\bundle.manifest.json",
+      "candidate_manifest_sha256": "ecbbaf59b8e07e6f3f4e6bec0c6d36b4cc7037c408cc5f567b766c1d65a0ac67",
+      "evaluation_predictions_sha256": "ae70844f45ebb439115ebc15467ea79bd4ef661ca108b36f5c4588fdff11a079",
+      "export_input_manifest_sha256": "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1",
+      "model_card_sha256": "2def5c0b1b01bade7b621fd2d2f78e0c819127cb7403e37eb7d4c6b949086ac4",
+      "task": "ocr"
+    },
+    {
+      "artifact_bytes": 2582430,
+      "artifact_sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71",
+      "candidate_manifest_path": "E:\\EDA挑战题目六\\models\\releases\\v8-portable\\pin\\train-pin-v5-boundary\\bundle.manifest.json",
+      "candidate_manifest_sha256": "88d64a536d622114d49baeaff225dedcb2d378099eabccd9430a4b9dd65f42d2",
+      "evaluation_predictions_sha256": "a4ac8d8c5c8e4daba11a2b49b82659cef9953108d32950b7644c805dfe91d53b",
+      "export_input_manifest_sha256": "b8ebd239121195a76ac94c5867c40c5b27d72795e42fecf10152cfe37b021377",
+      "model_card_sha256": "3f5872b413f7c7cb94a6eb7ec6bac98e088890696ef5315ea5c15bcde9584a02",
+      "task": "pin"
+    },
+    {
+      "artifact_bytes": 549356,
+      "artifact_sha256": "3235b9e083190e8d399f819b55a34ed8531652377323ff8be05ae99286ea17dd",
+      "candidate_manifest_path": "E:\\EDA挑战题目六\\models\\releases\\v8-portable\\wire\\train-wire-v5-fresh-allgate\\bundle.manifest.json",
+      "candidate_manifest_sha256": "37d8143d5e92e6ab0d2416be90e857c2e2eda5200d5ef6cd82989eb23fa5ff17",
+      "evaluation_predictions_sha256": "6d3884ec4b714d3867851d5103f371ffaa466a753393f9a12c543869776bcc7f",
+      "export_input_manifest_sha256": "6deb93c959da75c26a4c93657e924e9785c52cbb11ab91b33128a96185c6438c",
+      "model_card_sha256": "71de9f5362847158322d57a4fc15898b959d77de7adc8b96875e29258664a03c",
+      "task": "wire"
+    }
+  ],
+  "junction_human_review": null,
+  "junction_mode": "deterministic_vectorizer",
+  "kind": "model_promotion_report",
+  "mode": "promote",
+  "ok": true,
+  "output_lock": "E:\\EDA挑战题目六\\models\\models.lock.release.json",
+  "output_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "required_tasks": [
+    "component",
+    "ocr",
+    "pin",
+    "wire"
+  ],
+  "schema_version": 1
+}

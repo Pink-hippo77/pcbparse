@@ -1,0 +1,158 @@
+{
+  "aggregate": {
+    "cer": 0.17444123370879283,
+    "charset_oov_rate": 0.00397474865559972,
+    "charset_oov_support": 17,
+    "edit_distance": 2958,
+    "exact_count": 2902,
+    "exact_match": 0.6785129763853168,
+    "mean_confidence": 0.8469899160590877,
+    "reference_codepoints": 16957,
+    "sample_support": 30,
+    "support": 4277
+  },
+  "by_detail": {
+    "designator": {
+      "cer": 0.05846153846153846,
+      "charset_oov_rate": 0.0,
+      "charset_oov_support": 0,
+      "edit_distance": 57,
+      "exact_count": 329,
+      "exact_match": 0.9038461538461539,
+      "mean_confidence": 0.9222452697313421,
+      "reference_codepoints": 975,
+      "sample_support": 24,
+      "support": 364
+    },
+    "netlabel": {
+      "cer": 0.18095238095238095,
+      "charset_oov_rate": 0.0,
+      "charset_oov_support": 0,
+      "edit_distance": 380,
+      "exact_count": 221,
+      "exact_match": 0.5103926096997691,
+      "mean_confidence": 0.8395442790431382,
+      "reference_codepoints": 2100,
+      "sample_support": 25,
+      "support": 433
+    },
+    "pinname": {
+      "cer": 0.11810380057212914,
+      "charset_oov_rate": 0.0,
+      "charset_oov_support": 0,
+      "edit_distance": 289,
+      "exact_count": 466,
+      "exact_match": 0.762684124386252,
+      "mean_confidence": 0.8646178810756849,
+      "reference_codepoints": 2447,
+      "sample_support": 24,
+      "support": 611
+    },
+    "pinnumber": {
+      "cer": 0.19436619718309858,
+      "charset_oov_rate": 0.0,
+      "charset_oov_support": 0,
+      "edit_distance": 207,
+      "exact_count": 492,
+      "exact_match": 0.7569230769230769,
+      "mean_confidence": 0.8301714289074463,
+      "reference_codepoints": 1065,
+      "sample_support": 25,
+      "support": 650
+    },
+    "searchName": {
+      "cer": 0.23333333333333334,
+      "charset_oov_rate": 0.01282051282051282,
+      "charset_oov_support": 1,
+      "edit_distance": 203,
+      "exact_count": 31,
+      "exact_match": 0.3974358974358974,
+      "mean_confidence": 0.7818403824713059,
+      "reference_codepoints": 870,
+      "sample_support": 29,
+      "support": 78
+    },
+    "unknown": {
+      "cer": 0.2106799659408831,
+      "charset_oov_rate": 0.008690928843020097,
+      "charset_oov_support": 16,
+      "edit_distance": 1732,
+      "exact_count": 1137,
+      "exact_match": 0.6175991309071157,
+      "mean_confidence": 0.8250014588459433,
+      "reference_codepoints": 8221,
+      "sample_support": 30,
+      "support": 1841
+    },
+    "value": {
+      "cer": 0.07036747458952307,
+      "charset_oov_rate": 0.0,
+      "charset_oov_support": 0,
+      "edit_distance": 90,
+      "exact_count": 226,
+      "exact_match": 0.7533333333333333,
+      "mean_confidence": 0.9188391009386792,
+      "reference_codepoints": 1279,
+      "sample_support": 26,
+      "support": 300
+    }
+  },
+  "interpretation": {
+    "aggregate_exact_is_not_key_readiness": true,
+    "component_key_readiness_fields": [
+      "designator"
+    ],
+    "net_semantics_readiness_fields": [
+      "netlabel"
+    ],
+    "pin_identity_readiness_fields": [
+      "pinnumber",
+      "pinname"
+    ],
+    "promotion_requires_frozen_val_gates": true
+  },
+  "join": {
+    "derived_val_rows": 4280,
+    "exact_flag_mismatches": 0,
+    "excluded_policy_by_detail": {
+      "unknown": 3
+    },
+    "excluded_policy_record_ids": [
+      "0077:text:T_207",
+      "0077:text:T_211",
+      "0077:text:T_216"
+    ],
+    "excluded_policy_rows": 3,
+    "joined_rows": 4277,
+    "recognition_prediction_rows": 4277,
+    "reference_mismatches": 0,
+    "sample_mismatches": 0,
+    "unexpected_prediction_rows": 0
+  },
+  "kind": "pcbparse_ocr_frozen_val_recognition_by_detail_audit",
+  "schema_version": 1,
+  "selection_boundary": {
+    "purpose": "candidate diagnosis and next-run gate design",
+    "split": "val",
+    "test_rows_used": 0,
+    "thresholds_tuned": false
+  },
+  "sources": {
+    "derived_manifest": {
+      "path": "E:/EDA挑战题目六/data/derived/dataset300-v2/ocr_text.jsonl",
+      "sha256": "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1"
+    },
+    "metrics": {
+      "path": "E:/EDA挑战题目六/work/train-ocr-v2c/metrics.json",
+      "sha256": "753e28007ef847df35c37df06e9261bb1123e4dc3d9230c22dd6ae5c7d838bdc"
+    },
+    "model": {
+      "path": "E:/EDA挑战题目六/work/train-ocr-v2c/model.pt",
+      "sha256": "8136d52fd29960e0c112f4d0fa8bdfe7ec74e32ef53917272a08fbe8be333848"
+    },
+    "predictions": {
+      "path": "E:/EDA挑战题目六/work/train-ocr-v2c/predictions.jsonl",
+      "sha256": "1cdba59840aa5527183b5d3894043605cfa24a123602aeb75eeb32185b86f2de"
+    }
+  }
+}

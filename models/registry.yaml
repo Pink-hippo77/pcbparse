@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "runtime_ready": true,
+  "production_ready": false,
+  "production_ready_reason": "Runtime model lock and adapters are verified; formal 50-case E2E release gate is still pending.",
+  "blessed_profile": "deterministic-vectorizer",
+  "authoritative_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "note": "This registry is descriptive only; models.lock.json is the production authority.",
+  "entries": [
+    {
+      "name": "dataset-annotation-provider",
+      "task": "golden-integration",
+      "version": "annotation-v1",
+      "sha256": "builtin",
+      "license": "inherits-official-dataset",
+      "precision": "exact",
+      "status": "debug-only",
+      "blessed": false,
+      "submission_safe": false
+    }
+  ]
+}

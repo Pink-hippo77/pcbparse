@@ -1,0 +1,504 @@
+{
+  "accuracy_claim": false,
+  "created_at_utc": "2026-08-24T05:23:06.288057Z",
+  "diagnostic_only": false,
+  "images": [
+    {
+      "path": "0011/0011-Altium Designer.png",
+      "sample_id": "0011",
+      "sha256": "1ceedcb7e7a546eafbd78b40b65b2f7ef0c40c87efca2240c6a318cbd372dc77"
+    },
+    {
+      "path": "0014/0014-Altium Designer.png",
+      "sample_id": "0014",
+      "sha256": "e17b33dc4f29142167beddfd4bf811a18af58822a0b17de0a50e64d597e0af7a"
+    },
+    {
+      "path": "0017/0017-Datasheet.png",
+      "sample_id": "0017",
+      "sha256": "fefe05365e76a3ab08e6763dd7fa9a16b20a2b553f0eaf276acda44ad465291c"
+    },
+    {
+      "path": "0024/0024-other.png",
+      "sample_id": "0024",
+      "sha256": "ba5066550c7675b5fd9d652904c9d52429de818a85e027e6077fef3fd4f3d183"
+    },
+    {
+      "path": "0029/0029-Datasheet.png",
+      "sample_id": "0029",
+      "sha256": "37e632c77a2ef567ee1c5c4c7a337ad21efe6986081130f0e9510799efae0500"
+    },
+    {
+      "path": "0030/0030-Datasheet.png",
+      "sample_id": "0030",
+      "sha256": "f8bfec2579d4792f977ce20e8e1a0e679ce9561efc7ed8ed00d1e94600cc47bc"
+    },
+    {
+      "path": "0034/0034-Datasheet.png",
+      "sample_id": "0034",
+      "sha256": "ef8bae7ef0040a378be874300fefd7d6abf80c41d9573cc563390b2d58ede430"
+    },
+    {
+      "path": "0037/0037-Datasheet.png",
+      "sample_id": "0037",
+      "sha256": "dfbfba48a67aebe1ef2c56504df2cbf03301005401142a87e30b26fbeb0ca0ec"
+    },
+    {
+      "path": "0038/0038-Altium Designer.png",
+      "sample_id": "0038",
+      "sha256": "6cb09f8c35d045d42d1875dcb20486d02ef1162653c1ed1b82ae8a9ad2371542"
+    },
+    {
+      "path": "0044/0044-Datasheet.png",
+      "sample_id": "0044",
+      "sha256": "bb92e5849a641a028ed73b06cd4cacbda8cba88633c7b1044d07510b2f51a138"
+    },
+    {
+      "path": "0055/0055-Datasheet.png",
+      "sample_id": "0055",
+      "sha256": "711b8ecd43bb2a418fc3902dc11564eb6ae956aed2820b55e18f5e0d64c27e24"
+    },
+    {
+      "path": "0062/0062-Datasheet.png",
+      "sample_id": "0062",
+      "sha256": "1559df7b157122c3fd9cbd94199ea9a6a99f60532bdcd0eefb0b72dc2211ec94"
+    },
+    {
+      "path": "0065/0065-Datasheet.png",
+      "sample_id": "0065",
+      "sha256": "4317acead925249aa4cfbe4d8fd229d4ced4e6789938b8015e49b88665de3b33"
+    },
+    {
+      "path": "0077/0077-Datasheet.png",
+      "sample_id": "0077",
+      "sha256": "0c2a1fc95f285c7ce6e9064a52c3c610332c46029b5bc3b1c8d5db6b002286d1"
+    },
+    {
+      "path": "0080/0080-Datasheet.png",
+      "sample_id": "0080",
+      "sha256": "e7d1033fe04a0903ce50ca7296f1f7ed28f1589618ec6fc59bef64f27c357c78"
+    },
+    {
+      "path": "0087/0087-KiCad.png",
+      "sample_id": "0087",
+      "sha256": "44d7aaa16fbb10790d63a544ed94661f8e59ebf72af76b624802867b44ecf3bd"
+    },
+    {
+      "path": "0091/0091-KiCad.png",
+      "sample_id": "0091",
+      "sha256": "cac2abb9416e55c2c7416c64c2383b7ada8529611f9a0818116a04f95393494e"
+    },
+    {
+      "path": "0092/0092-Datasheet.png",
+      "sample_id": "0092",
+      "sha256": "9d0c5d3d0aced4aa0b0b56cea345a51008e1834fcea9e11ea97e71fb8ed21ef7"
+    },
+    {
+      "path": "0095/0095-Altium Designer.png",
+      "sample_id": "0095",
+      "sha256": "6e6adbaa615a665906e4b3067ef0121a5f353b60be20cb6e68c2f9c8d1229289"
+    },
+    {
+      "path": "0096/0096-Datasheet.png",
+      "sample_id": "0096",
+      "sha256": "c5c8a75d2b5a7647cfe2796a78a9fc1c0588b4af2f86d63d0938fe1330d98d1e"
+    },
+    {
+      "path": "0110/0110-jlc.png",
+      "sample_id": "0110",
+      "sha256": "7e65f400f8c589d9df0676f4404e84a7e8bc4040da28046ec1c07557254e35fb"
+    },
+    {
+      "path": "0117/0117-jlc.png",
+      "sample_id": "0117",
+      "sha256": "fccdddff993e3bee84de97a748ecd5c247840b1d9ba78dd174e04308abd67243"
+    },
+    {
+      "path": "0121/0121-jlc.png",
+      "sample_id": "0121",
+      "sha256": "cb33ff63c80a73682cf3faed5b658603a1be0ebb380c5562f6526f268910285b"
+    },
+    {
+      "path": "0125/0125-jlc.png",
+      "sample_id": "0125",
+      "sha256": "15a8610f60e1d10bbf7ef0cd55db154d1b7db25cdaa04f416287ffbad207fe35"
+    },
+    {
+      "path": "0126/0126-jlc.png",
+      "sample_id": "0126",
+      "sha256": "1ca4a0f2f5101fd8ae3adb640b3c2ba84ada614e5289f60803ae53bd6680cfb4"
+    },
+    {
+      "path": "0129/0129-jlc.png",
+      "sample_id": "0129",
+      "sha256": "217e5234660a4f12692a4bc07d9b3baf583d36b35e847a16f4e1c5119e91dd1b"
+    },
+    {
+      "path": "0135/0135-jlc.png",
+      "sample_id": "0135",
+      "sha256": "8352af488fff332f127155221f46e01ba5f01b0df98b0f9c3778d2ccd36264bd"
+    },
+    {
+      "path": "0140/0140-jlc.png",
+      "sample_id": "0140",
+      "sha256": "d23fde78e5e01b330e4c142608e9ee57246ad3aef9b08a932b203a4681f9c8a3"
+    },
+    {
+      "path": "0141/0141-jlc.png",
+      "sample_id": "0141",
+      "sha256": "7a4048e21c28e1518caf0d42b648e6a1a4d16d0e35d3cd67bab0498745c11a94"
+    },
+    {
+      "path": "0144/0144-jlc.png",
+      "sample_id": "0144",
+      "sha256": "fc4527a230ce7a79582736041ba612e218b12e0de0d819e915a63224cbf061fe"
+    },
+    {
+      "path": "0145/0145-jlc.png",
+      "sample_id": "0145",
+      "sha256": "a233897a9421ce5db2caaad7494ab6939d22814b5c4da6d232924284f640fdfb"
+    },
+    {
+      "path": "0147/0147-jlc.png",
+      "sample_id": "0147",
+      "sha256": "83d6e39fce4adbcbdd502c42e3b96a775bf1fc47cba8a4b6f4403caada9dcc80"
+    },
+    {
+      "path": "0155/0155-jlc.png",
+      "sample_id": "0155",
+      "sha256": "9020f889329293c017880890930ac7e4dd2a6f36fddc9429de05a2a6a451212d"
+    },
+    {
+      "path": "0157/0157-jlc.png",
+      "sample_id": "0157",
+      "sha256": "20c37178ff6379061a856e2a795daf42b208b11ddb5635fa4d6d9f87032f79e0"
+    },
+    {
+      "path": "0165/0165-jlc.png",
+      "sample_id": "0165",
+      "sha256": "73e50243e1e58a7d691d3e8ca339566f81845fb3f30b2e6c72b442cfa2466b61"
+    },
+    {
+      "path": "0166/0166-jlc.png",
+      "sample_id": "0166",
+      "sha256": "b9d29b3ff37bf761a29446d9288741bbae940e881487a4bd74b058d606cf5495"
+    },
+    {
+      "path": "0171/0171-jlc.png",
+      "sample_id": "0171",
+      "sha256": "46a4b899ce2d1b922bb92fa24256874493e8fbe44f7065a2e99c8db06febd8d9"
+    },
+    {
+      "path": "0176/0176-jlc.png",
+      "sample_id": "0176",
+      "sha256": "c231b2520445620c4b60113131de39aeec69693c4bd681ffcc14bcf44b5d5f90"
+    },
+    {
+      "path": "0188/0188-jlc.png",
+      "sample_id": "0188",
+      "sha256": "55fd181bb9a17cb4e4392884fb2ad02bf4a1935c3a0cf3e9759a72d45e521fd8"
+    },
+    {
+      "path": "0211/00b01b0d5b8d88ca12b1241b476280842e6577ffdfa7e8574e72dd0ff0bb02cf.jpg",
+      "sample_id": "0211",
+      "sha256": "ff71f8771ab6b52b99deb7fd9cc69800be10b67e23080035bae9d89740d6630f"
+    },
+    {
+      "path": "0216/03_datasheet_sch.png",
+      "sample_id": "0216",
+      "sha256": "be767fa270362beed0e82c089c164b3577b673c5aee0ddea469a2de5f0866035"
+    },
+    {
+      "path": "0224/0a5646a38e2fbbf1da27c4c59d86bc60041af51f17b7657c1f1585f7a5922a42.jpg",
+      "sample_id": "0224",
+      "sha256": "8c52e1df2a4ed2acc03bcb5bd5428c5aa8402a7d1269e2223f935d3cd2bf5f4a"
+    },
+    {
+      "path": "0235/0f21cea55b1cd9311babfaba4084a8e7e931a07daddff4cdb3487ac1e3028c5e_1.jpg",
+      "sample_id": "0235",
+      "sha256": "77582922201187672a58589a29a5c7f916d64b9cb3dabc8e9a5e90c17ab852a7"
+    },
+    {
+      "path": "0247/1e7758c541a3cbf1d44d7c22b3b2ee1d01ca4ca3a521623db9f61c12ce950170.jpg",
+      "sample_id": "0247",
+      "sha256": "cedacd991052c6547dc8e786b2d6e4caa860aa3a73054e25179b1b4f37e2d162"
+    },
+    {
+      "path": "0254/2d0a5d1928ef3a88a65855b100b6754044b5e096dff427a720ed4610b3099b04.jpg",
+      "sample_id": "0254",
+      "sha256": "2b8607fe3b8052e708019b1b44619816d1b78f258e5046fa7d69b0e67ee0c918"
+    },
+    {
+      "path": "0256/3a469411f4bebf65be7914f3b74a5fe5f614a9f67a6926f5f1efa7ffbb59774f.jpg",
+      "sample_id": "0256",
+      "sha256": "c8ab2cbbd1ff69d0aae35805984a0e15dbca91f1719b75ea8a9a3b9d73ebf8dc"
+    },
+    {
+      "path": "0274/4bdbae0f70112e98154617863314f6700f69c7bed6f371e38cddb94e008b5783.jpg",
+      "sample_id": "0274",
+      "sha256": "9e4572487613d8751be044b5180c96b109bbacc3ed724e0be8d1db94dc9abbbf"
+    },
+    {
+      "path": "0278/4df58a67e9f81e34a12e6d9404682cc58d863fdd66b915a229c37eebee694eba.jpg",
+      "sample_id": "0278",
+      "sha256": "55a37d6223f04182b236ff701dc53490ee1c90831d165225d9268844fb3fab8e"
+    },
+    {
+      "path": "0289/5b0d9e71b7a92f66efe19321f4d91c58e3b1f6a43c8af3a598c941962c668c67.jpg",
+      "sample_id": "0289",
+      "sha256": "c0a9cff3302994325de8c8f5e24b3031ae86fefdcf482aa6715e025ac79c1be2"
+    },
+    {
+      "path": "0293/5dd15b71867e951cfc82e32d2e0a999d8abe34c5ad0a1d76c4c4c086a2e90d92.jpg",
+      "sample_id": "0293",
+      "sha256": "400d219978bb10d13bfd7d96a2d2c8f53b18c1cf4e90b0faedabe6186e879fab"
+    }
+  ],
+  "kind": "pcbparse_image_only_release_case_suite_v1",
+  "outputs": {
+    "image_count": 50,
+    "image_set_sha256": "f7be35e4b0c150bf05f7df0f563ce8fa9abc7a24b5ce7622dbbbecaa50cad580",
+    "images_root": "E:\\EDA挑战题目六\\work\\release50-images-only",
+    "manifest": {
+      "path": "E:\\EDA挑战题目六\\data\\splits\\dataset300_release50_v1.jsonl",
+      "row_count": 50,
+      "sha256": "6feefa79d6779045e237e0b648455fafda6d2e90000bd9b246d82e270afc46b6"
+    },
+    "only_verified_images_materialized": true,
+    "report": "E:\\EDA挑战题目六\\artifacts\\release\\release50_suite_build.json"
+  },
+  "purpose": [
+    "production_determinism",
+    "production_performance",
+    "coordinate_and_schema_replay"
+  ],
+  "report_payload_sha256": "4655ffebeb3bd80fe9b764f6e3cfe78d28de44209fb23352a46403fdfefceb50",
+  "schema_version": 1,
+  "selection": {
+    "algorithm": "all_primary_plus_natural_order_supplemental_singletons_v1",
+    "complete_duplicate_groups": true,
+    "duplicate_group_count": 49,
+    "duplicate_group_membership": {
+      "dup-3daf423dc6ac911b": [
+        "0029",
+        "0274"
+      ],
+      "sample-0011": [
+        "0011"
+      ],
+      "sample-0014": [
+        "0014"
+      ],
+      "sample-0017": [
+        "0017"
+      ],
+      "sample-0024": [
+        "0024"
+      ],
+      "sample-0030": [
+        "0030"
+      ],
+      "sample-0034": [
+        "0034"
+      ],
+      "sample-0037": [
+        "0037"
+      ],
+      "sample-0038": [
+        "0038"
+      ],
+      "sample-0044": [
+        "0044"
+      ],
+      "sample-0055": [
+        "0055"
+      ],
+      "sample-0062": [
+        "0062"
+      ],
+      "sample-0065": [
+        "0065"
+      ],
+      "sample-0077": [
+        "0077"
+      ],
+      "sample-0080": [
+        "0080"
+      ],
+      "sample-0087": [
+        "0087"
+      ],
+      "sample-0091": [
+        "0091"
+      ],
+      "sample-0092": [
+        "0092"
+      ],
+      "sample-0095": [
+        "0095"
+      ],
+      "sample-0096": [
+        "0096"
+      ],
+      "sample-0110": [
+        "0110"
+      ],
+      "sample-0117": [
+        "0117"
+      ],
+      "sample-0121": [
+        "0121"
+      ],
+      "sample-0125": [
+        "0125"
+      ],
+      "sample-0126": [
+        "0126"
+      ],
+      "sample-0129": [
+        "0129"
+      ],
+      "sample-0135": [
+        "0135"
+      ],
+      "sample-0140": [
+        "0140"
+      ],
+      "sample-0141": [
+        "0141"
+      ],
+      "sample-0144": [
+        "0144"
+      ],
+      "sample-0145": [
+        "0145"
+      ],
+      "sample-0147": [
+        "0147"
+      ],
+      "sample-0155": [
+        "0155"
+      ],
+      "sample-0157": [
+        "0157"
+      ],
+      "sample-0165": [
+        "0165"
+      ],
+      "sample-0166": [
+        "0166"
+      ],
+      "sample-0171": [
+        "0171"
+      ],
+      "sample-0176": [
+        "0176"
+      ],
+      "sample-0188": [
+        "0188"
+      ],
+      "sample-0211": [
+        "0211"
+      ],
+      "sample-0216": [
+        "0216"
+      ],
+      "sample-0224": [
+        "0224"
+      ],
+      "sample-0235": [
+        "0235"
+      ],
+      "sample-0247": [
+        "0247"
+      ],
+      "sample-0254": [
+        "0254"
+      ],
+      "sample-0256": [
+        "0256"
+      ],
+      "sample-0278": [
+        "0278"
+      ],
+      "sample-0289": [
+        "0289"
+      ],
+      "sample-0293": [
+        "0293"
+      ]
+    },
+    "duplicate_group_membership_sha256": "876ba97b8374c76c9ea203f16c99fe7aae924ca923db7859dcbbada06a561b14",
+    "output_split": "release50",
+    "primary_split": "test",
+    "selected_case_ids": [
+      "0011",
+      "0014",
+      "0017",
+      "0024",
+      "0029",
+      "0030",
+      "0034",
+      "0037",
+      "0038",
+      "0044",
+      "0055",
+      "0062",
+      "0065",
+      "0077",
+      "0080",
+      "0087",
+      "0091",
+      "0092",
+      "0095",
+      "0096",
+      "0110",
+      "0117",
+      "0121",
+      "0125",
+      "0126",
+      "0129",
+      "0135",
+      "0140",
+      "0141",
+      "0144",
+      "0145",
+      "0147",
+      "0155",
+      "0157",
+      "0165",
+      "0166",
+      "0171",
+      "0176",
+      "0188",
+      "0211",
+      "0216",
+      "0224",
+      "0235",
+      "0247",
+      "0254",
+      "0256",
+      "0274",
+      "0278",
+      "0289",
+      "0293"
+    ],
+    "selected_case_ids_sha256": "014bcc6a28f1c9f3199d924d9450b5f817f624f9116163e011fd8aaa09d339c0",
+    "selected_count": 50,
+    "selected_source_split_counts": {
+      "test": 30,
+      "val": 20
+    },
+    "supplemental_split": "val",
+    "target_count": 50
+  },
+  "sources": {
+    "source_dataset_root": "E:\\EDA挑战题目六\\Dataset300\\Dataset300",
+    "source_split_manifest": {
+      "path": "E:\\EDA挑战题目六\\data\\splits\\dataset300_split.jsonl",
+      "row_count": 300,
+      "sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
+    }
+  },
+  "status": "ready"
+}

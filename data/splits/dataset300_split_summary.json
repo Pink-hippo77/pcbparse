@@ -1,0 +1,47 @@
+{
+  "duplicate_groups": 11,
+  "leakage_check": "passed",
+  "schema_version": 1,
+  "seed": "20260812",
+  "splits": {
+    "test": {
+      "effective_ratio": 0.1,
+      "groups": 29,
+      "requested_ratio": 0.1,
+      "samples": 30,
+      "source_classes": {
+        "ad": 2,
+        "datasheet": 17,
+        "jlc": 10,
+        "kicad": 1
+      }
+    },
+    "train": {
+      "effective_ratio": 0.8,
+      "groups": 229,
+      "requested_ratio": 0.8,
+      "samples": 240,
+      "source_classes": {
+        "ad": 17,
+        "datasheet": 140,
+        "jlc": 79,
+        "kicad": 4
+      }
+    },
+    "val": {
+      "effective_ratio": 0.1,
+      "groups": 29,
+      "requested_ratio": 0.1,
+      "samples": 30,
+      "source_classes": {
+        "ad": 2,
+        "datasheet": 17,
+        "jlc": 10,
+        "kicad": 1
+      }
+    }
+  },
+  "stratification": "source_class_grouped_hamilton_v2",
+  "total_groups": 287,
+  "total_samples": 300
+}

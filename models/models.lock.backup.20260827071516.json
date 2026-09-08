@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "models": [
+    {
+      "task": "component",
+      "path": "candidates/component/model.pt",
+      "sha256": "fc9bbf8d2cd39ba0d7841f5ea2f10e8510bb3e06b660bb92820459f0af85804e",
+      "status": "candidate",
+      "blessed": false,
+      "version": "component-fc9bbf8d2cd39ba0",
+      "license": "Official Dataset300 competition terms; base torchvision weights BSD-3-Clause; redistribution not granted",
+      "precision": "fp32",
+      "adapter": "pcbparse.perception.torch_component_adapter:factory",
+      "artifact_format": "checkpoint",
+      "inference": {
+        "device": "auto",
+        "score_threshold": 0.12403832376,
+        "max_detections": 300
+      },
+      "note": "Diagnostic/unblessed v3 artifact; mAP50 gate 0.2124 < 0.25 and no candidate bundle. Do not submit.",
+      "device": "auto",
+      "score_threshold": 0.12403832376,
+      "max_detections": 300
+    },
+    {
+      "task": "junction",
+      "path": "candidates/junction/model.pt",
+      "sha256": "343e9728fcdb681d0ac797558680a1f3054e6011657646fff94c4d1250a89be7",
+      "status": "candidate",
+      "blessed": false,
+      "version": "junction-343e9728fcdb681d",
+      "license": "Official Dataset300 competition terms; redistribution not granted",
+      "precision": "fp32",
+      "adapter": "pcbparse.perception.torch_junction_adapter:factory",
+      "artifact_format": "checkpoint",
+      "inference": {
+        "device": "auto"
+      },
+      "note": "Diagnostic/unblessed artifact; six-class macro-F1 gate failed and three real validation classes have zero support.",
+      "device": "auto"
+    },
+    {
+      "task": "ocr",
+      "path": "candidates/ocr/model.pt",
+      "sha256": "8136d52fd29960e0c112f4d0fa8bdfe7ec74e32ef53917272a08fbe8be333848",
+      "status": "candidate",
+      "blessed": false,
+      "version": "ocr-8136d52fd29960e0",
+      "license": "Official Dataset300 competition terms; redistribution not granted",
+      "precision": "fp32",
+      "adapter": "pcbparse.perception.torch_ocr_adapter:factory",
+      "artifact_format": "bundle",
+      "inference": {
+        "device": "auto",
+        "detector_threshold": 0.5,
+        "detector_min_area": 4
+      },
+      "note": "Diagnostic/unblessed artifact; do not submit until formal gates pass.",
+      "device": "auto",
+      "detector_threshold": 0.5,
+      "detector_min_area": 4
+    },
+    {
+      "task": "pin",
+      "path": "candidates/pin/model.pt",
+      "sha256": "631398a779546b82d4488018c576fba03d35129b98024a31808c935b81b67434",
+      "status": "candidate",
+      "blessed": false,
+      "version": "pin-631398a779546b82",
+      "license": "Official Dataset300 competition terms; redistribution not granted",
+      "precision": "fp32",
+      "adapter": "pcbparse.perception.torch_pin_adapter:factory",
+      "artifact_format": "checkpoint",
+      "inference": {
+        "device": "auto",
+        "input_size": [384, 384],
+        "output_stride": 4,
+        "score_threshold": 0.15,
+        "nms_radius_heatmap": 2.0,
+        "max_detections_per_component": 128,
+        "box_margin_px": 4.0
+      },
+      "note": "Diagnostic checkpoint; full-val P/R/F1@4px=0.4249/0.5189/0.4673 with the bound decoding parameters, but no matching formal bundle.",
+      "device": "auto",
+      "input_size": [384, 384],
+      "output_stride": 4,
+      "score_threshold": 0.15,
+      "nms_radius_heatmap": 2.0,
+      "max_detections_per_component": 128,
+      "box_margin_px": 4.0
+    },
+    {
+      "task": "wire",
+      "path": "candidates/wire/model.pt",
+      "sha256": "04b0e9f5c1d584a64d584aeb2e44e6634e80c4b1bbadd7b6c74bdbe0e6c40f4d",
+      "status": "candidate",
+      "blessed": false,
+      "version": "wire-04b0e9f5c1d584a6",
+      "license": "Official Dataset300 competition terms; redistribution not granted",
+      "precision": "fp32",
+      "adapter": "pcbparse.perception.torch_wire_adapter:factory",
+      "artifact_format": "torchscript",
+      "inference": {
+        "device": "auto"
+      },
+      "note": "Candidate artifact; production readiness blocked until formal gates and end-to-end validation pass.",
+      "device": "auto"
+    }
+  ],
+  "note": "Production lock intentionally contains candidates only until all five tasks pass formal gates, runtime smoke, and strict end-to-end validation."
+}

@@ -1,0 +1,532 @@
+{
+  "audit_kind": "saved-production-physical-graph-replay",
+  "before_after": {
+    "current_builder_replay": {
+      "disconnected_segment_errors": 0,
+      "mixed_pin_segment_nets": 3,
+      "physical_nets": 205,
+      "pin_only_nets": 1,
+      "segment_bearing_nets": 204
+    },
+    "stored_pre_fix": {
+      "disconnected_segment_errors": 24,
+      "physical_nets": 107
+    }
+  },
+  "collinear_overlap_attribution": {
+    "separate_examples": []
+  },
+  "conclusion": {
+    "reason": "No additional graph-connectivity behavior is safe to change from this evidence. The inactive gap-repair controls are a proven configuration-surface gap, but enabling a bridge policy without an independently validated contract would be test-image tuning and could short non-connected crossings.",
+    "safe_code_change_applied": false
+  },
+  "connectivity_attribution": {
+    "positive_junctions": {
+      "accepted_kinds": [
+        "bend",
+        "connected_cross",
+        "t_junction"
+      ],
+      "branch_references_by_kind": {
+        "bend": 94,
+        "t_junction": 124
+      },
+      "candidate_groups_by_kind": {
+        "bend": 36,
+        "t_junction": 32
+      },
+      "component_size_segments": {
+        "count": 204,
+        "max": 234.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p90": 2.0
+      },
+      "components_after": 204,
+      "components_before": 240,
+      "largest_productive_events": [
+        {
+          "branch_references": 3,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000535",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 234,
+          "point": [
+            520.0,
+            427.0
+          ],
+          "resulting_component_segments": 234,
+          "score": 0.9811118245124817,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 5,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000529",
+          "kind": "t_junction",
+          "origin": "learned_only",
+          "participating_component_segments_before": 226,
+          "point": [
+            757.0,
+            426.5
+          ],
+          "resulting_component_segments": 226,
+          "score": 0.9979561567306519,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 3,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000453",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 206,
+          "point": [
+            757.0,
+            386.0
+          ],
+          "resulting_component_segments": 206,
+          "score": 0.8953443169593811,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 5,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000448",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 202,
+          "point": [
+            623.5,
+            386.0
+          ],
+          "resulting_component_segments": 202,
+          "score": 0.9942551255226135,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 3,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000445",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 201,
+          "point": [
+            490.0,
+            386.0
+          ],
+          "resulting_component_segments": 201,
+          "score": 0.9830265641212463,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 4,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000392",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 197,
+          "point": [
+            154.0,
+            354.0
+          ],
+          "resulting_component_segments": 197,
+          "score": 0.9996142387390137,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 3,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000298",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 169,
+          "point": [
+            757.0,
+            314.0
+          ],
+          "resulting_component_segments": 169,
+          "score": 0.817611813545227,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 5,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000294",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 168,
+          "point": [
+            623.5,
+            314.0
+          ],
+          "resulting_component_segments": 168,
+          "score": 0.9805193543434143,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 3,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000291",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 167,
+          "point": [
+            490.0,
+            314.0
+          ],
+          "resulting_component_segments": 167,
+          "score": 0.9621530175209045,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 4,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000246",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 163,
+          "point": [
+            757.0,
+            285.0
+          ],
+          "resulting_component_segments": 163,
+          "score": 0.9996477365493774,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 4,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000245",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 141,
+          "point": [
+            624.0,
+            285.0
+          ],
+          "resulting_component_segments": 141,
+          "score": 0.9996496438980103,
+          "successful_merges": 1
+        },
+        {
+          "branch_references": 3,
+          "distinct_components_before": 2,
+          "junction_id": "junction:000244",
+          "kind": "t_junction",
+          "origin": "learned_and_geometry",
+          "participating_component_segments_before": 116,
+          "point": [
+            520.0,
+            285.0
+          ],
+          "resulting_component_segments": 116,
+          "score": 0.9982497096061707,
+          "successful_merges": 1
+        }
+      ],
+      "successful_merges": 36,
+      "successful_merges_by_kind": {
+        "bend": 12,
+        "t_junction": 24
+      }
+    },
+    "same_channel_endpoint_clustering": {
+      "candidate_pairs": 543,
+      "component_size_segments": {
+        "count": 377,
+        "max": 10.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p90": 2.0
+      },
+      "components_after": 377,
+      "components_before": 606,
+      "successful_merges": 229,
+      "tolerance_px": 3.0
+    },
+    "singleton_segments": {
+      "component_size_segments": {
+        "count": 606,
+        "max": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p90": 1.0
+      },
+      "components_after": 606,
+      "components_before": 606,
+      "successful_merges": 0
+    },
+    "source_edge_evidence": {
+      "component_size_segments": {
+        "count": 204,
+        "max": 234.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p90": 2.0
+      },
+      "components_after": 204,
+      "components_before": 204,
+      "geometry_checked_groups": 0,
+      "successful_merges": 0,
+      "trusted_dataset_groups": 0
+    },
+    "touching_source_polyline_members": {
+      "candidate_pairs": 608,
+      "component_size_segments": {
+        "count": 240,
+        "max": 37.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p90": 7.0
+      },
+      "components_after": 240,
+      "components_before": 377,
+      "source_polylines": 405,
+      "source_polylines_still_fragmented": 0,
+      "successful_merges": 137,
+      "tolerance_px": 3.0
+    }
+  },
+  "contract_ablations_not_used_for_selection": {
+    "net_reduction_from_configured_endpoint_tolerance_and_touching_contract": 42,
+    "note": "These are fixed contract ablations, not a threshold scan. The current-channel projection changes only stored categorical channel labels and performs no model inference; it increases rather than explains away fragmentation in this legacy replay.",
+    "segment_nets_after_projecting_legacy_channels_to_current_vectorizer_channels": 214,
+    "segment_nets_with_configured_3px_endpoint_contract": 204,
+    "segment_nets_with_exact_coordinate_endpoint_contract": 246
+  },
+  "diagnosis": {
+    "inactive_config_controls": [
+      {
+        "configured_value": 8.0,
+        "name": "graph.gap_repair_max_px",
+        "status": "declared_but_not_consumed_by_the_graph_or_repair_pipeline"
+      },
+      {
+        "configured_value": 0.08,
+        "name": "graph.allow_virtual_repair_ratio",
+        "status": "declared_but_not_consumed_by_the_graph_or_repair_pipeline"
+      }
+    ],
+    "inactive_control_disposition": "This is a real implementation gap, but enabling an 8px virtual bridge from sample 0024 would be unsafe test-image tuning. A bridge policy needs an independently frozen validation contract and crossing safeguards first.",
+    "new_contract_proven_connectivity_defects": [],
+    "proven_fixed_implementation_defect": "The stored pre-fix graph connected non-positive junction candidates, producing 24 validator-proven disconnected nets. Current positive-only junction semantics removes all 24 errors.",
+    "replay_limitations": [
+      "The saved IR contains legacy generic diagonal channel values produced before the live vectorizer split diagonal slopes. Replaying stored segments cannot measure the fully regenerated production output.",
+      "The saved IR does not contain the raw wire probability mask or pre-RDP skeleton, so gap-closing and RDP alternatives cannot be rerun without fresh model inference."
+    ],
+    "weight_or_upstream_evidence_limitations": [
+      "The remaining segment-bearing net count is determined chiefly by the number of retained wire polylines and learned junction classes; a saved IR cannot establish which negative decisions are false without trusted validation evidence.",
+      "Pin snapping can change only the small number of pin-only groups reported above and cannot explain segment-net fragmentation."
+    ]
+  },
+  "endpoint_pair_attribution": {
+    "cross_channel_pairs": 665,
+    "cross_channel_pairs_connected_after_positive_evidence": 505,
+    "cross_channel_pairs_exactly_coincident": 428,
+    "cross_channel_pairs_left_separate": 160,
+    "cross_channel_pairs_with_only_negative_junction_support": 419,
+    "cross_channel_pairs_with_positive_junction_support": 216,
+    "cross_channel_pairs_without_shared_junction_candidate": 30,
+    "same_channel_pairs": 244,
+    "tolerance_px": 3.0,
+    "unique_segment_pairs": 909
+  },
+  "fixed_replay_contract": {
+    "endpoint_tolerance_px": 3.0,
+    "pin_snap_max_px": 6.0,
+    "pin_snap_min_px": 2.0,
+    "pin_snap_unique_margin": 1.5,
+    "positive_junction_kinds": [
+      "bend",
+      "connected_cross",
+      "t_junction"
+    ],
+    "rdp_epsilon_px_recorded_by_pipeline": 1.5
+  },
+  "hash_binding": {
+    "code": {
+      "scripts/audit_saved_physical_graph.py": "1db6ca95e40916586a27fb24e586e1de6d14ac8cc447b1fe4aca5aed65926f69",
+      "src/pcbparse/graph/physical.py": "c4cd4cc63a380f8f6804dd71c2e20524ee9fc6ad2323bb6474ca39c383075e4a",
+      "src/pcbparse/perception/composite_provider.py": "b5bdd3546a0da99e9d274743d4db9e23aafb84c883e80997a85f6d0084799ffe",
+      "src/pcbparse/perception/torch_junction_adapter.py": "5b62ced405bed68e056aa39a84538484f1fb48b0ee1cb156c6128d9dfdc42bf0",
+      "src/pcbparse/validation/graph.py": "3177d3c9d4cf64add3a975970d46fef079f03360dff1c186ba23e47ae21091d5"
+    },
+    "inference_lineage": {
+      "work/production-e2e-audit-calibrated-degraded/predictions.jsonl": "ae2dfd56fe92727147be2f80082c72ca5624225e77169ca6a3186868d2ef18f5",
+      "work/production-e2e-audit-calibrated-degraded/summary.json": "33855ca8588738322ae6e7a13c3c50d1cf65a4facd4267b59545290de5d7f55e"
+    },
+    "input_ir": {
+      "path": "E:/EDA挑战题目六/work/production-e2e-audit-calibrated-degraded/circuit_ir/0024.circuit-ir.json",
+      "sha256": "60c8bb56cfab49ae7714697bde257cba2625b8fb44a4d03b9f1f29f7cf96ba26"
+    },
+    "pipeline_config": {
+      "allow_virtual_repair_ratio": 0.08,
+      "gap_repair_max_px": 8.0,
+      "path": "E:/EDA挑战题目六/work/pipeline.production.degraded.audit.json",
+      "rdp_epsilon_px": 1.5,
+      "sha256": "46f0669a4474dd6e529ee4f0923a55b11408b829696719b84e4f0a21da95d99c"
+    }
+  },
+  "input_inventory": {
+    "channel_counts": {
+      "diagonal": 148,
+      "horizontal": 199,
+      "vertical": 259
+    },
+    "components": 3,
+    "image": {
+      "height": 515,
+      "width": 916
+    },
+    "junctions": 689,
+    "legacy_generic_diagonal_channels_present": true,
+    "pins": 4,
+    "segments": 606,
+    "source_polylines": 405,
+    "stored_physical_nets": 107
+  },
+  "intersection_attribution": {
+    "connected_after_positive_evidence": 389,
+    "cross_channel": 428,
+    "left_separate": 109,
+    "only_negative_junction_support": 316,
+    "positive_junction_support": 182,
+    "proper_intersection_segment_pairs": 498,
+    "same_channel": 70,
+    "shared_endpoint": 498
+  },
+  "junction_attribution": {
+    "branches_per_kind": {
+      "ambiguous": {
+        "count": 6,
+        "max": 5.0,
+        "median": 2.0,
+        "min": 1.0,
+        "p90": 5.0
+      },
+      "bend": {
+        "count": 36,
+        "max": 4.0,
+        "median": 2.0,
+        "min": 1.0,
+        "p90": 4.0
+      },
+      "endpoint": {
+        "count": 615,
+        "max": 6.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p90": 3.0
+      },
+      "t_junction": {
+        "count": 32,
+        "max": 5.0,
+        "median": 4.0,
+        "min": 3.0,
+        "p90": 5.0
+      }
+    },
+    "kind_counts": {
+      "ambiguous": 6,
+      "bend": 36,
+      "endpoint": 615,
+      "t_junction": 32
+    },
+    "non_positive_count": 621,
+    "origin_counts": {
+      "geometry_only": 15,
+      "learned_and_geometry": 549,
+      "learned_only": 125
+    },
+    "positive_count": 68,
+    "positive_fraction": 0.09869375907111756
+  },
+  "ranked_next_actions": [
+    {
+      "action": "Evaluate junction positive-class recall and calibration on the frozen trusted validation junction manifest, stratified by candidate origin and branch count.",
+      "rank": 1,
+      "why": "91 of 167 singleton segment nets already have only non-positive multi-branch junction candidates. Trusted validation is required to tell correct endpoint/non-connected decisions from missed bends/T-junctions."
+    },
+    {
+      "action": "Add a validation-only wire connectivity metric that measures retained-polyline fragmentation and junction coverage from trusted wire/junction records.",
+      "rank": 2,
+      "why": "76 singleton segment nets have no multi-branch junction candidate at all, so junction reclassification alone cannot absorb them; pixel IoU does not expose this graph failure mode."
+    },
+    {
+      "action": "Specify and validate the currently inactive gap-repair/virtual-repair policy on frozen trusted validation data before wiring those pipeline fields into graph construction.",
+      "rank": 3,
+      "why": "The pipeline advertises 8px/8% controls but no implementation consumes them; blindly enabling them on 0024 could short nearby nets."
+    },
+    {
+      "action": "Regenerate one production IR with current diagonal channel serialization after independently blessed weights are available, then rerun this hash-bound audit unchanged.",
+      "rank": 4,
+      "why": "The historical IR predates the live diagonal-slope fix, so its 205-net replay is not a full current-production measurement."
+    }
+  ],
+  "replayed_net_shape": {
+    "accepted_pin_snaps": 3,
+    "pin_counts_per_net": {
+      "count": 205,
+      "max": 1.0,
+      "median": 0.0,
+      "min": 0.0,
+      "p90": 0.0
+    },
+    "segment_counts_per_segment_bearing_net": {
+      "count": 204,
+      "max": 234.0,
+      "median": 1.0,
+      "min": 1.0,
+      "p90": 2.0
+    },
+    "singleton_segment_junction_support": {
+      "no_multi_branch_junction_candidate": 76,
+      "only_non_positive_multi_branch_candidates": 91
+    },
+    "singleton_segment_length_px": {
+      "count": 167,
+      "max": 31.0,
+      "median": 7.0,
+      "min": 3.0,
+      "p90": 25.0
+    },
+    "singleton_segment_nets": 167,
+    "singleton_segments_at_or_below_endpoint_tolerance": 24,
+    "snap_status_counts": {
+      "accepted": 3,
+      "ambiguous": 1
+    }
+  },
+  "schema_version": 1,
+  "selection_boundary": {
+    "external_approximate_reference_net_count": 38,
+    "external_reference_used_for_selection": false,
+    "ground_truth_files_opened": 0,
+    "ground_truth_rows_used": 0,
+    "note": "Sample 0024 is used only as a frozen failure-localization replay. No Dataset300 annotation or official target row is loaded.",
+    "test_images_replayed_without_labels": 1,
+    "test_rows_used": 0,
+    "threshold_search_performed": false
+  },
+  "vectorization_attribution": {
+    "interpretation": "RDP subdivisions inside one retained source polyline are reconnected only when their endpoints touch; their measured reduction is reported in connectivity_attribution.",
+    "multi_segment_source_polylines": 117,
+    "segment_length_px": {
+      "count": 606,
+      "max": 336.0,
+      "median": 7.0,
+      "min": 1.0,
+      "p90": 32.0
+    },
+    "segments_at_or_below_endpoint_tolerance": 153,
+    "segments_per_source_polyline": {
+      "count": 405,
+      "max": 9.0,
+      "median": 1.0,
+      "min": 1.0,
+      "p90": 3.0
+    }
+  }
+}

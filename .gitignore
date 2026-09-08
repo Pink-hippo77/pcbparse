@@ -1,0 +1,62 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+
+# Virtual environments
+.venv-test/
+.venv-train/
+.venv/
+
+# Test/coverage
+.coverage
+.pytest_cache/
+
+# Work directories (contain large inference artifacts, caches, run outputs)
+work/
+
+# Model weights and release bundles (large binary files)
+releases/
+models/weights/
+models/candidates/
+models/*.bak
+
+# Data images and large raw datasets
+data/images/
+data/raw/
+data/manifests/
+data/derived/
+Dataset300/
+
+# Outputs
+outputs/
+
+# Debug/determinism artifacts (large JSON dumps)
+artifacts/debug_e2e_latest/
+artifacts/determinism/
+artifacts/training/materialized/
+
+# Credentials and secrets
+.env
+*.pem
+*.key
+credentials/
+configs/qwen_local.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
