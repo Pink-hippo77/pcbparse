@@ -130,6 +130,15 @@ def infer_one(
         )
     except Exception as exc:
         setattr(exc, "context_manifest", ctx.manifest())
+        # Attach the partial IR so failure artifacts can be saved for replay.
+        partial_ir = getattr(exc, "_partial_ir", None)
+        if partial_ir is None:
+            # Walk the context stages to find the most recent IR
+            for stage_data in reversed(ctx._stages if hasattr(ctx, '_stages') else []):
+                if isinstance(stage_data, dict) and "ir" in stage_data:
+                    partial_ir = stage_data["ir"]
+                    break
+        setattr(exc, "partial_ir", partial_ir)
         raise
 
 
@@ -285,7 +294,9 @@ def _infer_one(
         errors = [item for item in diagnostics if item.severity == "ERROR"]
         trace["object_count"] = len(diagnostics)
         if errors:
-            raise PipelineError(f"validation failed with {len(errors)} error(s)", diagnostics)
+            err = PipelineError(f"validation failed with {len(errors)} error(s)", diagnostics)
+            err.partial_ir = ir
+            raise err
 
     with ctx.stage("serialization") as trace:
         output = serialize_official(ir, official_profile)

@@ -397,29 +397,43 @@ def run_production_evaluation(
         except Exception as exc:
             elapsed = time.monotonic() - case_started
             context_manifest = getattr(exc, "context_manifest", None)
-            rows.append(
-                _base_record(
-                    case,
-                    input_paths=input_paths,
+            # Save failure IR for replay/debugging when available.
+            failure_ir_path = None
+            failure_ir_sha256 = None
+            partial_ir = getattr(exc, "partial_ir", None)
+            if partial_ir is not None:
+                try:
+                    failure_ir_payload = _canonical_json_bytes(partial_ir.model_dump(mode="json"))
+                    failure_ir_path = ir_path
+                    _atomic_write(ir_path, failure_ir_payload)
+                    failure_ir_sha256 = hashlib.sha256(failure_ir_payload).hexdigest()
+                except Exception:
+                    pass  # Best effort; don't mask the original error
+            row = _base_record(
+                case,
+                input_paths=input_paths,
+                config_sha256=effective_config_hash,
+                lock_sha256=lock_sha256,
+                inference_run_id=inference_run_id,
+                status="error",
+                elapsed_seconds=elapsed,
+                error=_traceable_error(
+                    exc,
+                    case_id=case.case_id,
+                    image_sha256=case.expected_image_sha256,
                     config_sha256=effective_config_hash,
                     lock_sha256=lock_sha256,
-                    inference_run_id=inference_run_id,
-                    status="error",
-                    elapsed_seconds=elapsed,
-                    error=_traceable_error(
-                        exc,
-                        case_id=case.case_id,
-                        image_sha256=case.expected_image_sha256,
-                        config_sha256=effective_config_hash,
-                        lock_sha256=lock_sha256,
-                    ),
-                    runtime_evidence=(
-                        _runtime_evidence(context_manifest)
-                        if isinstance(context_manifest, Mapping)
-                        else None
-                    ),
-                )
+                ),
+                runtime_evidence=(
+                    _runtime_evidence(context_manifest)
+                    if isinstance(context_manifest, Mapping)
+                    else None
+                ),
             )
+            if failure_ir_path is not None:
+                row["ir_path"] = failure_ir_path.relative_to(destination).as_posix()
+                row["ir_sha256"] = failure_ir_sha256
+            rows.append(row)
             if fail_fast:
                 stop_after_error = True
 
