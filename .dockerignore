@@ -1,20 +1,68 @@
+# Version control
 .git
+.gitignore
+
+# Virtual environments
 .venv
+.venv-test
+.venv-train
+
+# Python caches
 __pycache__
 *.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+
+# Data (large, not needed in image)
 Dataset300
-data
-artifacts
-outputs
-tests
+data/images
+data/raw
+data/manifests
+data/derived
+
+# Build artifacts
+build
+dist
+
+# Work directories (inference caches, run outputs)
 work
 
-
+# Training outputs and model artifacts (large binaries)
 models/weights
 models/candidates
 models/pretrained
-models/models.lock.*.json
-models/models.v*.json
+models/*.bak
+releases
+
+# Outputs
+outputs
+
+# Tests (not needed at runtime)
+tests
+
+# Documentation (not needed at runtime)
+docs
+artifacts
+
+# IDE / OS
+.vscode
+.idea
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Credentials
+.env
+*.pem
+*.key
+credentials
 configs/qwen_local.json
 
-models/*.bak
+# Temporary
+*.tmp
+*.bak
+
+# Lock file variants (keep only the canonical one)
+models/models.lock.*.json
+models/models.v*.json

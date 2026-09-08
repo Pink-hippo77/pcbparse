@@ -94,17 +94,28 @@ $env:PYTHONPATH = "E:\EDA挑战题目六\src"
 
 | 优先级 | 项目 | 依赖 |
 |---|---|---|
-| P0-C | 端到端精度差距 (designator 17.5%, pin number 4.77%) | Prompt 4, 5 |
+| P0-C | 端到端精度差距 (designator 17.5%, pin number 4.77%) | Prompt 4 损失分解 + Prompt 5 训练 |
 | P0-D | 评测集污染与评分口径 | 新独立数据 |
-| P1-A | ORT CUDA 12 版本兼容性 | Prompt 3 |
-| P1-B | 域差异 (KiCad 薄弱) | Prompt 5 |
-| P1-C | 失败 IR 回放、磁盘预算 | 工程优化 |
+| P1-A | ORT CUDA 12 版本兼容性 | 手动安装 ORT 1.21.x 到 .venv-ort12 |
+| P1-B | 域差异 (KiCad 薄弱) | Prompt 5 训练 |
+| P1-C | 失败 IR 回放、磁盘预算 | 下次 production run 验证 partial_ir 保存 |
+
+## Git 提交历史
+
+```
+673c668 prompt4: OCR loss decomposition framework and analysis
+7ee5c57 prompt3: runtime audit, OCR batch config, perception sub-stage timing
+71aa157 prompt1+2: targeted tests, duplicate designator fix, connectivity contract
+0286c96 prompt0: baseline, status, split audit, failure IR preservation
+65b9901 baseline: P0 contract fixes + prompt0 init (2026-09-08)
+```
 
 ## 回滚方法
 
 ```bash
 # 回滚到此基线
 git checkout 65b9901
-```
 
-所有模型权重、配置、数据未被修改。源码改动可通过 Git 精确回滚。
+# 只回滚代码改动，保留文档
+git checkout 673c668 -- src/ tests/ scripts/ configs/ .gitignore .dockerignore
+```

@@ -28,7 +28,10 @@
     "component_fallback_trigger_max_bbox_area_fraction": 0.02
   },
   "ocr": {
-    "detector_threshold": 0.5
+    "detector_threshold": 0.5,
+    "global_batch_size": 8,
+    "component_batch_size": 4,
+    "strip_batch_size": 16
   },
   "association": {
     "pin_wire_snap_min_px": 2.0,
