@@ -94,7 +94,7 @@ def resolve_component_keys(
         for _, value, owner in candidates
         if owner is not None and owner in component_index
     }
-    scored: list[tuple[float, str, str]] = []
+    scored: list[tuple[float, str, str, bool]] = []
     if (
         not isinstance(min_score, (int, float))
         or isinstance(min_score, bool)
@@ -122,7 +122,7 @@ def resolve_component_keys(
                 if owner is not None
                 else 0.65 * float(token.score) + 0.25 * proximity + 0.10 * compatibility
             )
-            scored.append((min(1.0, score), component.internal_id, canonical_value))
+            scored.append((min(1.0, score), component.internal_id, canonical_value, owner is not None))
     assignments: dict[str, str] = {}
     # Keys already assigned by a prior pass (e.g., from explicit component-owned OCR)
     # are locked.  However, different components may legitimately share the same
@@ -139,11 +139,15 @@ def resolve_component_keys(
         if not component.key
     }
     edge_candidates: dict[tuple[str, str], float] = {}
-    for score, component_id, key in scored:
+    # Track which (component, key) pairs have explicit owner evidence
+    explicit_owner_edges: set[tuple[str, str]] = set()
+    for score, component_id, key, has_explicit_owner in scored:
         if key in used_keys:
             continue
         pair = (component_id, key)
         edge_candidates[pair] = max(edge_candidates.get(pair, -1.0), score)
+        if has_explicit_owner:
+            explicit_owner_edges.add(pair)
     ordered_edges = sorted(
         (
             (score, component_id, key)
@@ -156,6 +160,9 @@ def resolve_component_keys(
     # Track newly assigned keys so a second component with independent evidence
     # can also receive the same visible designator.
     newly_used_keys: set[str] = set()
+    # Track keys that were assigned from explicit owner evidence — duplicate
+    # designators are allowed when both components have independent explicit evidence.
+    explicitly_assigned_keys: set[str] = set()
     for score, component_id, key in ordered_edges:
         if component_id in assigned_components:
             continue
@@ -172,7 +179,21 @@ def resolve_component_keys(
             reverse=True,
         )
         if competing_targets and score - competing_targets[0] < unique_margin:
-            continue
+            # Allow duplicate designators when the current component has
+            # explicit owner evidence AND all competing assignments also came
+            # from explicit owner evidence.  This means two components each
+            # independently observed the same visible label — the serializer
+            # handles KEY_1/KEY_2 suffixing.
+            current_has_explicit = (component_id, key) in explicit_owner_edges
+            all_competitors_explicit = all(
+                (comp_id, key) in explicit_owner_edges
+                for comp_id, comp_key in edge_candidates
+                if comp_key == key and comp_id != component_id
+            )
+            if current_has_explicit and all_competitors_explicit:
+                pass  # Allow duplicate
+            else:
+                continue
         alternatives = sorted(
             (
                 alternative_score
@@ -197,6 +218,9 @@ def resolve_component_keys(
         assignments[component_id] = key
         assigned_components.add(component_id)
         used_keys.add(key)
+        newly_used_keys.add(key)
+        if (component_id, key) in explicit_owner_edges:
+            explicitly_assigned_keys.add(key)
     return assignments
 
 
