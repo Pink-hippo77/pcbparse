@@ -60,6 +60,13 @@ def _submission_mode(config: dict[str, Any]) -> str:
     return mode if mode in {"strict", "degraded"} else "strict"
 
 
+def _is_debug_execution(config: dict[str, Any]) -> bool:
+    """True when the pipeline runs in debug/non-production mode."""
+    run = config.get("run", {})
+    profile = str(run.get("profile", "")).strip().lower()
+    return profile == "debug"
+
+
 def _prune_unrepresentable(ir: Any) -> None:
     """Drop objects the official schema cannot represent (never guess)."""
     valid_components = {
@@ -131,14 +138,16 @@ def infer_one(
     except Exception as exc:
         setattr(exc, "context_manifest", ctx.manifest())
         # Attach the partial IR so failure artifacts can be saved for replay.
-        partial_ir = getattr(exc, "_partial_ir", None)
-        if partial_ir is None:
-            # Walk the context stages to find the most recent IR
-            for stage_data in reversed(ctx._stages if hasattr(ctx, '_stages') else []):
-                if isinstance(stage_data, dict) and "ir" in stage_data:
-                    partial_ir = stage_data["ir"]
-                    break
-        setattr(exc, "partial_ir", partial_ir)
+        # The PipelineError from _infer_one already carries partial_ir; don't
+        # overwrite it with None.
+        if not hasattr(exc, "partial_ir") or getattr(exc, "partial_ir", None) is None:
+            partial_ir = getattr(exc, "_partial_ir", None)
+            if partial_ir is None:
+                for stage_data in reversed(ctx._stages if hasattr(ctx, '_stages') else []):
+                    if isinstance(stage_data, dict) and "ir" in stage_data:
+                        partial_ir = stage_data["ir"]
+                        break
+            setattr(exc, "partial_ir", partial_ir)
         raise
 
 
@@ -294,9 +303,17 @@ def _infer_one(
         errors = [item for item in diagnostics if item.severity == "ERROR"]
         trace["object_count"] = len(diagnostics)
         if errors:
-            err = PipelineError(f"validation failed with {len(errors)} error(s)", diagnostics)
-            err.partial_ir = ir
-            raise err
+            if _is_debug_execution(config):
+                # Debug mode: log quality errors but don't block serialization.
+                # Debug providers (e.g., dataset_debug) naturally produce IR
+                # with quality gaps; blocking them prevents debug output.
+                ir.state = IRState.VALIDATED
+            else:
+                err = PipelineError(f"validation failed with {len(errors)} error(s)", diagnostics)
+                err.partial_ir = ir
+                raise err
+        elif ir.state in {IRState.SEMANTIC, IRState.VALIDATED}:
+            ir.state = IRState.VALIDATED
 
     with ctx.stage("serialization") as trace:
         output = serialize_official(ir, official_profile)

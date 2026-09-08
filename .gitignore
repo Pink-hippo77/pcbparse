@@ -60,3 +60,4 @@ Desktop.ini
 # Temporary files
 *.tmp
 *.bak
+tmp/
