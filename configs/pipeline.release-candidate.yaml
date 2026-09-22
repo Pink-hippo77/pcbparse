@@ -29,6 +29,7 @@
   },
   "ocr": {
     "detector_threshold": 0.5,
+    "vertical_rotation_enabled": true,
     "global_batch_size": 8,
     "component_batch_size": 4,
     "strip_batch_size": 16
@@ -41,7 +42,7 @@
     "component_min_score": 0.3,
     "component_unique_margin": 0.0,
     "pin_min_score": 0.3,
-    "pin_unique_margin": 0.02,
+    "pin_unique_margin": 0.0,
     "netlabel_min_text_score": 0.5
   },
   "graph": {

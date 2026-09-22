@@ -12,6 +12,7 @@ from pcbparse.ir import (
     NetLabel,
     Pin,
     Point,
+    PhysicalNet,
     WireSegment,
 )
 from pcbparse.validation.graph import validate_graph
@@ -212,6 +213,84 @@ class PhysicalGraphFixtureTests(unittest.TestCase):
         nets, _ = build_physical_graph(ir)
 
         self.assertEqual(2, len(nets))
+
+    def test_validator_rejects_distant_reused_source_ids(self) -> None:
+        """A provenance ID cannot turn disconnected geometry into one net."""
+        ir = _ir()
+        ir.segments = [
+            WireSegment(
+                internal_id="s1",
+                start=Point(x=10, y=10),
+                end=Point(x=40, y=10),
+                source_polyline_id="bad-reused-id",
+            ),
+            WireSegment(
+                internal_id="s2",
+                start=Point(x=120, y=80),
+                end=Point(x=170, y=80),
+                source_polyline_id="bad-reused-id",
+            ),
+        ]
+        ir.physical_nets = [
+            PhysicalNet(internal_id="invalid_net", pins=[], segments=["s1", "s2"])
+        ]
+
+        errors = [item for item in validate_graph(ir) if item.severity == "ERROR"]
+
+        self.assertTrue(any(item.code == "NET.DISCONNECTED_SEGMENTS" for item in errors))
+
+    def test_dataset_source_edge_can_preserve_sparse_golden_membership(self) -> None:
+        """The explicit dataset/golden exception remains auditable and scoped."""
+        ir = _ir()
+        ir.segments = [
+            WireSegment(
+                internal_id="s1",
+                start=Point(x=10, y=10),
+                end=Point(x=40, y=10),
+                source_edge_id="golden-edge",
+                evidence=[Evidence(evidence_id="dataset:s1", source="dataset")],
+            ),
+            WireSegment(
+                internal_id="s2",
+                start=Point(x=120, y=80),
+                end=Point(x=170, y=80),
+                source_edge_id="golden-edge",
+                evidence=[Evidence(evidence_id="dataset:s2", source="dataset")],
+            ),
+        ]
+        ir.physical_nets = [
+            PhysicalNet(internal_id="golden_net", pins=[], segments=["s1", "s2"])
+        ]
+
+        errors = [item for item in validate_graph(ir) if item.severity == "ERROR"]
+
+        self.assertFalse(any(item.code == "NET.DISCONNECTED_SEGMENTS" for item in errors))
+
+    def test_validator_uses_configured_endpoint_tolerance(self) -> None:
+        ir = _ir()
+        ir.segments = [
+            WireSegment(
+                internal_id="s1",
+                start=Point(x=10, y=10),
+                end=Point(x=40, y=10),
+                channel="horizontal",
+            ),
+            WireSegment(
+                internal_id="s2",
+                start=Point(x=42, y=10),
+                end=Point(x=70, y=10),
+                channel="horizontal",
+            ),
+        ]
+        ir.physical_nets = [
+            PhysicalNet(internal_id="tolerance_net", pins=[], segments=["s1", "s2"])
+        ]
+
+        strict_errors = validate_graph(ir, endpoint_tolerance_px=1.0)
+        relaxed_errors = validate_graph(ir, endpoint_tolerance_px=3.0)
+
+        self.assertTrue(any(item.code == "NET.DISCONNECTED_SEGMENTS" for item in strict_errors))
+        self.assertFalse(any(item.code == "NET.DISCONNECTED_SEGMENTS" for item in relaxed_errors))
 
     def test_untrusted_far_explicit_membership_is_ignored(self) -> None:
         ir = _ir()

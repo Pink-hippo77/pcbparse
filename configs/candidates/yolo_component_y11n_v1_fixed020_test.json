@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "kind": "pcbparse_yolo_component_fixed_test_candidate",
+  "status": "frozen_before_test",
+  "task": "component",
+  "candidate_name": "yolo11n-v1-fixed020",
+  "selection_basis": "The score floor and tiled replay protocol predate this YOLO validation and are not selected from test labels.",
+  "checkpoint": {
+    "path": "work/yolo/component-yolo11n-v1/weights/best.pt",
+    "sha256": "d34870046c35e76c6342e92de7ade8673819978a2977f8e02a63708b2cc6f2f9"
+  },
+  "category_table": {
+    "path": "data/derived/pcbnet-upgrade-v1/component_yolo/classes.json",
+    "sha256": "ec63e8352b0c38897d51654ac740c8f3e600103a5b0484d395815fbdac0d6566"
+  },
+  "protocol": {
+    "split": "test",
+    "tile_size": 512,
+    "tile_overlap": 64,
+    "score_threshold": 0.2,
+    "component_nms_iou": 0.55,
+    "cross_tile_nms_iou": 0.55,
+    "max_detections_per_tile": 300,
+    "component_max_candidates": 128,
+    "match_iou": 0.5,
+    "model_imgsz": 640
+  },
+  "independent_test_decision_gates": [
+    {
+      "metric": "bbox_map50",
+      "operator": "gte",
+      "threshold": 0.4628123153106686,
+      "basis": "current Faster R-CNN v5 frozen-test value"
+    },
+    {
+      "metric": "recall50",
+      "operator": "gte",
+      "threshold": 0.6701316701316701,
+      "basis": "current Faster R-CNN v5 frozen-test value"
+    },
+    {
+      "metric": "f1_50",
+      "operator": "gte",
+      "threshold": 0.7381679389312976,
+      "basis": "current Faster R-CNN v5 frozen-test value"
+    }
+  ],
+  "baseline": {
+    "name": "component-v5-calibrated-test",
+    "path": "work/confirm-component-v5-calibrated-test/calibrated_test_status.json",
+    "sha256": "0fe382f57adc80820cac480fbb3070e6e13efc9648f134727fa32c7b0e7a43cc"
+  },
+  "bound_inputs": {
+    "component_coco": {
+      "path": "artifacts/training/materialized/dataset300-v2/component-pin/component_coco.json",
+      "sha256": "1350ba26937e34e9113c7ba117a84d68ede66d619b7c26663ad0306e6a98bb3b"
+    },
+    "materialization_summary": {
+      "path": "artifacts/training/materialized/dataset300-v2/component-pin/summary.json",
+      "sha256": "e20eec8a4ac2f25e22fc385e9ec2002549131f49b0916b8fe39353ba310bad88"
+    },
+    "pipeline_config": {
+      "path": "configs/pipeline.component512-experiment.yaml",
+      "sha256": "0e5101ad0b24dc78a7e87134c72d72e68f5559d9d6c8088e311875ffaaec63bf"
+    },
+    "thresholds_config": {
+      "path": "configs/thresholds.yaml",
+      "sha256": "8c470dce88a90fbaf2391824dc6ccb414e7f54bdcc800d65388bcefd4c3d80c8"
+    },
+    "training_config": {
+      "path": "configs/train/yolo_component_y11n_v1.json",
+      "sha256": "adf3781edc81a44d53e8849981351fd8962a3dd5f6fedd4aaddac492d4c63501"
+    },
+    "training_results": {
+      "path": "work/yolo/component-yolo11n-v1/results.csv",
+      "sha256": "25cf05887cb541347dd34ec37430fbd2599be3e5a91af25fe006ba1673269541"
+    },
+    "training_log": {
+      "path": "work/yolo/component-yolo11n-v1.stdout.log",
+      "sha256": "263b48baaf56e426c838c30db72667679c4a6dad9ef9431abb833c433f7f5e90"
+    }
+  },
+  "test_policy": {
+    "threshold_search_on_test": false,
+    "class_threshold_search_on_test": false,
+    "test_sample_selection_by_label": false,
+    "promotion_authorized": false,
+    "models_lock_mutation_authorized": false
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "kind": "pcbparse_yolo_component_border_refinement_paired_test_candidate",
+  "status": "frozen_before_test",
+  "task": "component",
+  "candidate_name": "yolo11n-v2-box-internal-border-refinement",
+  "frozen_at_utc": "2026-09-16T08:24:40.338Z",
+  "selection_basis": "The Box internal-border refinement policy, per-class score thresholds, and paired decision gates were selected from frozen validation evidence before this test replay.",
+  "test_population": {
+    "split": "test",
+    "full_image_count": 30,
+    "component_annotation_count": 1443,
+    "selection_policy": "all frozen test full images; no label-dependent sample selection"
+  },
+  "protocol": {
+    "tile_size": 512,
+    "tile_overlap": 64,
+    "score_population_floor": 0.2,
+    "component_nms_iou": 0.55,
+    "component_max_candidates": 128,
+    "max_detections_per_tile": 300,
+    "match_iou": 0.5,
+    "model_imgsz": 640,
+    "refinement_category": "Box"
+  },
+  "independent_test_decision_gates": [
+    {
+      "metric": "delta.f1_50",
+      "operator": "gte",
+      "threshold": 0.01,
+      "basis": "Require a material overall F1 improvement over the paired baseline."
+    },
+    {
+      "metric": "delta.recall50",
+      "operator": "gte",
+      "threshold": -0.005,
+      "basis": "Limit absolute overall recall regression to 0.5 percentage points."
+    },
+    {
+      "metric": "false_positive_reduction_ratio",
+      "operator": "gte",
+      "threshold": 0.1,
+      "basis": "Confirm that the validation-observed false-positive reduction generalizes."
+    },
+    {
+      "metric": "box.false_positive_reduction_ratio",
+      "operator": "gte",
+      "threshold": 0.2,
+      "basis": "Require at least 20 percent fewer Box false positives."
+    },
+    {
+      "metric": "box.delta_recall50",
+      "operator": "gte",
+      "threshold": -0.01,
+      "basis": "Limit absolute Box recall regression to one percentage point."
+    }
+  ],
+  "bound_inputs": {
+    "checkpoint": {
+      "path": "work/yolo/component-yolo11n-v2-precision/weights/best.pt",
+      "sha256": "134ec62e77e11cdccb296040a3fd346a3864f13a1d44de7fb7a55e6ae0d87c8b"
+    },
+    "category_table": {
+      "path": "data/derived/pcbnet-upgrade-v1/component_yolo/classes.json",
+      "sha256": "ec63e8352b0c38897d51654ac740c8f3e600103a5b0484d395815fbdac0d6566"
+    },
+    "component_coco": {
+      "path": "artifacts/training/materialized/dataset300-v2/component-pin/component_coco.json",
+      "sha256": "1350ba26937e34e9113c7ba117a84d68ede66d619b7c26663ad0306e6a98bb3b"
+    },
+    "materialization_summary": {
+      "path": "artifacts/training/materialized/dataset300-v2/component-pin/summary.json",
+      "sha256": "e20eec8a4ac2f25e22fc385e9ec2002549131f49b0916b8fe39353ba310bad88"
+    },
+    "baseline_pipeline_config": {
+      "path": "configs/pipeline.component512-border-confirm-box-ios-experiment.yaml",
+      "sha256": "5b2a88f04290006da73fb2055da8e41c1be75238c3eea1d730d8729f9e0e7e45"
+    },
+    "candidate_pipeline_config": {
+      "path": "configs/pipeline.component512-border-refine-box-experiment.yaml",
+      "sha256": "5953feb4ae46ca1071562559b5fcebea3a7222cc4e3b2f1ee99e67d191497434"
+    },
+    "thresholds_config": {
+      "path": "configs/thresholds.yaml",
+      "sha256": "8c470dce88a90fbaf2391824dc6ccb414e7f54bdcc800d65388bcefd4c3d80c8"
+    },
+    "training_config": {
+      "path": "configs/train/yolo_component_y11n_v2_precision.json",
+      "sha256": "1a088298423c2ac0a361bde7e1a12bf014839c53647624d4c154e29581fd9a5e"
+    },
+    "training_results": {
+      "path": "work/yolo/component-yolo11n-v2-precision/results.csv",
+      "sha256": "7f7995cb2e2fee0eae16046b3f20ecc7a3fe48f39bcf19358590a142cc37aa34"
+    },
+    "training_status": {
+      "path": "work/yolo/component-yolo11n-v2-precision/launcher_status.json",
+      "sha256": "a89b1b7a63d3e91db2106d27491e0f6834a58ea4bb6331f99142fd8e8316af13"
+    },
+    "per_class_threshold_calibration": {
+      "path": "artifacts/audits/component_yolo11n_v2_per_class_threshold_calibration.json",
+      "sha256": "31e656efd6e75e503c2ec02e3f9ed7d9ca49b624a731a3b9aeb3a0588bceb2ec"
+    },
+    "validation_refinement_ab": {
+      "path": "artifacts/audits/component_yolo11n_v2_box_border_refinement_ab.json",
+      "sha256": "f5c96ea44ec3fa74f4650087ee96a0e57b6a4754541fe652c867dbcc47470973"
+    },
+    "models_lock": {
+      "path": "models/models.lock.json",
+      "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413"
+    }
+  },
+  "test_policy": {
+    "threshold_search_on_test": false,
+    "class_threshold_search_on_test": false,
+    "geometry_search_on_test": false,
+    "test_sample_selection_by_label": false,
+    "post_test_parameter_tuning_allowed": false,
+    "promotion_authorized": false,
+    "models_lock_mutation_authorized": false
+  }
+}

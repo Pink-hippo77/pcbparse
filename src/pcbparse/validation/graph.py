@@ -72,17 +72,22 @@ def _has_disconnected_segments(
                         adjacency[other_idx].add(idx)
         cells[(cx, cy, channel)].append((idx, x, y))
 
-    # Multiple strict two-point segments may retain one observed source edge or
-    # source polyline. Those memberships are connectivity evidence, not merely labels.
-    for attribute in ("source_edge_id", "source_polyline_id"):
-        groups: dict[str, list[int]] = defaultdict(list)
-        for idx, segment in enumerate(available):
-            value = getattr(segment, attribute)
-            if value:
-                groups[value].append(idx)
-        for members in groups.values():
-            for source in members:
-                adjacency[source].update(members)
+    # Source IDs are provenance, not proof that distant geometry is one wire.
+    # The builder uses endpoint geometry for ordinary source IDs, so the
+    # endpoint checks above are the only connectivity evidence for learned or
+    # heuristic segments. Dataset/golden source edges are the explicit oracle
+    # exception and may remain connected when their geometry is sparse.
+    dataset_source_edges: dict[str, list[int]] = defaultdict(list)
+    for idx, segment in enumerate(available):
+        if segment.source_edge_id and any(
+            item.source == "dataset" for item in segment.evidence
+        ):
+            dataset_source_edges[segment.source_edge_id].append(idx)
+    for members in dataset_source_edges.values():
+        if len(members) < 2:
+            continue
+        for source in members:
+            adjacency[source].update(members)
 
     # Match the builder's collinear connectivity: segments whose interiors
     # overlap (or whose gap is within tolerance) on the same channel are
@@ -122,6 +127,7 @@ def _duplicates(values: list[str]) -> list[str]:
 def validate_graph(
     ir: CircuitIR,
     *,
+    endpoint_tolerance_px: float = 3.0,
     collinear_merge_tolerance_px: float = 0.0,
     collinear_gap_merge_tolerance_px: float = 0.0,
 ) -> list[Diagnostic]:
@@ -177,6 +183,7 @@ def validate_graph(
             net.segments,
             segment_index,
             connected_junction_groups,
+            endpoint_tolerance_px=endpoint_tolerance_px,
             collinear_merge_tolerance_px=collinear_merge_tolerance_px,
             collinear_gap_merge_tolerance_px=collinear_gap_merge_tolerance_px,
         ):
@@ -234,9 +241,13 @@ class GraphValidator:
     def __init__(
         self,
         *,
+        endpoint_tolerance_px: float = 3.0,
         collinear_merge_tolerance_px: float = 0.0,
         collinear_gap_merge_tolerance_px: float = 0.0,
     ) -> None:
+        if endpoint_tolerance_px < 0:
+            raise ValueError("endpoint_tolerance_px cannot be negative")
+        self.endpoint_tolerance_px = endpoint_tolerance_px
         self.collinear_merge_tolerance_px = collinear_merge_tolerance_px
         self.collinear_gap_merge_tolerance_px = collinear_gap_merge_tolerance_px
 
@@ -244,6 +255,7 @@ class GraphValidator:
         del ctx
         return validate_graph(
             ir,
+            endpoint_tolerance_px=self.endpoint_tolerance_px,
             collinear_merge_tolerance_px=self.collinear_merge_tolerance_px,
             collinear_gap_merge_tolerance_px=self.collinear_gap_merge_tolerance_px,
         )

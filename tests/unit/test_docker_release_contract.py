@@ -1,47 +1,49 @@
 from __future__ import annotations
 
-import json
-import re
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
+AGENT_SYSTEM = ROOT / "docker" / "agent_system"
+EDARACE_REQUIREMENTS = ROOT / "requirements.edarace.txt"
 
 
 class DockerReleaseContractTests(unittest.TestCase):
-    def test_default_command_is_exact_competition_production_service(self) -> None:
+    def test_image_uses_official_one_shot_contract(self) -> None:
         text = DOCKERFILE.read_text(encoding="utf-8")
-        matches = re.findall(r"(?m)^CMD\s+(\[.*\])\s*$", text)
-        self.assertEqual(1, len(matches))
-        command = json.loads(matches[0])
+        self.assertIn("FROM edarace-agent-base:ubuntu24", text)
+        self.assertIn('ENTRYPOINT ["/submission/agent_system"]', text)
+        self.assertIn("COPY docker/agent_system /submission/agent_system", text)
+        self.assertIn("PCBPARSE_APP_ROOT=/submission/app", text)
+        self.assertNotIn("EXPOSE 8080", text)
+        self.assertNotIn("HEALTHCHECK", text)
+        self.assertNotIn('CMD ["python", "-m", "pcbparse.cli", "serve"', text)
+        self.assertNotIn("/data/input", text)
+        self.assertNotIn("/data/output", text)
 
-        self.assertEqual(["python", "-m", "pcbparse.cli", "serve"], command[:4])
-        pairs = dict(zip(command[4::2], command[5::2]))
-        self.assertEqual("0.0.0.0", pairs["--host"])
-        self.assertEqual("8080", pairs["--port"])
-        self.assertEqual("/data/input", pairs["--input-root"])
-        self.assertEqual("/data/output", pairs["--output-root"])
-        self.assertEqual("/app/configs/pipeline.yaml", pairs["--config"])
-        self.assertEqual(
-            "/app/configs/profiles/competition.yaml", pairs["--profile"]
-        )
-        self.assertEqual("production", pairs["--provider"])
-        self.assertEqual("/app/models/models.lock.json", pairs["--models-lock"])
-        self.assertNotIn("--allow-unready-debug", command)
-
-    def test_image_keeps_fail_closed_healthcheck_and_pinned_runtime(self) -> None:
+    def test_image_keeps_model_lineage_and_official_cuda_runtime(self) -> None:
         text = DOCKERFILE.read_text(encoding="utf-8")
-        self.assertIn(
-            "FROM pytorch/pytorch:2.12.1-cuda12.6-cudnn9-runtime", text
-        )
-        self.assertIn("HEALTHCHECK", text)
-        self.assertIn("http://127.0.0.1:8080/ready", text)
-        self.assertIn('ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]', text)
-        self.assertNotIn("dataset_golden", text)
-        self.assertNotIn("dataset_debug", text)
-        self.assertNotIn("heuristic", text)
+        self.assertIn("models/models.lock.json", text)
+        self.assertIn("models/releases/v8-portable", text)
+        self.assertIn("require_lineage=True", text)
+        self.assertIn("configs/pipeline.edarace.yaml", text)
+        self.assertIn("cuda_nvrtc/lib", text)
+        self.assertIn("cudnn/lib", text)
+
+        requirements = EDARACE_REQUIREMENTS.read_text(encoding="utf-8")
+        self.assertIn("pydantic==2.13.4", requirements)
+        self.assertIn("onnxruntime-gpu==1.21.1", requirements)
+        self.assertNotIn("torch==", requirements)
+        self.assertNotIn("torchvision==", requirements)
+
+    def test_entrypoint_forwards_official_arguments_without_eval(self) -> None:
+        text = AGENT_SYSTEM.read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("#!/usr/bin/env bash\n"))
+        self.assertIn('exec python3 -m pcbparse.submission_agent "$@"', text)
+        self.assertNotIn("eval ", text)
+        self.assertNotIn("LLM_API_KEY=", text)
 
 
 if __name__ == "__main__":

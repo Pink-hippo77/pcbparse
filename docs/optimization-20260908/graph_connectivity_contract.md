@@ -34,13 +34,17 @@
 
 ### 6. Golden/Dataset 连接
 
-`source="dataset"` 的证据可跳过几何检查，直接信任。
+仅当同一 `source_edge_id` 的全部成员都带有 `source="dataset"` 证据时，
+才允许跳过几何检查；`source_polyline_id` 不享有该例外。该路径只用于
+明确标记的 golden/dataset 诊断，不适用于 learned 或 heuristic 预测。
 
 ## 校验器行为
 
-- 默认调用（无容差参数）：只检查端点邻接 + Junction + source ID → 旧行为
+- 默认调用（无容差参数）：按端点容差 3.0px 检查端点邻接 + Junction，
+  并仅保留明确的 dataset source-edge 例外
 - 带容差调用：额外检查共线重叠/间隙 → 与构建器一致
-- Pipeline orchestrator 从 config 读取容差并传递给校验器
+- `endpoint_tolerance_px`、共线重叠和间隙容差均从 config 读取并传递给校验器
+- 校验器不因复用的 source ID 自动合并远距离线段
 
 ## 测试覆盖
 
@@ -53,4 +57,7 @@
 | `test_distant_reused_polyline_not_merged_by_builder` | `test_p0_contract_fixes.py` |
 | `test_non_connected_cross_remains_two_physical_nets` | `test_graph_fixtures.py` |
 | `test_distant_reused_polyline_id_does_not_create_giant_net` | `test_graph_fixtures.py` |
+| `test_validator_rejects_distant_reused_source_ids` | `test_graph_fixtures.py` |
+| `test_dataset_source_edge_can_preserve_sparse_golden_membership` | `test_graph_fixtures.py` |
+| `test_validator_uses_configured_endpoint_tolerance` | `test_graph_fixtures.py` |
 | `test_endpoint_classification_never_bridges_channel_separated_segments` | `test_graph_fixtures.py` |

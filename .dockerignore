@@ -16,6 +16,7 @@ __pycache__
 
 # Data (large, not needed in image)
 Dataset300
+赛题六公开数据集
 data/images
 data/raw
 data/manifests
@@ -27,16 +28,24 @@ dist
 
 # Work directories (inference caches, run outputs)
 work
+archive
+external
 
 # Training outputs and model artifacts (large binaries)
 models/weights
+weights
 models/candidates
 models/pretrained
 models/*.bak
 releases
+!models/releases/
+!models/releases/v8-portable/
+!models/releases/v8-portable/**
 
 # Outputs
 outputs
+output
+tmp
 
 # Tests (not needed at runtime)
 tests

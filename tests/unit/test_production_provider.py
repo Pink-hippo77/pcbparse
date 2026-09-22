@@ -25,6 +25,7 @@ class _Adapter:
 
     threshold = 0.5
     detector_threshold = 0.5
+    vertical_rotation_enabled = False
 
     def predict(self, *args, **kwargs):
         return []
@@ -107,6 +108,178 @@ class ProductionProviderFactoryTests(unittest.TestCase):
                 {"ocr": {"detector_threshold": 1.5}}
             )
 
+    def test_ocr_batch_size_overrides_are_loaded_from_pipeline(self) -> None:
+        config = composite_provider_config_from_pipeline(
+            {
+                "ocr": {
+                    "global_batch_size": 8,
+                    "component_batch_size": 4,
+                    "strip_batch_size": 16,
+                }
+            }
+        )
+        self.assertEqual(8, config.ocr_global_batch_size)
+        self.assertEqual(4, config.ocr_component_batch_size)
+        self.assertEqual(16, config.ocr_strip_batch_size)
+
+    def test_ocr_vertical_rotation_override_is_strict_and_retained(self) -> None:
+        config = composite_provider_config_from_pipeline(
+            {"ocr": {"vertical_rotation_enabled": True}}
+        )
+        self.assertEqual(
+            {"vertical_rotation_enabled": True},
+            config.ocr_inference_overrides,
+        )
+        with self.assertRaisesRegex(ValueError, "vertical_rotation_enabled"):
+            composite_provider_config_from_pipeline(
+                {"ocr": {"vertical_rotation_enabled": 1}}
+            )
+
+    def test_component_center_preferred_nms_settings_are_strict_and_retained(self) -> None:
+        config = composite_provider_config_from_pipeline(
+            {
+                "image": {
+                    "component_center_preferred_nms_enabled": True,
+                    "component_center_preference_score_bonus": 0.05,
+                    "component_internal_border_margin_px": 24,
+                    "component_internal_border_confirmation_enabled": True,
+                    "component_internal_border_confirmation_iou": 0.3,
+                    "component_internal_border_confirmation_metric": (
+                        "intersection_over_smaller"
+                    ),
+                    "component_internal_border_confirmation_categories": [
+                        "Box",
+                        "C",
+                        "Gnd",
+                    ],
+                    "component_internal_border_refinement_enabled": True,
+                    "component_internal_border_refinement_iou": 0.5,
+                    "component_internal_border_refinement_categories": ["Box"],
+                    "component_internal_border_refinement_max_candidates": 12,
+                    "component_inference_batch_size": 8,
+                    "component_internal_border_refinement_batch_size": 4,
+                    "component_targeted_recovery_enabled": True,
+                    "component_targeted_recovery_categories": ["Switch", "PIN"],
+                    "component_targeted_recovery_tile_size": 256,
+                    "component_targeted_recovery_tile_overlap": 32,
+                    "component_targeted_recovery_min_dimension_px": 768,
+                    "component_targeted_recovery_batch_size": 8,
+                }
+            }
+        )
+        self.assertTrue(config.component_center_preferred_nms_enabled)
+        self.assertEqual(0.05, config.component_center_preference_score_bonus)
+        self.assertEqual(24.0, config.component_internal_border_margin_px)
+        self.assertTrue(config.component_internal_border_confirmation_enabled)
+        self.assertEqual(0.3, config.component_internal_border_confirmation_iou)
+        self.assertEqual(
+            "intersection_over_smaller",
+            config.component_internal_border_confirmation_metric,
+        )
+        self.assertEqual(
+            ("Box", "C", "Gnd"),
+            config.component_internal_border_confirmation_categories,
+        )
+        self.assertTrue(config.component_internal_border_refinement_enabled)
+        self.assertEqual(0.5, config.component_internal_border_refinement_iou)
+        self.assertEqual(
+            ("Box",),
+            config.component_internal_border_refinement_categories,
+        )
+        self.assertEqual(
+            12,
+            config.component_internal_border_refinement_max_candidates,
+        )
+        self.assertEqual(8, config.component_inference_batch_size)
+        self.assertEqual(4, config.component_internal_border_refinement_batch_size)
+        self.assertTrue(config.component_targeted_recovery_enabled)
+        self.assertEqual(
+            ("Switch", "PIN"), config.component_targeted_recovery_categories
+        )
+        self.assertEqual(8, config.component_targeted_recovery_batch_size)
+        self.assertEqual(
+            ["Switch", "PIN"],
+            config.to_dict()["component_targeted_recovery_categories"],
+        )
+        serialized = config.to_dict()
+        self.assertEqual(
+            ["Box", "C", "Gnd"],
+            serialized["component_internal_border_confirmation_categories"],
+        )
+        self.assertEqual(
+            ["Box"],
+            serialized["component_internal_border_refinement_categories"],
+        )
+        with self.assertRaisesRegex(ValueError, "component_center_preferred"):
+            composite_provider_config_from_pipeline(
+                {"image": {"component_center_preferred_nms_enabled": 1}}
+            )
+        with self.assertRaisesRegex(ValueError, "component_internal_border_margin"):
+            composite_provider_config_from_pipeline(
+                {"image": {"component_internal_border_margin_px": -1}}
+            )
+        with self.assertRaisesRegex(ValueError, "component_center_preference_score_bonus"):
+            composite_provider_config_from_pipeline(
+                {"image": {"component_center_preference_score_bonus": 1.1}}
+            )
+        with self.assertRaisesRegex(ValueError, "confirmation_categories"):
+            composite_provider_config_from_pipeline(
+                {
+                    "image": {
+                        "component_internal_border_confirmation_categories": ["Box", 1]
+                    }
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "confirmation_metric"):
+            composite_provider_config_from_pipeline(
+                {
+                    "image": {
+                        "component_internal_border_confirmation_metric": "dice"
+                    }
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "refinement_enabled"):
+            composite_provider_config_from_pipeline(
+                {"image": {"component_internal_border_refinement_enabled": 1}}
+            )
+        with self.assertRaisesRegex(ValueError, "refinement_categories"):
+            composite_provider_config_from_pipeline(
+                {
+                    "image": {
+                        "component_internal_border_refinement_categories": ["Box", 1]
+                    }
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "refinement_max_candidates"):
+            composite_provider_config_from_pipeline(
+                {
+                    "image": {
+                        "component_internal_border_refinement_max_candidates": 0
+                    }
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "component_inference_batch_size"):
+            composite_provider_config_from_pipeline(
+                {"image": {"component_inference_batch_size": 0}}
+            )
+        with self.assertRaisesRegex(ValueError, "refinement_batch_size"):
+            composite_provider_config_from_pipeline(
+                {
+                    "image": {
+                        "component_internal_border_refinement_batch_size": 0
+                    }
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "targeted_recovery_tile"):
+            composite_provider_config_from_pipeline(
+                {
+                    "image": {
+                        "component_targeted_recovery_tile_size": 256,
+                        "component_targeted_recovery_tile_overlap": 256,
+                    }
+                }
+            )
+
     def test_verified_adapter_lock_constructs_composite_provider(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -162,7 +335,10 @@ class ProductionProviderFactoryTests(unittest.TestCase):
                 }
             )
             perception_config.wire_inference_overrides = {'threshold': 0.6}
-            perception_config.ocr_inference_overrides = {'detector_threshold': 0.2}
+            perception_config.ocr_inference_overrides = {
+                'detector_threshold': 0.2,
+                'vertical_rotation_enabled': True,
+            }
             provider = load_production_provider(lock, config=perception_config)
 
             self.assertIsInstance(provider, ProductionPerceptionProvider)
@@ -185,6 +361,7 @@ class ProductionProviderFactoryTests(unittest.TestCase):
             self.assertEqual(512, provider.config.ocr_tile_size)
             self.assertEqual(0.6, provider.wire_provider.threshold)
             self.assertEqual(0.2, provider.ocr_provider.detector_threshold)
+            self.assertTrue(provider.ocr_provider.vertical_rotation_enabled)
 
     def test_deterministic_junction_mode_loads_exactly_four_models(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

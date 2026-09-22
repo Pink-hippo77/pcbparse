@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "kind": "component_box_internal_border_confirmation_validation_ab",
+  "status": "validation_candidate_not_promoted",
+  "selected_strategy": {
+    "component_internal_border_margin_px": 32.0,
+    "component_internal_border_confirmation_enabled": true,
+    "component_internal_border_confirmation_iou": 0.3,
+    "component_internal_border_confirmation_metric": "intersection_over_smaller",
+    "component_internal_border_confirmation_categories": [
+      "Box"
+    ],
+    "rationale": "Require cross-tile support only for Box candidates near internal tile edges. Intersection over the smaller box protects valid large components that are truncated differently by adjacent tiles."
+  },
+  "tiled_validation_ab": {
+    "baseline": {
+      "precision50": 0.7621998450813323,
+      "recall50": 0.8848920863309353,
+      "f1_50": 0.818976279650437,
+      "bbox_map50": 0.7101977099552877,
+      "true_positives": 984,
+      "false_positives": 307,
+      "false_negatives": 128
+    },
+    "candidate": {
+      "precision50": 0.7657587548638133,
+      "recall50": 0.8848920863309353,
+      "f1_50": 0.8210262828535669,
+      "bbox_map50": 0.7103597660511036,
+      "true_positives": 984,
+      "false_positives": 301,
+      "false_negatives": 128,
+      "candidates_before_cross_tile_nms": 2108,
+      "candidates_removed_by_border_confirmation": 6
+    },
+    "delta_candidate_minus_baseline": {
+      "precision50": 0.003558909782481,
+      "recall50": 0.0,
+      "f1_50": 0.0020500032031299,
+      "bbox_map50": 0.0001620560958159,
+      "true_positives": 0,
+      "false_positives": -6,
+      "false_negatives": 0
+    },
+    "error_mode_delta": {
+      "Box_false_positives": -6,
+      "Box_true_positives": 0,
+      "background_or_unlabelled_false_positives": -3,
+      "localization_or_partial_overlap_false_positives": -3,
+      "class_confusion_false_positives": 0,
+      "duplicate_same_class_false_positives": 0
+    }
+  },
+  "raw_end_to_end_ab": {
+    "sample_count": 30,
+    "candidate_failures": 0,
+    "component": {
+      "baseline": {
+        "precision": 0.7854376452362509,
+        "recall": 0.9118705035971223,
+        "f1": 0.8439450686641699,
+        "true_positives": 1014,
+        "false_positives": 277,
+        "false_negatives": 98,
+        "category_accuracy": 0.9575936883629191
+      },
+      "candidate": {
+        "precision": 0.7891050583657587,
+        "recall": 0.9118705035971223,
+        "f1": 0.8460575719649561,
+        "true_positives": 1014,
+        "false_positives": 271,
+        "false_negatives": 98,
+        "category_accuracy": 0.9575936883629191
+      }
+    },
+    "pin": {
+      "baseline": {
+        "precision": 0.6417764763299171,
+        "recall": 0.4981060606060606,
+        "f1": 0.5608871827681808,
+        "true_positives": 1315,
+        "false_positives": 734,
+        "false_negatives": 1325
+      },
+      "candidate": {
+        "precision": 0.6439764936336925,
+        "recall": 0.4981060606060606,
+        "f1": 0.5617257582229817,
+        "true_positives": 1315,
+        "false_positives": 727,
+        "false_negatives": 1325
+      }
+    },
+    "graph": {
+      "unchanged": true,
+      "precision": 0.35314285714285715,
+      "recall": 0.09478527607361963,
+      "f1": 0.14945586457073762,
+      "true_positives": 309,
+      "false_positives": 566,
+      "false_negatives": 2951
+    },
+    "wire": {
+      "unchanged": true,
+      "f1": 0.4621974557758176
+    }
+  },
+  "lineage": {
+    "checkpoint": {
+      "path": "work/yolo/component-yolo11n-v2-precision/weights/best.pt",
+      "sha256": "134ec62e77e11cdccb296040a3fd346a3864f13a1d44de7fb7a55e6ae0d87c8b"
+    },
+    "per_class_threshold_calibration": {
+      "path": "artifacts/audits/component_yolo11n_v2_per_class_threshold_calibration.json",
+      "sha256": "31e656efd6e75e503c2ec02e3f9ed7d9ca49b624a731a3b9aeb3a0588bceb2ec"
+    },
+    "candidate_pipeline_config": {
+      "path": "configs/pipeline.component512-border-confirm-box-ios-experiment.yaml",
+      "sha256": "5b2a88f04290006da73fb2055da8e41c1be75238c3eea1d730d8729f9e0e7e45"
+    },
+    "tiled_baseline_status": {
+      "path": "work/eval-component-yolo11n-v2-per-class-thresholds-tiled512-val-cap128-20260914/diagnostic_status.json",
+      "sha256": "aa707d97bcf390e3aea01e9d1276e5c71e5a5f1a35c217b66f0b0891fd307a3d"
+    },
+    "tiled_candidate_status": {
+      "path": "work/eval-component-yolo11n-v2-per-class-thresholds-border-confirm-box-ios-tiled512-val-cap128-20260915/diagnostic_status.json",
+      "sha256": "b5c8c4a92e2915ef1c8c646c218ba5b30cdc7f5b6d3fa3aaf4a8872680556e5f"
+    },
+    "raw_baseline_summary": {
+      "path": "work/raw-yolo-component-v2-per-class-thresholds-shadow-val-20260914/summary.json",
+      "sha256": "713efc9cd5b50b00b3446783a65ab5c62b97cbfca81f713d25f594bd4b1e35cc"
+    },
+    "raw_candidate_summary": {
+      "path": "work/raw-yolo-component-v2-per-class-thresholds-border-confirm-box-ios-shadow-val-20260915/summary.json",
+      "sha256": "84c734e115cd22eba2c223bb7ab13cfc0a1414c93a7f811b0a6371b90badd68a"
+    },
+    "candidate_error_analysis": {
+      "path": "artifacts/analysis/component_yolo11n_v2_box_border_confirmation_ios_validation_error_modes.json",
+      "sha256": "1188976379c45020c8c316249a96cadb4f3bbabd2b9d7aaa4f69e53ba3424378"
+    },
+    "models_lock": {
+      "path": "models/models.lock.json",
+      "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+      "modified": false
+    }
+  },
+  "interpretation_boundary": {
+    "validation_configuration_tuned": true,
+    "independent_test_confirmation_completed": false,
+    "production_promotion_allowed": false,
+    "reason": "The threshold calibration and border-confirmation rule were selected using the frozen validation split; an untouched confirmation split is required before promotion."
+  }
+}

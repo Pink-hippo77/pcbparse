@@ -1,0 +1,441 @@
+{
+  "as_of": "2026-09-12",
+  "sources": {
+    "public_dataset": "赛题六公开数据集",
+    "dataset300": "Dataset300/Dataset300",
+    "dataset300_manifest": "data/manifests/dataset300.jsonl",
+    "dataset300_audit": "artifacts/audits/dataset300_audit.json",
+    "derived_training_data": "data/derived/dataset300-v2"
+  },
+  "identity_and_overlap": {
+    "public_train_samples": 200,
+    "dataset300_samples": 300,
+    "corresponding_images_exact_sha256_matches": 200,
+    "public_component_count_equal_to_dataset300_cases": 200,
+    "public_10_gt_samples": 10,
+    "public_10_gt_images_also_in_public_train": 10,
+    "public_10_gt_target_json_byte_matches_train_target_named": 0,
+    "dataset300_manifest_hash_checks": {
+      "images_verified": 300,
+      "json_annotations_verified": 300,
+      "expected_each": 300
+    }
+  },
+  "annotation_shape": {
+    "public_train_files_per_sample": [
+      "image",
+      "competition_target_json"
+    ],
+    "dataset300_files_per_sample": [
+      "image",
+      "CVJsonStd_json",
+      "CVJsonStd_eds",
+      "SPICE_netlist"
+    ],
+    "public_first_200_totals": {
+      "components": 9171,
+      "pins": 21819,
+      "nets": 10440,
+      "output_segments": 31749
+    },
+    "dataset300_first_200_raw_totals": {
+      "components": 9171,
+      "edges": 13964,
+      "pins": 22122,
+      "texts": 38725
+    },
+    "interpretation": "Same first 200 images, but different annotation representations and coordinate/output semantics; do not concatenate as independent samples."
+  },
+  "cohorts": {
+    "first_200": {
+      "samples": 200,
+      "source_classes": {
+        "ad": 21,
+        "datasheet": 74,
+        "jlc": 99,
+        "kicad": 6
+      },
+      "components": {
+        "total": 9171,
+        "mean_per_sample": 45.855,
+        "median_per_sample": 38.0,
+        "p90_per_sample": 108
+      },
+      "pins": {
+        "total": 22122,
+        "mean_per_sample": 110.61,
+        "median_per_sample": 89.5,
+        "p90_per_sample": 229
+      },
+      "texts": {
+        "total": 38725,
+        "mean_per_sample": 193.625,
+        "median_per_sample": 156.5,
+        "p90_per_sample": 408
+      },
+      "edges": {
+        "total": 13964,
+        "mean_per_sample": 69.82,
+        "median_per_sample": 55.5,
+        "p90_per_sample": 148
+      },
+      "image_area_pixels": {
+        "mean": 1644859.9,
+        "median": 1005550.0,
+        "p90": 1993250
+      }
+    },
+    "first_200_datasheet_only": {
+      "samples": 74,
+      "source_classes": {
+        "datasheet": 74
+      },
+      "components": {
+        "total": 2223,
+        "mean_per_sample": 30.041,
+        "median_per_sample": 21.0,
+        "p90_per_sample": 59
+      },
+      "pins": {
+        "total": 5098,
+        "mean_per_sample": 68.892,
+        "median_per_sample": 44.0,
+        "p90_per_sample": 153
+      },
+      "texts": {
+        "total": 6717,
+        "mean_per_sample": 90.77,
+        "median_per_sample": 49.5,
+        "p90_per_sample": 222
+      },
+      "edges": {
+        "total": 2505,
+        "mean_per_sample": 33.851,
+        "median_per_sample": 22.5,
+        "p90_per_sample": 72
+      },
+      "image_area_pixels": {
+        "mean": 1734382.5,
+        "median": 575243.5,
+        "p90": 1745822
+      }
+    },
+    "new_100": {
+      "samples": 100,
+      "source_classes": {
+        "datasheet": 100
+      },
+      "components": {
+        "total": 3619,
+        "mean_per_sample": 36.19,
+        "median_per_sample": 25.0,
+        "p90_per_sample": 79
+      },
+      "pins": {
+        "total": 7734,
+        "mean_per_sample": 77.34,
+        "median_per_sample": 57.0,
+        "p90_per_sample": 164
+      },
+      "texts": {
+        "total": 9739,
+        "mean_per_sample": 97.39,
+        "median_per_sample": 46.5,
+        "p90_per_sample": 209
+      },
+      "edges": {
+        "total": 3837,
+        "mean_per_sample": 38.37,
+        "median_per_sample": 32.0,
+        "p90_per_sample": 82
+      },
+      "image_area_pixels": {
+        "mean": 898357.9,
+        "median": 704550.0,
+        "p90": 1836884
+      }
+    }
+  },
+  "effective_increment": {
+    "first_200_effective_groups": 197,
+    "new_100_effective_groups_before_overlap_removal": 96,
+    "groups_shared_between_cohorts": 6,
+    "new_independent_groups_added": 90,
+    "all_300_effective_groups": 287,
+    "cross_cohort_group_members": {
+      "dup-3daf423dc6ac911b": [
+        "0029",
+        "0274"
+      ],
+      "dup-7f37a2471c73f6b9": [
+        "0026",
+        "0268"
+      ],
+      "dup-92e817716c8c8a1b": [
+        "0089",
+        "0283"
+      ],
+      "dup-cb074478b5400b73": [
+        "0028",
+        "0086",
+        "0266"
+      ],
+      "dup-e69f742214263621": [
+        "0069",
+        "0269"
+      ],
+      "dup-e9270eb17b294f48": [
+        "0027",
+        "0237"
+      ]
+    },
+    "exact_cross_cohort_image_pairs": [
+      [
+        "0089",
+        "0283"
+      ]
+    ],
+    "exact_cross_cohort_json_pairs": [
+      [
+        "0028",
+        "0266"
+      ],
+      [
+        "0026",
+        "0268"
+      ],
+      [
+        "0069",
+        "0269"
+      ],
+      [
+        "0029",
+        "0274"
+      ],
+      [
+        "0089",
+        "0283"
+      ]
+    ]
+  },
+  "derived_training_records": {
+    "component_detection": {
+      "first_200": 9171,
+      "new_100": 3618,
+      "all_300": 12789,
+      "increment_vs_first_200_pct": 39.45,
+      "new_100_share_of_all_pct": 28.29
+    },
+    "pin_keypoints": {
+      "first_200": 21978,
+      "new_100": 7670,
+      "all_300": 29648,
+      "increment_vs_first_200_pct": 34.9,
+      "new_100_share_of_all_pct": 25.87
+    },
+    "ocr_text": {
+      "first_200": 38725,
+      "new_100": 9739,
+      "all_300": 48464,
+      "increment_vs_first_200_pct": 25.15,
+      "new_100_share_of_all_pct": 20.1
+    },
+    "wire_paths": {
+      "first_200": 11595,
+      "new_100": 3300,
+      "all_300": 14895,
+      "increment_vs_first_200_pct": 28.46,
+      "new_100_share_of_all_pct": 22.16
+    },
+    "junction_patches": {
+      "first_200": 31815,
+      "new_100": 10147,
+      "all_300": 41962,
+      "increment_vs_first_200_pct": 31.89,
+      "new_100_share_of_all_pct": 24.18
+    }
+  },
+  "label_profiles": {
+    "first_200": {
+      "component_categories": {
+        "Gnd": 2136,
+        "C": 1570,
+        "R": 1547,
+        "V": 1090,
+        "Box": 960,
+        "NET_input": 323,
+        "D": 193,
+        "LED": 180,
+        "PIN": 170,
+        "Net_short": 163,
+        "Switch": 157,
+        "L": 103,
+        "Net_output": 72,
+        "MOSFET": 67,
+        "Other": 66,
+        "M": 58,
+        "Crystal": 56,
+        "BJT": 52,
+        "Testpoint": 46,
+        "AMP": 30,
+        "Buzzer": 21,
+        "Battary": 21,
+        "Fuse": 20,
+        "Block": 13,
+        "Net_bidirection": 13,
+        "Jumper": 9,
+        "Motor": 8,
+        "ESD": 6,
+        "Dc": 6,
+        "Transfomer": 5,
+        "ANT": 4,
+        "CIRCLE_HEADER": 3,
+        "Opt": 2,
+        "SEG": 1
+      },
+      "text_details": {
+        "<blank>": 15591,
+        "pinNumber": 6646,
+        "pinName": 5777,
+        "netlabel": 4041,
+        "designator": 3024,
+        "value": 2482,
+        "searchName": 793,
+        "netLabel": 371
+      },
+      "component_states": {
+        "active": 9171
+      }
+    },
+    "new_100": {
+      "component_categories": {
+        "C": 1051,
+        "Gnd": 865,
+        "R": 554,
+        "Box": 355,
+        "V": 187,
+        "NET_input": 186,
+        "L": 114,
+        "Buzzer": 60,
+        "PIN": 59,
+        "ANT": 45,
+        "LED": 29,
+        "AMP": 24,
+        "Other": 20,
+        "BJT": 16,
+        "D": 14,
+        "Crystal": 9,
+        "SEG": 6,
+        "Fuse": 6,
+        "MOSFET": 5,
+        "CIRCLE_HEADER": 5,
+        "Switch": 4,
+        "Battary": 4,
+        "Opt": 1
+      },
+      "text_details": {
+        "<blank>": 4270,
+        "pinName": 1713,
+        "value": 1252,
+        "pinNumber": 1053,
+        "designator": 700,
+        "netlabel": 326,
+        "searchName": 265,
+        "netLabel": 160
+      },
+      "component_states": {
+        "active": 3618,
+        "deleted": 1
+      }
+    }
+  },
+  "quality": {
+    "audit_ok": true,
+    "strict_ok": false,
+    "warnings": 19,
+    "duplicate_groups": 11,
+    "image_extension_mismatches": 8,
+    "notes": [
+      "Duplicate and near-duplicate groups must stay in one split.",
+      "Image decoding must use detected content, not only filename extension.",
+      "CVJsonStd, EDS, and SPICE are co-packaged/generated views, not statistically independent labels."
+    ]
+  },
+  "current_project_usage": {
+    "dataset300_training_config_count": 19,
+    "dataset300_training_configs": [
+      "configs/train/dataset300_v2_component_interim.json",
+      "configs/train/dataset300_v2_component_v3.json",
+      "configs/train/dataset300_v2_component_v4.json",
+      "configs/train/dataset300_v2_component_v5_fullmix.json",
+      "configs/train/dataset300_v2_component_v6_finetune.json",
+      "configs/train/dataset300_v2_ocr_v2c_resume.json",
+      "configs/train/dataset300_v2_ocr_v3_shrink_warmstart.json",
+      "configs/train/dataset300_v2_ocr_v4_rare_prefix.json",
+      "configs/train/dataset300_v2_ocr_v5_allgate.json",
+      "configs/train/dataset300_v2_ocr_v6_recall_boost.json",
+      "configs/train/dataset300_v2_ocr_v7_continue.json",
+      "configs/train/dataset300_v2_ocr_v8_extend.json",
+      "configs/train/dataset300_v2_pin_v2.json",
+      "configs/train/dataset300_v2_pin_v3.json",
+      "configs/train/dataset300_v2_pin_v4.json",
+      "configs/train/dataset300_v2_pin_v5_boundary.json",
+      "configs/train/dataset300_v2_tiny.json",
+      "configs/train/dataset300_v2_torch.json",
+      "configs/train/dataset300_v2_wire_v5_fresh_allgate.json"
+    ],
+    "public_dataset_references_in_training_code_or_configs": []
+  },
+  "public_gt_overlap_rows": [
+    {
+      "sample_id": "0025",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0030",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0036",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0037",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0042",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0059",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0065",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0070",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0099",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    },
+    {
+      "sample_id": "0100",
+      "image_matches_public_train": true,
+      "target_json_matches_public_train": false
+    }
+  ]
+}

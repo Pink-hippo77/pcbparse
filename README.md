@@ -2,6 +2,9 @@
 
 这是依据《赛题六：AI 驱动的 PCB 原理图自动解析》实施手册落地的可执行基线。系统以 `Circuit-IR` 为唯一内部表示，严格分离感知、几何关联、Physical Graph、Electrical Net、验证和官方 JSON 序列化。
 
+项目已统一收口到当前根目录；源码、数据、模型、历史训练和官方 Docker 材料的分区见
+[项目目录结构](docs/PROJECT_STRUCTURE.md)。
+
 当前版本完成了工程闭环、官方 Dataset300 数据底座、真实标注转换、五类训练清单、图拓扑、Validator、确定性 Serializer、CLI 与 HTTP 接口。它包含四种明确区分的运行方式：
 
 - `production`：`baseline`/`competition` 的默认入口；仅从通过逐文件哈希、模型包 lineage 和元数据门禁的模型锁加载精确 task 集合。当前默认是 `component`/`ocr`/`pin`/`wire` 四类 adapter，junction 使用确定性 vectorizer；显式开启 learned junction 才增加第五类。任何缺项都会 fail-closed。
@@ -28,8 +31,10 @@
 单例严格 image-only 联调仍会因缺 component key、缺 pin number 和断裂 net
 被 Validator 阻断，因此不能声称已达到高度可用竞赛水平。完整矩阵、指标口径、
 训练状态与复现命令见
-[实施状态](docs/implementation_status.md)和
-[系统完成度分析](docs/系统完成度分析与下一步方案.md)。机器可读的时间点快照见
+[实施状态](docs/implementation_status.md)、
+[系统完成度分析](docs/系统完成度分析与下一步方案.md)、
+[架构、阻塞点与硬件优化审查](docs/架构阻塞与硬件优化审查_2026-09-08.md)和
+[部署与训练手册](docs/部署与训练手册_PCBnet增强版_2026-09-09.md)。机器可读的时间点快照见
 [完成度与就绪审计](artifacts/audits/completion_readiness_audit.json)。
 
 ## 环境
@@ -258,12 +263,32 @@ raw-v1 报告 Component/Pin/Wire/Graph 的独立指标与 eligible/masked 覆盖
 本地 raw-v1 与 guide-v1 都不是官方 evaluator；在官方脚本缺失时只能报告分项
 指标和已知边界，不能给出官方分数或保证竞赛名次。
 
-容器说明：默认启动 HTTP 服务并将 Docker 健康探针指向 `/ready`。在五类 blessed 权重尚未登记时，容器会有意保持 `unhealthy`，这不是进程崩溃，而是生产就绪门禁生效。完成模型注册后使用：
+## 官方 Docker 提交
 
-```bash
-docker build -t pcbparse:local -f docker/Dockerfile .
-docker run --rm -p 8080:8080 \
-  -v "$PWD/input:/data/input:ro" \
-  -v "$PWD/output:/data/output" \
-  pcbparse:local
+提交镜像直接继承官方 `edarace-agent-base:ubuntu24`，保留其 CUDA 12.1、
+PyTorch 2.5.1 和 torchvision 0.20.1，只补充项目缺少的依赖、锁定模型包和
+一次性批处理入口。容器不启动 HTTP 服务，也不暴露端口；本地 HTTP 调试入口
+仍保留在前述 `pcbparse.cli serve` 中，但不属于竞赛镜像契约。
+
+构建：
+
+```powershell
+docker build -t pcbparse:edarace-ubuntu24-adapted -f .\docker\Dockerfile .
 ```
+
+按官方命令运行；输入目录顶层放置 PNG，输出目录必须预先存在：
+
+```powershell
+docker run --rm --gpus all --network none `
+  -v "${PWD}\input:/input:ro" `
+  -v "${PWD}\output:/output" `
+  pcbparse:edarace-ubuntu24-adapted `
+  -input /input -output /output
+```
+
+容器为每个 `<case_name>.png` 写出
+`/output/final_results/<case_name>_Pred.json`，同时生成必需的
+`/output/decision_log.json` 和可选的 `/output/final_results/run.log`。
+提交路径只读取输入目录顶层的 `.png`，不会读取同名 JSON、标注或其他 sidecar；
+Qwen 在提交配置中关闭，因此可在 `--network none` 下完整运行。单例推理异常会
+生成符合顶层 schema 的空预测并记录在 decision log 中，避免一个坏样本阻断整批。

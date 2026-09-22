@@ -3002,9 +3002,10 @@ def _container_build_context_binding(root: Path) -> dict[str, Any]:
     for relative in (
         ".dockerignore",
         "docker/Dockerfile",
-        "docker/entrypoint.sh",
+        "docker/agent_system",
         "pyproject.toml",
         "README.md",
+        "requirements.edarace.txt",
         "requirements.lock",
         "requirements.runtime.lock",
         "models/models.lock.json",
@@ -3054,11 +3055,11 @@ def _audit_offline_container(
     docker_evidence = _path_evidence(root, dockerfile)
     docker_text = dockerfile.read_text(encoding="utf-8") if dockerfile.is_file() else ""
     build_context = _container_build_context_binding(root)
-    runtime_requirements = root / "requirements.runtime.lock"
+    runtime_requirements = root / "requirements.edarace.txt"
     static_lock_reference = (
         "COPY models" in docker_text
         and "--models-lock" in docker_text
-        and "/app/models/models.lock.json" in docker_text
+        and "/submission/app/models/models.lock.json" in docker_text
     )
     payload: Mapping[str, Any] = {}
     problems: list[str] = []

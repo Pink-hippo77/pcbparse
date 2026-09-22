@@ -22,7 +22,12 @@ _CUDA_ENVIRONMENT_AFTER_IMPORT = os.environ.get("CUDA_VISIBLE_DEVICES")
 class ComponentTiledProtocolTests(unittest.TestCase):
     def setUp(self) -> None:
         self.pipeline = {
-            "image": {"component_tile_size": 512, "component_tile_overlap": 64}
+            "image": {
+                "component_tile_size": 512,
+                "component_tile_overlap": 64,
+                "component_candidate_min_score": 0.20,
+                "component_max_candidates": 128,
+            }
         }
         self.thresholds = {"component": {"min_score": 0.20, "nms_iou": 0.55}}
         self.summary = {"config": {"tile_size": 512, "tile_overlap": 64}}
@@ -34,9 +39,50 @@ class ComponentTiledProtocolTests(unittest.TestCase):
         self.assertEqual(512, protocol["tile_size"])
         self.assertEqual(64, protocol["tile_overlap"])
         self.assertEqual(448, protocol["tile_stride"])
+        self.assertEqual(1, protocol["component_inference_batch_size"])
         self.assertEqual(0.20, protocol["score_threshold"])
         self.assertEqual(0.55, protocol["component_nms_iou"])
+        self.assertEqual(128, protocol["component_max_candidates"])
+        self.assertFalse(protocol["component_internal_border_refinement_enabled"])
         self.assertFalse(protocol["thresholds_searched"])
+
+    def test_accepts_explicit_internal_border_refinement_protocol(self) -> None:
+        pipeline = {
+            "image": {
+                **self.pipeline["image"],
+                "component_internal_border_refinement_enabled": True,
+                "component_internal_border_refinement_iou": 0.5,
+                "component_internal_border_refinement_categories": ["Box"],
+                "component_internal_border_refinement_max_candidates": 16,
+                "component_inference_batch_size": 8,
+                "component_internal_border_refinement_batch_size": 4,
+                "component_targeted_recovery_enabled": True,
+                "component_targeted_recovery_categories": ["Switch"],
+                "component_targeted_recovery_tile_size": 256,
+                "component_targeted_recovery_tile_overlap": 32,
+                "component_targeted_recovery_min_dimension_px": 768,
+                "component_targeted_recovery_batch_size": 8,
+            }
+        }
+
+        protocol = audit._fixed_protocol(pipeline, self.thresholds, self.summary)
+
+        self.assertTrue(protocol["component_internal_border_refinement_enabled"])
+        self.assertEqual(
+            ["Box"], protocol["component_internal_border_refinement_categories"]
+        )
+        self.assertEqual(
+            16, protocol["component_internal_border_refinement_max_candidates"]
+        )
+        self.assertEqual(8, protocol["component_inference_batch_size"])
+        self.assertEqual(
+            4, protocol["component_internal_border_refinement_batch_size"]
+        )
+        self.assertTrue(protocol["component_targeted_recovery_enabled"])
+        self.assertEqual(
+            ["Switch"], protocol["component_targeted_recovery_categories"]
+        )
+        self.assertEqual(8, protocol["component_targeted_recovery_batch_size"])
 
     def test_import_does_not_modify_cuda_visibility(self) -> None:
         self.assertEqual(
@@ -45,10 +91,11 @@ class ComponentTiledProtocolTests(unittest.TestCase):
 
     def test_rejects_any_geometry_or_threshold_drift(self) -> None:
         cases = [
-            ({"image": {"component_tile_size": 1024, "component_tile_overlap": 64}}, self.thresholds, self.summary),
+            ({"image": {"component_tile_size": 1024, "component_tile_overlap": 64, "component_candidate_min_score": 0.20, "component_max_candidates": 128}}, self.thresholds, self.summary),
             (self.pipeline, {"component": {"min_score": 0.19, "nms_iou": 0.55}}, self.summary),
             (self.pipeline, {"component": {"min_score": 0.20, "nms_iou": 0.50}}, self.summary),
             (self.pipeline, self.thresholds, {"config": {"tile_size": 512, "tile_overlap": 63}}),
+            ({"image": {"component_tile_size": 512, "component_tile_overlap": 64, "component_candidate_min_score": 0.20, "component_max_candidates": 127}}, self.thresholds, self.summary),
         ]
         for pipeline, thresholds, summary in cases:
             with self.subTest(

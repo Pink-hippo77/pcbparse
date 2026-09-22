@@ -1,0 +1,6 @@
+﻿task,first_200,new_100,all_300,increment_pct,new_share_pct
+component_detection,9171,3618,12789,39.45,28.29
+pin_keypoints,21978,7670,29648,34.9,25.87
+ocr_text,38725,9739,48464,25.15,20.1
+wire_paths,11595,3300,14895,28.46,22.16
+junction_patches,31815,10147,41962,31.89,24.18

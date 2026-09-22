@@ -7,6 +7,7 @@ import math
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +26,8 @@ from pcbparse.perception.torch_ocr_adapter import (
     TorchOCRAdapterError,
     _box_has_source_pixel_support,
     _entry_value,
+    _padding_ratio,
+    _recognition_batches,
     factory,
 )
 from pcbparse.training.torch_ocr import (
@@ -90,6 +93,22 @@ class TorchOCRLazyImportTests(unittest.TestCase):
                 "detector_threshold",
                 default=0.5,
             )
+
+    def test_recognition_batches_bucket_by_width_and_report_padding(self) -> None:
+        candidates = [
+            SimpleNamespace(width=64, view_index=0, box=(0, 0, 1, 1), detection_index=0),
+            SimpleNamespace(width=16, view_index=1, box=(0, 0, 1, 1), detection_index=0),
+            SimpleNamespace(width=32, view_index=2, box=(0, 0, 1, 1), detection_index=0),
+        ]
+
+        batches = _recognition_batches(candidates, 2)
+
+        self.assertEqual(
+            [[16, 32], [64]],
+            [[item.width for item in batch] for batch in batches],
+        )
+        self.assertAlmostEqual(0.25, _padding_ratio(batches[0], 32))
+        self.assertEqual(0.0, _padding_ratio(batches[1], 64))
 
     def test_model_operation_fails_actionably_when_torch_import_is_blocked(self) -> None:
         with mock.patch(
@@ -434,11 +453,31 @@ class TorchOCRModelTests(unittest.TestCase):
                 self.assertEqual(float(view.width), item.bbox.x2)
                 self.assertEqual(float(view.height), item.bbox.y2)
                 self.assertEqual(1, len(item.evidence))
-                self.assertFalse(
-                    item.evidence[0].metadata["semantic_fields_inferred"]
-                )
+                metadata = item.evidence[0].metadata
+                self.assertFalse(metadata["semantic_fields_inferred"])
+                self.assertRegex(metadata["crop_sha256"], r"^[0-9a-f]{64}$")
+                self.assertEqual("original_view_pixels", metadata["crop_source"])
+                self.assertEqual(0, metadata["orientation_degrees"])
+                self.assertEqual([0], metadata["orientation_candidates_degrees"])
+                self.assertEqual("identity_only_v1", metadata["orientation_policy"])
+                self.assertTrue(metadata["transform_chain"])
+                self.assertIn("recognition_batch_index", metadata)
+                self.assertIn("recognition_padding_ratio", metadata)
             with self.assertRaisesRegex(TorchOCRAdapterError, "view_id.*unique"):
                 adapter.recognize([views[0], views[0]])
+
+            adapter.vertical_rotation_enabled = True
+            vertical = adapter.recognize(
+                [_view("view:vertical", (12, 24), (180, 180, 180))]
+            )
+            self.assertEqual(1, len(vertical))
+            vertical_metadata = vertical[0].evidence[0].metadata
+            self.assertEqual(0, vertical_metadata["orientation_degrees"])
+            self.assertEqual([0, 90], vertical_metadata["orientation_candidates_degrees"])
+            self.assertEqual(
+                "identity_plus_90_vertical_v1",
+                vertical_metadata["orientation_policy"],
+            )
 
     def test_torchscript_exports_are_separate_and_consistent(self) -> None:
         torch = self.torch

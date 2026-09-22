@@ -11,6 +11,7 @@ dist/
 # Virtual environments
 .venv-test/
 .venv-train/
+.venv-yolo/
 .venv/
 
 # Test/coverage
@@ -20,11 +21,20 @@ dist/
 # Work directories (contain large inference artifacts, caches, run outputs)
 work/
 
+# Consolidated historical runs and externally supplied binary assets
+archive/legacy-training/runs/
+archive/legacy-training/results/
+archive/legacy-training/documents/
+external/official-docker/edarace-agent-base_ubuntu24.tar
+external/official-docker/edarace-agent-base_ubuntu24/
+
 # Model weights and release bundles (large binary files)
 releases/
+weights/
 models/weights/
 models/candidates/
 models/*.bak
+models/pretrained/yolo11n.pt
 
 # Data images and large raw datasets
 data/images/
@@ -32,14 +42,17 @@ data/raw/
 data/manifests/
 data/derived/
 Dataset300/
+赛题六公开数据集/
 
 # Outputs
 outputs/
+output/
 
 # Debug/determinism artifacts (large JSON dumps)
 artifacts/debug_e2e_latest/
 artifacts/determinism/
 artifacts/training/materialized/
+artifacts/reviews/*/runs/
 
 # Credentials and secrets
 .env

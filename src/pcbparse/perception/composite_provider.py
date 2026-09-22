@@ -4,11 +4,17 @@ import hashlib
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 
-from pcbparse.io import ImageView, load_image, make_component_view, tile_image_view
+from pcbparse.io import (
+    ImageView,
+    crop_image_view,
+    load_image,
+    make_component_view,
+    tile_image_view,
+)
 from pcbparse.ir.models import BBox, CircuitIR, Component, Evidence, IRState, Junction, Pin, Point, TextToken, WireSegment
 from pcbparse.perception.protocols import ComponentProvider, JunctionProvider, OCRProvider, PinProvider, WireMask, WireProvider
 from pcbparse.perception.coordinate_binding import (
@@ -33,6 +39,9 @@ class CompositeProviderConfig:
     tile_overlap: int = 160
     component_tile_size: int | None = None
     component_tile_overlap: int | None = None
+    # Providers with ``predict_many`` receive at most this many Component
+    # views per inference call. Providers without it retain sequential calls.
+    component_inference_batch_size: int = 1
     wire_tile_size: int | None = None
     wire_tile_overlap: int | None = None
     # OCR detector is trained at 512px; tiling at the same size preserves text
@@ -40,6 +49,30 @@ class CompositeProviderConfig:
     ocr_tile_size: int = 512
     ocr_tile_overlap: int = 160
     component_nms_iou: float = 0.55
+    component_center_preferred_nms_enabled: bool = False
+    component_center_preference_score_bonus: float = 1.0
+    component_internal_border_margin_px: float = 32.0
+    component_internal_border_confirmation_enabled: bool = False
+    component_internal_border_confirmation_iou: float = 0.30
+    component_internal_border_confirmation_metric: str = "iou"
+    component_internal_border_confirmation_categories: tuple[str, ...] = ()
+    # Optional second pass for detections truncated by an internal tile edge.
+    # A crop centred on the candidate gives the detector full local context;
+    # only a same-class overlapping result is allowed to replace the original.
+    component_internal_border_refinement_enabled: bool = False
+    component_internal_border_refinement_iou: float = 0.50
+    component_internal_border_refinement_categories: tuple[str, ...] = ()
+    component_internal_border_refinement_max_candidates: int = 16
+    component_internal_border_refinement_batch_size: int = 1
+    # Optional second scale for categories whose symbols become too small in
+    # the primary tiles. Recovery candidates are merged through the same
+    # class-aware NMS and full-image cap as the primary pass.
+    component_targeted_recovery_enabled: bool = False
+    component_targeted_recovery_categories: tuple[str, ...] = ()
+    component_targeted_recovery_tile_size: int = 256
+    component_targeted_recovery_tile_overlap: int = 32
+    component_targeted_recovery_min_dimension_px: int = 768
+    component_targeted_recovery_batch_size: int = 1
     component_roi_padding_factor: float = 0.15
     # Legacy shared absolute padding.  The task-specific values below fall
     # back to this field so existing configurations keep identical geometry.
@@ -96,9 +129,143 @@ class CompositeProviderConfig:
     ocr_inference_overrides: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if (
+            type(self.component_inference_batch_size) is not int
+            or self.component_inference_batch_size <= 0
+        ):
+            raise ValueError("component_inference_batch_size must be a positive integer")
         nms_iou = self.component_nms_iou
         if type(nms_iou) not in {int, float} or not np.isfinite(float(nms_iou)) or not 0.0 <= float(nms_iou) <= 1.0:
             raise ValueError("component_nms_iou must be finite in [0,1]")
+        if type(self.component_center_preferred_nms_enabled) is not bool:
+            raise ValueError("component_center_preferred_nms_enabled must be a boolean")
+        if (
+            type(self.component_center_preference_score_bonus) not in {int, float}
+            or not np.isfinite(float(self.component_center_preference_score_bonus))
+            or not 0.0 <= float(self.component_center_preference_score_bonus) <= 1.0
+        ):
+            raise ValueError(
+                "component_center_preference_score_bonus must be finite in [0,1]"
+            )
+        if (
+            type(self.component_internal_border_margin_px) not in {int, float}
+            or not np.isfinite(float(self.component_internal_border_margin_px))
+            or float(self.component_internal_border_margin_px) < 0.0
+        ):
+            raise ValueError("component_internal_border_margin_px must be finite and non-negative")
+        if type(self.component_internal_border_confirmation_enabled) is not bool:
+            raise ValueError(
+                "component_internal_border_confirmation_enabled must be a boolean"
+            )
+        confirmation_iou = self.component_internal_border_confirmation_iou
+        if (
+            type(confirmation_iou) not in {int, float}
+            or not np.isfinite(float(confirmation_iou))
+            or not 0.0 <= float(confirmation_iou) <= 1.0
+        ):
+            raise ValueError(
+                "component_internal_border_confirmation_iou must be finite in [0,1]"
+            )
+        if self.component_internal_border_confirmation_metric not in {
+            "iou",
+            "intersection_over_smaller",
+        }:
+            raise ValueError(
+                "component_internal_border_confirmation_metric must be "
+                "'iou' or 'intersection_over_smaller'"
+            )
+        confirmation_categories = self.component_internal_border_confirmation_categories
+        if not isinstance(confirmation_categories, (list, tuple)) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in confirmation_categories
+        ):
+            raise ValueError(
+                "component_internal_border_confirmation_categories must contain non-empty strings"
+            )
+        self.component_internal_border_confirmation_categories = tuple(
+            dict.fromkeys(item.strip() for item in confirmation_categories)
+        )
+        if type(self.component_internal_border_refinement_enabled) is not bool:
+            raise ValueError(
+                "component_internal_border_refinement_enabled must be a boolean"
+            )
+        refinement_iou = self.component_internal_border_refinement_iou
+        if (
+            type(refinement_iou) not in {int, float}
+            or not np.isfinite(float(refinement_iou))
+            or not 0.0 <= float(refinement_iou) <= 1.0
+        ):
+            raise ValueError(
+                "component_internal_border_refinement_iou must be finite in [0,1]"
+            )
+        refinement_categories = self.component_internal_border_refinement_categories
+        if not isinstance(refinement_categories, (list, tuple)) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in refinement_categories
+        ):
+            raise ValueError(
+                "component_internal_border_refinement_categories must contain non-empty strings"
+            )
+        self.component_internal_border_refinement_categories = tuple(
+            dict.fromkeys(item.strip() for item in refinement_categories)
+        )
+        if (
+            type(self.component_internal_border_refinement_max_candidates) is not int
+            or self.component_internal_border_refinement_max_candidates <= 0
+        ):
+            raise ValueError(
+                "component_internal_border_refinement_max_candidates must be a positive integer"
+            )
+        if (
+            type(self.component_internal_border_refinement_batch_size) is not int
+            or self.component_internal_border_refinement_batch_size <= 0
+        ):
+            raise ValueError(
+                "component_internal_border_refinement_batch_size must be a positive integer"
+            )
+        if type(self.component_targeted_recovery_enabled) is not bool:
+            raise ValueError("component_targeted_recovery_enabled must be a boolean")
+        recovery_categories = self.component_targeted_recovery_categories
+        if not isinstance(recovery_categories, (list, tuple)) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in recovery_categories
+        ):
+            raise ValueError(
+                "component_targeted_recovery_categories must contain non-empty strings"
+            )
+        self.component_targeted_recovery_categories = tuple(
+            dict.fromkeys(item.strip() for item in recovery_categories)
+        )
+        if (
+            type(self.component_targeted_recovery_tile_size) is not int
+            or self.component_targeted_recovery_tile_size <= 0
+        ):
+            raise ValueError(
+                "component_targeted_recovery_tile_size must be a positive integer"
+            )
+        if (
+            type(self.component_targeted_recovery_tile_overlap) is not int
+            or not 0
+            <= self.component_targeted_recovery_tile_overlap
+            < self.component_targeted_recovery_tile_size
+        ):
+            raise ValueError(
+                "component_targeted_recovery_tile_overlap must satisfy 0 <= overlap < tile_size"
+            )
+        if (
+            type(self.component_targeted_recovery_min_dimension_px) is not int
+            or self.component_targeted_recovery_min_dimension_px <= 0
+        ):
+            raise ValueError(
+                "component_targeted_recovery_min_dimension_px must be a positive integer"
+            )
+        if (
+            type(self.component_targeted_recovery_batch_size) is not int
+            or self.component_targeted_recovery_batch_size <= 0
+        ):
+            raise ValueError(
+                "component_targeted_recovery_batch_size must be a positive integer"
+            )
         threshold = self.component_candidate_min_score
         if type(threshold) not in {int, float} or not np.isfinite(float(threshold)) or not 0.0 <= float(threshold) <= 1.0:
             raise ValueError("component_candidate_min_score must be finite in [0,1]")
@@ -178,7 +345,12 @@ class CompositeProviderConfig:
             raise ValueError("ocr_inference_overrides must be an object")
         unknown_ocr_keys = sorted(
             set(self.ocr_inference_overrides)
-            - {"detector_threshold", "detector_min_area", "recognition_candidate_count"}
+            - {
+                "detector_threshold",
+                "detector_min_area",
+                "recognition_candidate_count",
+                "vertical_rotation_enabled",
+            }
         )
         if unknown_ocr_keys:
             raise ValueError(f"unsupported OCR inference override(s): {unknown_ocr_keys}")
@@ -203,6 +375,9 @@ class CompositeProviderConfig:
                 raise ValueError(
                     "ocr recognition candidate count must be a non-negative integer"
                 )
+        if "vertical_rotation_enabled" in self.ocr_inference_overrides:
+            if type(self.ocr_inference_overrides["vertical_rotation_enabled"]) is not bool:
+                raise ValueError("ocr vertical_rotation_enabled must be a boolean")
         self.ocr_inference_overrides = dict(self.ocr_inference_overrides)
 
     def to_dict(self) -> dict[str, Any]:
@@ -215,6 +390,15 @@ class CompositeProviderConfig:
         payload["wire_tile_overlap"] = self.resolved_wire_tile_overlap
         payload["ocr_component_roi_padding_px"] = self.resolved_ocr_component_roi_padding_px
         payload["pin_component_roi_padding_px"] = self.resolved_pin_component_roi_padding_px
+        payload["component_internal_border_confirmation_categories"] = list(
+            self.component_internal_border_confirmation_categories
+        )
+        payload["component_internal_border_refinement_categories"] = list(
+            self.component_internal_border_refinement_categories
+        )
+        payload["component_targeted_recovery_categories"] = list(
+            self.component_targeted_recovery_categories
+        )
         return payload
 
     @property
@@ -320,9 +504,19 @@ class CompositePerceptionProvider:
         component_candidates: list[Component] = []
         raw_component_count = 0
         score_filtered_component_count = 0
-        for view in component_tiles:
-            predicted = self.component_provider.predict(view, ctx)
-            restored = _restore_components(predicted, view)
+        component_predictions, _ = _predict_component_views(
+            self.component_provider,
+            component_tiles,
+            ctx,
+            batch_size=self.config.component_internal_border_refinement_batch_size,
+        )
+        for view, predicted in zip(component_tiles, component_predictions):
+            restored = _restore_components(
+                predicted,
+                view,
+                original_size=original.size,
+                internal_border_margin_px=self.config.component_internal_border_margin_px,
+            )
             raw_component_count += len(restored)
             gated = _filter_component_candidates(
                 restored,
@@ -330,7 +524,42 @@ class CompositePerceptionProvider:
             )
             score_filtered_component_count += len(restored) - len(gated)
             component_candidates.extend(gated)
-        components = _class_aware_nms(component_candidates, self.config.component_nms_iou)
+        component_candidates, border_refinement = _refine_internal_border_components(
+            self.component_provider,
+            component_candidates,
+            original,
+            ctx,
+            enabled=self.config.component_internal_border_refinement_enabled,
+            categories=self.config.component_internal_border_refinement_categories,
+            tile_size=self.config.resolved_component_tile_size,
+            match_iou=self.config.component_internal_border_refinement_iou,
+            max_candidates=(
+                self.config.component_internal_border_refinement_max_candidates
+            ),
+            min_score=self.config.component_candidate_min_score,
+            internal_border_margin_px=(
+                self.config.component_internal_border_margin_px
+            ),
+            batch_size=self.config.component_inference_batch_size,
+        )
+        confirmed_component_candidates = _filter_unconfirmed_internal_border_components(
+            component_candidates,
+            enabled=self.config.component_internal_border_confirmation_enabled,
+            categories=self.config.component_internal_border_confirmation_categories,
+            confirmation_iou=self.config.component_internal_border_confirmation_iou,
+            confirmation_metric=self.config.component_internal_border_confirmation_metric,
+        )
+        border_confirmation_filtered_component_count = (
+            len(component_candidates) - len(confirmed_component_candidates)
+        )
+        components = _class_aware_nms(
+            confirmed_component_candidates,
+            self.config.component_nms_iou,
+            prefer_non_border=self.config.component_center_preferred_nms_enabled,
+            center_preference_score_bonus=(
+                self.config.component_center_preference_score_bonus
+            ),
+        )
         nms_component_count = len(components)
         primary_component_count = len(components)
         primary_box_count = sum(
@@ -353,6 +582,8 @@ class CompositePerceptionProvider:
         )
         fallback_raw_component_count = 0
         fallback_score_filtered_component_count = 0
+        fallback_border_confirmation_filtered_component_count = 0
+        fallback_border_refinement = _empty_border_refinement_stats()
         if fallback_triggered:
             fallback_candidates: list[Component] = []
             fallback_tiles = tile_image_view(
@@ -360,9 +591,19 @@ class CompositePerceptionProvider:
                 tile_size=self.config.component_fallback_tile_size,
                 overlap=self.config.component_fallback_tile_overlap,
             )
-            for view in fallback_tiles:
-                predicted = self.component_provider.predict(view, ctx)
-                restored = _restore_components(predicted, view)
+            fallback_predictions, _ = _predict_component_views(
+                self.component_provider,
+                fallback_tiles,
+                ctx,
+                batch_size=self.config.component_inference_batch_size,
+            )
+            for view, predicted in zip(fallback_tiles, fallback_predictions):
+                restored = _restore_components(
+                    predicted,
+                    view,
+                    original_size=original.size,
+                    internal_border_margin_px=self.config.component_internal_border_margin_px,
+                )
                 fallback_raw_component_count += len(restored)
                 gated = _filter_component_candidates(
                     restored,
@@ -370,8 +611,79 @@ class CompositePerceptionProvider:
                 )
                 fallback_score_filtered_component_count += len(restored) - len(gated)
                 fallback_candidates.extend(gated)
-            components = _class_aware_nms(fallback_candidates, self.config.component_nms_iou)
+            fallback_candidates, fallback_border_refinement = (
+                _refine_internal_border_components(
+                    self.component_provider,
+                    fallback_candidates,
+                    original,
+                    ctx,
+                    enabled=(
+                        self.config.component_internal_border_refinement_enabled
+                    ),
+                    categories=(
+                        self.config.component_internal_border_refinement_categories
+                    ),
+                    tile_size=self.config.component_fallback_tile_size,
+                    match_iou=(
+                        self.config.component_internal_border_refinement_iou
+                    ),
+                    max_candidates=(
+                        self.config.component_internal_border_refinement_max_candidates
+                    ),
+                    min_score=self.config.component_candidate_min_score,
+                    internal_border_margin_px=(
+                        self.config.component_internal_border_margin_px
+                    ),
+                    batch_size=(
+                        self.config.component_internal_border_refinement_batch_size
+                    ),
+                )
+            )
+            confirmed_fallback_candidates = _filter_unconfirmed_internal_border_components(
+                fallback_candidates,
+                enabled=self.config.component_internal_border_confirmation_enabled,
+                categories=self.config.component_internal_border_confirmation_categories,
+                confirmation_iou=self.config.component_internal_border_confirmation_iou,
+                confirmation_metric=(
+                    self.config.component_internal_border_confirmation_metric
+                ),
+            )
+            fallback_border_confirmation_filtered_component_count = (
+                len(fallback_candidates) - len(confirmed_fallback_candidates)
+            )
+            components = _class_aware_nms(
+                confirmed_fallback_candidates,
+                self.config.component_nms_iou,
+                prefer_non_border=self.config.component_center_preferred_nms_enabled,
+                center_preference_score_bonus=(
+                    self.config.component_center_preference_score_bonus
+                ),
+            )
             nms_component_count = len(components)
+        components, targeted_recovery = _recover_targeted_components(
+            self.component_provider,
+            components,
+            original,
+            ctx,
+            enabled=self.config.component_targeted_recovery_enabled,
+            categories=self.config.component_targeted_recovery_categories,
+            tile_size=self.config.component_targeted_recovery_tile_size,
+            tile_overlap=self.config.component_targeted_recovery_tile_overlap,
+            min_dimension_px=(
+                self.config.component_targeted_recovery_min_dimension_px
+            ),
+            batch_size=self.config.component_targeted_recovery_batch_size,
+            min_score=self.config.component_candidate_min_score,
+            internal_border_margin_px=(
+                self.config.component_internal_border_margin_px
+            ),
+            nms_iou=self.config.component_nms_iou,
+            prefer_non_border=self.config.component_center_preferred_nms_enabled,
+            center_preference_score_bonus=(
+                self.config.component_center_preference_score_bonus
+            ),
+        )
+        nms_component_count = len(components)
         cap_filtered_component_count = 0
         if self.config.component_max_candidates is not None:
             ranked = sorted(
@@ -547,6 +859,10 @@ class CompositePerceptionProvider:
                     "raw_count": raw_component_count,
                     "score_threshold": self.config.component_candidate_min_score,
                     "score_filtered_count": score_filtered_component_count,
+                    "border_confirmation_filtered_count": (
+                        border_confirmation_filtered_component_count
+                    ),
+                    "internal_border_refinement": border_refinement,
                     "primary_count": primary_component_count,
                     "primary_box_fraction": primary_box_fraction,
                     "primary_bbox_area_fraction": primary_bbox_area_fraction,
@@ -560,7 +876,12 @@ class CompositePerceptionProvider:
                         "trigger_max_bbox_area_fraction": self.config.component_fallback_trigger_max_bbox_area_fraction,
                         "raw_count": fallback_raw_component_count,
                         "score_filtered_count": fallback_score_filtered_component_count,
+                        "border_confirmation_filtered_count": (
+                            fallback_border_confirmation_filtered_component_count
+                        ),
+                        "internal_border_refinement": fallback_border_refinement,
                     },
+                    "targeted_recovery": targeted_recovery,
                     "after_nms_count": nms_component_count,
                     "max_candidates": self.config.component_max_candidates,
                     "cap_filtered_count": cap_filtered_component_count,
@@ -573,7 +894,13 @@ class CompositePerceptionProvider:
         )
 
 
-def _restore_components(candidates: list[Component], view: ImageView) -> list[Component]:
+def _restore_components(
+    candidates: list[Component],
+    view: ImageView,
+    *,
+    original_size: tuple[int, int] | None = None,
+    internal_border_margin_px: float = 0.0,
+) -> list[Component]:
     restored: list[Component] = []
     for candidate in candidates:
         item = candidate.model_copy(deep=True)
@@ -601,6 +928,14 @@ def _restore_components(candidates: list[Component], view: ImageView) -> list[Co
             ]
         for evidence in item.evidence:
             evidence.metadata.setdefault("provider_local_id", candidate.internal_id)
+            touches_border, border_distance = _internal_tile_border_state(
+                local_bbox,
+                view=view,
+                original_size=original_size,
+                margin_px=internal_border_margin_px,
+            )
+            evidence.metadata["touches_internal_tile_border"] = touches_border
+            evidence.metadata["internal_tile_border_distance_px"] = border_distance
         bind_bbox_evidence(
             item.evidence,
             view=view,
@@ -716,9 +1051,31 @@ def _object_sort_key(item: Any) -> tuple[Any, ...]:
     return (*geometry, str(getattr(item, "category", "")), str(item.internal_id))
 
 
-def _class_aware_nms(candidates: list[Component], threshold: float) -> list[Component]:
+def _class_aware_nms(
+    candidates: list[Component],
+    threshold: float,
+    *,
+    prefer_non_border: bool = False,
+    center_preference_score_bonus: float = 1.0,
+) -> list[Component]:
     kept: list[Component] = []
-    ranked = sorted(candidates, key=lambda item: (-item.score, item.category, item.internal_id))
+    ranked = sorted(
+        candidates,
+        key=lambda item: (
+            -(
+                item.score
+                + (
+                    center_preference_score_bonus
+                    if prefer_non_border and not _touches_internal_tile_border(item)
+                    else 0.0
+                )
+            ),
+            _touches_internal_tile_border(item) if prefer_non_border else False,
+            -item.score,
+            item.category,
+            item.internal_id,
+        ),
+    )
     for candidate in ranked:
         if any(
             existing.category == candidate.category and _iou(existing.bbox, candidate.bbox) > threshold
@@ -727,6 +1084,378 @@ def _class_aware_nms(candidates: list[Component], threshold: float) -> list[Comp
             continue
         kept.append(candidate)
     return sorted(kept, key=lambda item: (item.bbox.y1, item.bbox.x1, item.category, item.internal_id))
+
+
+def _touches_internal_tile_border(item: Component) -> bool:
+    return any(
+        evidence.metadata.get("touches_internal_tile_border") is True
+        for evidence in item.evidence
+    )
+
+
+def _empty_border_refinement_stats() -> dict[str, int]:
+    return {
+        "eligible_count": 0,
+        "attempted_count": 0,
+        "raw_refinement_count": 0,
+        "matched_count": 0,
+        "replaced_count": 0,
+    }
+
+
+def _predict_component_views(
+    provider: ComponentProvider,
+    views: Sequence[ImageView],
+    ctx: RunContext | None,
+    *,
+    batch_size: int,
+) -> tuple[list[list[Component]], int]:
+    """Predict Component views in bounded batches when the provider supports it."""
+
+    if type(batch_size) is not int or batch_size <= 0:
+        raise ValueError("component inference batch_size must be a positive integer")
+    if not views:
+        return [], 0
+    predict_many = getattr(provider, "predict_many", None)
+    if not callable(predict_many) or batch_size == 1:
+        return [provider.predict(view, ctx) for view in views], len(views)
+
+    output: list[list[Component]] = []
+    call_count = 0
+    for start in range(0, len(views), batch_size):
+        batch = list(views[start : start + batch_size])
+        predicted = predict_many(batch, ctx)
+        call_count += 1
+        if not isinstance(predicted, (list, tuple)) or len(predicted) != len(batch):
+            raise RuntimeError(
+                "batched Component provider returned invalid result cardinality"
+            )
+        for index, rows in enumerate(predicted):
+            if not isinstance(rows, (list, tuple)):
+                raise RuntimeError(
+                    "batched Component provider result must contain candidate arrays"
+                )
+            if any(not isinstance(item, Component) for item in rows):
+                raise RuntimeError(
+                    f"batched Component provider emitted an invalid candidate at batch index {index}"
+                )
+            output.append(list(rows))
+    return output, call_count
+
+
+def _empty_targeted_recovery_stats() -> dict[str, Any]:
+    return {
+        "triggered": False,
+        "tile_count": 0,
+        "inference_call_count": 0,
+        "raw_candidate_count": 0,
+        "targeted_candidate_count": 0,
+        "added_after_nms_count": 0,
+        "candidate_count_after_nms": 0,
+    }
+
+
+def _recover_targeted_components(
+    provider: ComponentProvider,
+    primary: list[Component],
+    original: ImageView,
+    ctx: RunContext | None,
+    *,
+    enabled: bool,
+    categories: tuple[str, ...],
+    tile_size: int,
+    tile_overlap: int,
+    min_dimension_px: int,
+    batch_size: int,
+    min_score: float,
+    internal_border_margin_px: float,
+    nms_iou: float,
+    prefer_non_border: bool,
+    center_preference_score_bonus: float,
+) -> tuple[list[Component], dict[str, Any]]:
+    """Recover configured small-symbol classes from a higher-resolution tiling."""
+
+    stats = _empty_targeted_recovery_stats()
+    stats["candidate_count_after_nms"] = len(primary)
+    if (
+        not enabled
+        or not categories
+        or max(original.width, original.height) < min_dimension_px
+    ):
+        return list(primary), stats
+
+    views = tile_image_view(original, tile_size=tile_size, overlap=tile_overlap)
+    predictions, call_count = _predict_component_views(
+        provider,
+        views,
+        ctx,
+        batch_size=batch_size,
+    )
+    targeted_names = set(categories)
+    recovered: list[Component] = []
+    raw_count = 0
+    for view, rows in zip(views, predictions):
+        restored = _restore_components(
+            rows,
+            view,
+            original_size=original.size,
+            internal_border_margin_px=internal_border_margin_px,
+        )
+        gated = _filter_component_candidates(restored, min_score=min_score)
+        raw_count += len(gated)
+        recovered.extend(item for item in gated if item.category in targeted_names)
+
+    merged = _class_aware_nms(
+        [*primary, *recovered],
+        nms_iou,
+        prefer_non_border=prefer_non_border,
+        center_preference_score_bonus=center_preference_score_bonus,
+    )
+    stats.update(
+        {
+            "triggered": True,
+            "tile_count": len(views),
+            "inference_call_count": call_count,
+            "raw_candidate_count": raw_count,
+            "targeted_candidate_count": len(recovered),
+            "added_after_nms_count": max(0, len(merged) - len(primary)),
+            "candidate_count_after_nms": len(merged),
+        }
+    )
+    return merged, stats
+
+
+def _refine_internal_border_components(
+    provider: ComponentProvider,
+    candidates: list[Component],
+    original: ImageView,
+    ctx: RunContext | None,
+    *,
+    enabled: bool,
+    categories: tuple[str, ...],
+    tile_size: int,
+    match_iou: float,
+    max_candidates: int,
+    min_score: float,
+    internal_border_margin_px: float,
+    batch_size: int = 1,
+) -> tuple[list[Component], dict[str, int]]:
+    """Re-detect selected internal-edge candidates in centred image crops.
+
+    The original candidate is retained unless the centred pass returns a
+    same-class box with sufficient intersection over the smaller box.  This
+    keeps the feature recall-safe while allowing a complete, non-truncated
+    box to replace the edge detection before confirmation and NMS.
+    """
+
+    stats = _empty_border_refinement_stats()
+    if not enabled or not categories or not candidates:
+        return list(candidates), stats
+
+    targeted = set(categories)
+    eligible = [
+        item
+        for item in candidates
+        if item.category in targeted and _touches_internal_tile_border(item)
+    ]
+    stats["eligible_count"] = len(eligible)
+    selected = sorted(
+        eligible,
+        key=lambda item: (
+            -item.score,
+            item.bbox.y1,
+            item.bbox.x1,
+            item.category,
+            item.internal_id,
+        ),
+    )[:max_candidates]
+    replacements: dict[int, Component] = {}
+    crop_groups: dict[
+        tuple[int, int, int, int], tuple[BBox, list[Component]]
+    ] = {}
+    for candidate in selected:
+        crop_box = _centred_component_crop_box(
+            candidate.bbox,
+            image_size=original.size,
+            tile_size=tile_size,
+        )
+        crop_key = (
+            int(crop_box.x1),
+            int(crop_box.y1),
+            int(crop_box.x2),
+            int(crop_box.y2),
+        )
+        if crop_key not in crop_groups:
+            crop_groups[crop_key] = (crop_box, [])
+        crop_groups[crop_key][1].append(candidate)
+
+    refinement_jobs: list[tuple[ImageView, list[Component]]] = []
+    for index, (_, (crop_box, crop_candidates)) in enumerate(sorted(crop_groups.items())):
+        refinement_view = crop_image_view(
+            original,
+            crop_box,
+            view_id=f"component-refine:{index:04d}",
+        )
+        refinement_jobs.append((refinement_view, crop_candidates))
+    predicted_jobs, _ = _predict_component_views(
+        provider,
+        [item[0] for item in refinement_jobs],
+        ctx,
+        batch_size=batch_size,
+    )
+    for (refinement_view, crop_candidates), predicted in zip(
+        refinement_jobs, predicted_jobs
+    ):
+        stats["attempted_count"] += 1
+        restored = _restore_components(
+            predicted,
+            refinement_view,
+            original_size=original.size,
+            internal_border_margin_px=internal_border_margin_px,
+        )
+        gated = _filter_component_candidates(restored, min_score=min_score)
+        stats["raw_refinement_count"] += len(gated)
+        for candidate in crop_candidates:
+            matches = [
+                (
+                    _confirmation_overlap(
+                        candidate.bbox,
+                        item.bbox,
+                        metric="intersection_over_smaller",
+                    ),
+                    item,
+                )
+                for item in gated
+                if item.category == candidate.category
+            ]
+            matches = [item for item in matches if item[0] >= match_iou]
+            if not matches:
+                continue
+            stats["matched_count"] += 1
+            overlap, replacement = max(
+                matches,
+                key=lambda item: (
+                    not _touches_internal_tile_border(item[1]),
+                    item[0],
+                    item[1].score,
+                    item[1].bbox.width * item[1].bbox.height,
+                    -item[1].bbox.y1,
+                    -item[1].bbox.x1,
+                ),
+            )
+            replacement = replacement.model_copy(deep=True)
+            for evidence in replacement.evidence:
+                evidence.metadata["internal_border_refinement"] = True
+                evidence.metadata["refines_component_local_id"] = candidate.internal_id
+                evidence.metadata[
+                    "refinement_match_intersection_over_smaller"
+                ] = overlap
+            replacements[id(candidate)] = replacement
+
+    stats["replaced_count"] = len(replacements)
+    return [replacements.get(id(item), item) for item in candidates], stats
+
+
+def _centred_component_crop_box(
+    bbox: BBox,
+    *,
+    image_size: tuple[int, int],
+    tile_size: int,
+) -> BBox:
+    image_width, image_height = image_size
+    crop_width = min(int(tile_size), int(image_width))
+    crop_height = min(int(tile_size), int(image_height))
+    center_x = (float(bbox.x1) + float(bbox.x2)) / 2.0
+    center_y = (float(bbox.y1) + float(bbox.y2)) / 2.0
+    left = max(0, min(image_width - crop_width, round(center_x - crop_width / 2.0)))
+    top = max(0, min(image_height - crop_height, round(center_y - crop_height / 2.0)))
+    return BBox(
+        x1=float(left),
+        y1=float(top),
+        x2=float(left + crop_width),
+        y2=float(top + crop_height),
+    )
+
+
+def _filter_unconfirmed_internal_border_components(
+    candidates: list[Component],
+    *,
+    enabled: bool,
+    categories: tuple[str, ...],
+    confirmation_iou: float,
+    confirmation_metric: str = "iou",
+) -> list[Component]:
+    if not enabled or not categories:
+        return list(candidates)
+    targeted = set(categories)
+    kept: list[Component] = []
+    source_views = {
+        id(item): {evidence.view_id for evidence in item.evidence}
+        for item in candidates
+    }
+    for candidate in candidates:
+        if (
+            candidate.category not in targeted
+            or not _touches_internal_tile_border(candidate)
+        ):
+            kept.append(candidate)
+            continue
+        candidate_views = source_views[id(candidate)]
+        confirmed = any(
+            other is not candidate
+            and other.category == candidate.category
+            and candidate_views.isdisjoint(source_views[id(other)])
+            and _confirmation_overlap(
+                candidate.bbox,
+                other.bbox,
+                metric=confirmation_metric,
+            )
+            >= confirmation_iou
+            for other in candidates
+        )
+        if confirmed:
+            kept.append(candidate)
+    return kept
+
+
+def _confirmation_overlap(left: BBox, right: BBox, *, metric: str) -> float:
+    if metric == "iou":
+        return _iou(left, right)
+    if metric != "intersection_over_smaller":
+        raise ValueError(f"unsupported border confirmation metric: {metric}")
+    width = max(0.0, min(left.x2, right.x2) - max(left.x1, right.x1))
+    height = max(0.0, min(left.y2, right.y2) - max(left.y1, right.y1))
+    smaller_area = min(left.width * left.height, right.width * right.height)
+    return width * height / smaller_area if smaller_area > 0.0 else 0.0
+
+
+def _internal_tile_border_state(
+    bbox: BBox,
+    *,
+    view: ImageView,
+    original_size: tuple[int, int] | None,
+    margin_px: float,
+) -> tuple[bool, float | None]:
+    if original_size is None:
+        return False, None
+    crop = view.metadata.get("crop_box")
+    if not isinstance(crop, list) or len(crop) != 4:
+        return False, None
+    left, top, right, bottom = (float(value) for value in crop)
+    original_width, original_height = original_size
+    distances: list[float] = []
+    if left > 0.0:
+        distances.append(float(bbox.x1))
+    if right < float(original_width):
+        distances.append(float(view.width) - float(bbox.x2))
+    if top > 0.0:
+        distances.append(float(bbox.y1))
+    if bottom < float(original_height):
+        distances.append(float(view.height) - float(bbox.y2))
+    if not distances:
+        return False, None
+    distance = max(0.0, min(distances))
+    return distance <= float(margin_px), distance
 
 
 def _iou(left: BBox, right: BBox) -> float:

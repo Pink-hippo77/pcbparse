@@ -39,6 +39,17 @@ class ComponentProvider(Protocol):
 
 
 @runtime_checkable
+class BatchedComponentProvider(ComponentProvider, Protocol):
+    """Optional throughput extension for providers that support image batches."""
+
+    def predict_many(
+        self,
+        images: list[ImageView],
+        ctx: Any,
+    ) -> list[list[ComponentCandidate]]: ...
+
+
+@runtime_checkable
 class OCRProvider(Protocol):
     version: str
 
@@ -78,6 +89,7 @@ class JunctionProvider(Protocol):
 __all__ = [
     "ComponentCandidate",
     "ComponentProvider",
+    "BatchedComponentProvider",
     "OCRProvider",
     "JunctionProvider",
     "PinCandidate",

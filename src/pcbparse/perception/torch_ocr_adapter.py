@@ -47,6 +47,9 @@ class _CropCandidate:
     crop_box: tuple[int, int, int, int]
     tensor: Any | None = None
     width: int = 0
+    crop_sha256: str = ""
+    orientation_degrees: int = 0
+    orientation_candidates_degrees: tuple[int, ...] = (0,)
 
 
 class TorchOCRAdapter:
@@ -65,6 +68,7 @@ class TorchOCRAdapter:
         max_detections_per_view: int,
         max_recognition_width: int,
         recognition_candidate_count: int = 0,
+        vertical_rotation_enabled: bool = False,
     ) -> None:
         self._bundle = bundle
         self._detector = bundle.detector
@@ -91,12 +95,17 @@ class TorchOCRAdapter:
             raise TorchOCRAdapterError(
                 "recognition_candidate_count must be a non-negative integer"
             )
+        if type(vertical_rotation_enabled) is not bool:
+            raise TorchOCRAdapterError(
+                "vertical_rotation_enabled must be a boolean"
+            )
         self._detector_min_area = detector_min_area
         self._detector_batch_size = detector_batch_size
         self._recognition_batch_size = recognition_batch_size
         self._max_detections_per_view = max_detections_per_view
         self._max_recognition_width = max_recognition_width
         self._recognition_candidate_count = recognition_candidate_count
+        self._vertical_rotation_enabled = vertical_rotation_enabled
         self._lock = threading.RLock()
         self._detector.eval()
         self._recognizer.eval()
@@ -139,6 +148,16 @@ class TorchOCRAdapter:
                 "recognition_candidate_count must be a non-negative integer"
             )
         self._recognition_candidate_count = value
+
+    @property
+    def vertical_rotation_enabled(self) -> bool:
+        return self._vertical_rotation_enabled
+
+    @vertical_rotation_enabled.setter
+    def vertical_rotation_enabled(self, value: bool) -> None:
+        if type(value) is not bool:
+            raise TorchOCRAdapterError("vertical_rotation_enabled must be a boolean")
+        self._vertical_rotation_enabled = value
 
     def recognize(self, views: list[ImageView], ctx: Any = None) -> list[TextToken]:
         if not isinstance(views, list) or any(not isinstance(view, ImageView) for view in views):
@@ -218,27 +237,61 @@ class TorchOCRAdapter:
                             detector_box=detector_box,
                             crop_box=crop_box,
                         )
-                        tensor, width = _recognition_tensor(
+                        tensor, width, crop_sha256 = _recognition_tensor(
                             view, crop_box, torch,
                             height=self._preprocess["recognition_height"],
                         )
-                        if width > self._max_recognition_width:
-                            # Never truncate or squash a long string silently.
-                            continue
-                        candidate.tensor = tensor
-                        candidate.width = width
-                        candidates.append(candidate)
+                        is_vertical = _is_vertical_crop(crop_box)
+                        orientation_candidates = (
+                            (0, 90)
+                            if self._vertical_rotation_enabled and is_vertical
+                            else (0,)
+                        )
+                        candidate.orientation_candidates_degrees = orientation_candidates
+                        if width <= self._max_recognition_width:
+                            candidate.tensor = tensor
+                            candidate.width = width
+                            candidate.crop_sha256 = crop_sha256
+                            candidates.append(candidate)
+                        if orientation_candidates == (0, 90):
+                            rotated_tensor, rotated_width, rotated_sha256 = _recognition_tensor(
+                                view,
+                                crop_box,
+                                torch,
+                                height=self._preprocess["recognition_height"],
+                                rotation_degrees=90,
+                            )
+                            if rotated_width <= self._max_recognition_width:
+                                candidates.append(
+                                    _CropCandidate(
+                                        view_index=view_index,
+                                        detection_index=detection_index,
+                                        view=view,
+                                        box=(x1, y1, x2, y2),
+                                        detector_box=detector_box,
+                                        crop_box=crop_box,
+                                        tensor=rotated_tensor,
+                                        width=rotated_width,
+                                        crop_sha256=rotated_sha256,
+                                        orientation_degrees=90,
+                                        orientation_candidates_degrees=orientation_candidates,
+                                    )
+                                )
         _check_budget(ctx, "ocr_detector:after")
         if not candidates:
             _record_version(ctx, self.version)
             return []
 
         _check_budget(ctx, "ocr_recognizer:before")
-        recognized: list[tuple[_CropCandidate, str, float, list[str]]] = []
+        recognized: list[
+            tuple[_CropCandidate, str, float, list[str], int, float]
+        ] = []
         with self._lock, torch.inference_mode():
-            for batch_start in range(0, len(candidates), self._recognition_batch_size):
-                batch = candidates[batch_start : batch_start + self._recognition_batch_size]
+            for batch_index, batch in enumerate(
+                _recognition_batches(candidates, self._recognition_batch_size)
+            ):
                 maximum_width = max(candidate.width for candidate in batch)
+                padding_ratio = _padding_ratio(batch, maximum_width)
                 height = self._preprocess["recognition_height"]
                 padded = torch.full(
                     (len(batch), 1, height, maximum_width),
@@ -276,8 +329,18 @@ class TorchOCRAdapter:
                     alternatives = [
                         value for value in raw_candidates if value != text
                     ][: self._recognition_candidate_count]
-                    recognized.append((candidate, text, score, alternatives))
+                    recognized.append(
+                        (
+                            candidate,
+                            text,
+                            score,
+                            alternatives,
+                            batch_index,
+                            padding_ratio,
+                        )
+                    )
         _check_budget(ctx, "ocr_recognizer:after")
+        recognized = _select_orientation_results(recognized)
 
         recognized.sort(
             key=lambda item: (
@@ -291,7 +354,14 @@ class TorchOCRAdapter:
         )
         occurrence: dict[str, int] = {}
         output: list[TextToken] = []
-        for candidate, text, recognition_score, text_candidates in recognized:
+        for (
+            candidate,
+            text,
+            recognition_score,
+            text_candidates,
+            recognition_batch_index,
+            recognition_padding_ratio,
+        ) in recognized:
             detector_score = candidate.detector_box.score
             score = math.sqrt(max(0.0, detector_score * recognition_score))
             image_identity = candidate.view.sha256 or hashlib.sha256(
@@ -337,12 +407,26 @@ class TorchOCRAdapter:
                                     "recognizer": "tiny_crnn_bilstm_ctc",
                                 },
                                 "coordinate_system": "image_view_local_xyxy",
+                                "crop_source": "original_view_pixels",
+                                "crop_sha256": candidate.crop_sha256,
+                                "orientation_degrees": candidate.orientation_degrees,
+                                "orientation_candidates_degrees": list(
+                                    candidate.orientation_candidates_degrees
+                                ),
+                                "orientation_policy": (
+                                    "identity_plus_90_vertical_v1"
+                                    if len(candidate.orientation_candidates_degrees) > 1
+                                    else "identity_only_v1"
+                                ),
+                                "transform_chain": candidate.view.transform.to_records(),
                                 "detector_score": detector_score,
                                 "recognition_score": recognition_score,
                                 "detector_component_area": candidate.detector_box.area,
                                 "detector_index": candidate.detection_index,
                                 "crop_box": list(candidate.crop_box),
                                 "recognition_width": candidate.width,
+                                "recognition_batch_index": recognition_batch_index,
+                                "recognition_padding_ratio": recognition_padding_ratio,
                                 "checkpoint_epoch": self._bundle.epoch,
                                 "checkpoint_global_step": self._bundle.global_step,
                                 "semantic_fields_inferred": False,
@@ -446,15 +530,100 @@ def _recognition_tensor(
     torch: Any,
     *,
     height: int,
-) -> tuple[Any, int]:
-    crop = view.image.crop(crop_box).convert("L")
+    rotation_degrees: int = 0,
+) -> tuple[Any, int, str]:
+    if rotation_degrees not in {0, 90}:
+        raise TorchOCRAdapterError(
+            "OCR crop rotation_degrees must be 0 or 90"
+        )
+    source_crop = view.image.crop(crop_box).convert("L")
+    crop = source_crop
+    if rotation_degrees == 90:
+        crop = source_crop.rotate(90, expand=True, resample=Image.Resampling.BILINEAR)
     try:
+        crop_sha256 = _image_crop_sha256(crop)
         width = max(1, int(math.floor(crop.width * height / crop.height + 0.5)))
         resized = crop.resize((width, height), Image.Resampling.BILINEAR)
         array = np.asarray(resized, dtype=np.float32).copy() / np.float32(255.0)
-        return torch.from_numpy(array).unsqueeze(0).contiguous(), width
+        return (
+            torch.from_numpy(array).unsqueeze(0).contiguous(),
+            width,
+            crop_sha256,
+        )
     finally:
         crop.close()
+        if crop is not source_crop:
+            source_crop.close()
+
+
+def _image_crop_sha256(crop: Image.Image) -> str:
+    header = f"{crop.mode}:{crop.width}x{crop.height}\0".encode("ascii")
+    return hashlib.sha256(header + crop.tobytes()).hexdigest()
+
+
+def _is_vertical_crop(crop_box: tuple[int, int, int, int]) -> bool:
+    width = crop_box[2] - crop_box[0]
+    height = crop_box[3] - crop_box[1]
+    return width > 0 and height >= width * 1.25
+
+
+def _select_orientation_results(
+    recognized: Sequence[tuple[_CropCandidate, str, float, list[str], int, float]],
+) -> list[tuple[_CropCandidate, str, float, list[str], int, float]]:
+    """Keep the highest-confidence orientation for each detector box."""
+
+    selected: dict[tuple[int, int], tuple[_CropCandidate, str, float, list[str], int, float]] = {}
+    for item in recognized:
+        candidate = item[0]
+        key = (candidate.view_index, candidate.detection_index)
+        current = selected.get(key)
+        if current is None:
+            selected[key] = item
+            continue
+        current_candidate = current[0]
+        if item[2] > current[2] + 1e-9 or (
+            abs(item[2] - current[2]) <= 1e-9
+            and candidate.orientation_degrees < current_candidate.orientation_degrees
+        ):
+            selected[key] = item
+    return list(selected.values())
+
+
+def _recognition_batches(
+    candidates: Sequence[_CropCandidate],
+    batch_size: int,
+) -> list[list[_CropCandidate]]:
+    """Group normalized-width crops to reduce dynamic-width padding.
+
+    Sorting only changes the recognizer batch layout.  The caller restores
+    deterministic view/box order before emitting tokens, so this remains
+    output-compatible with the legacy provider while making padding measurable.
+    """
+
+    ordered = sorted(
+        candidates,
+        key=lambda candidate: (
+            candidate.width,
+            candidate.view_index,
+            candidate.box[1],
+            candidate.box[0],
+            candidate.box[3],
+            candidate.box[2],
+            candidate.detection_index,
+        ),
+    )
+    return [
+        ordered[start : start + batch_size]
+        for start in range(0, len(ordered), batch_size)
+    ]
+
+
+def _padding_ratio(batch: Sequence[_CropCandidate], maximum_width: int) -> float:
+    if not batch or maximum_width <= 0:
+        return 0.0
+    useful_width = sum(candidate.width for candidate in batch)
+    total_width = len(batch) * maximum_width
+    return max(0.0, min(1.0, 1.0 - useful_width / total_width))
 
 
 def _tensor_output(value: Any, torch: Any) -> Any:

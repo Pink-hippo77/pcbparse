@@ -8,8 +8,16 @@ candidate comparison rather than a submission artifact.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import sys
 from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE_ROOT = ROOT / "src"
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
 
 from pcbparse.association import associate_ocr
 from pcbparse.config import load_config
@@ -22,6 +30,7 @@ from pcbparse.perception.production_provider import (
     load_production_provider,
 )
 from pcbparse.pipeline.context import RunContext
+from pcbparse.training.artifacts import build_candidate_lock_entry, load_candidate_bundle
 
 
 def main() -> int:
@@ -32,13 +41,141 @@ def main() -> int:
     parser.add_argument("--models-lock", type=Path, required=True)
     parser.add_argument("--pipeline-config", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    shadow_group = parser.add_mutually_exclusive_group()
+    shadow_group.add_argument(
+        "--component-candidate-bundle",
+        type=Path,
+        help=(
+            "Optional unblessed Component bundle to inject in memory for an "
+            "image-only shadow run; models.lock.json is never edited."
+        ),
+    )
+    shadow_group.add_argument(
+        "--component-shadow-checkpoint",
+        type=Path,
+        help=(
+            "Optional unpackaged YOLO checkpoint for a validation-only shadow run. "
+            "This path is never written to models.lock.json."
+        ),
+    )
+    parser.add_argument(
+        "--component-shadow-category-table",
+        type=Path,
+        default=Path("data/derived/pcbnet-upgrade-v1/component_yolo/classes.json"),
+    )
+    parser.add_argument("--component-shadow-score-threshold", type=float, default=0.20)
+    parser.add_argument("--component-shadow-nms-iou", type=float, default=0.55)
+    parser.add_argument("--component-shadow-imgsz", type=int, default=640)
+    parser.add_argument("--component-shadow-max-detections", type=int, default=500)
+    parser.add_argument(
+        "--component-shadow-per-class-thresholds-audit",
+        type=Path,
+        help="Hash-verified validation calibration used only with a shadow checkpoint.",
+    )
     args = parser.parse_args()
+    if (
+        args.component_shadow_per_class_thresholds_audit is not None
+        and args.component_shadow_checkpoint is None
+    ):
+        raise ValueError(
+            "per-class threshold audit requires --component-shadow-checkpoint"
+        )
 
     config = load_config(args.pipeline_config)
     provider = load_production_provider(
         args.models_lock,
         config=composite_provider_config_from_pipeline(config),
     )
+    component_candidate: dict[str, str] | None = None
+    if args.component_candidate_bundle is not None:
+        bundle_path = args.component_candidate_bundle.expanduser().resolve(strict=True)
+        bundle = load_candidate_bundle(bundle_path)
+        if bundle.task != "component" or bundle.status != "candidate" or bundle.blessed is not False:
+            raise ValueError("shadow Component bundle must be an unblessed component candidate")
+        entry = build_candidate_lock_entry(
+            bundle_path, lock_directory=bundle_path.parent
+        )
+        module_name, attribute_name = str(entry["adapter"]).rsplit(":", 1)
+        adapter_factory = getattr(importlib.import_module(module_name), attribute_name)
+        model_path = (bundle_path.parent / str(entry["path"])).resolve(strict=True)
+        provider.component_provider = adapter_factory(model_path, entry)
+        component_candidate = {
+            "bundle": str(bundle_path),
+            "bundle_sha256": _sha256(bundle_path),
+            "model_sha256": str(entry["sha256"]),
+            "adapter": str(entry["adapter"]),
+            "version": str(entry["version"]),
+        }
+    elif args.component_shadow_checkpoint is not None:
+        checkpoint_path = args.component_shadow_checkpoint.expanduser().resolve(
+            strict=True
+        )
+        category_path = args.component_shadow_category_table.expanduser().resolve(
+            strict=True
+        )
+        adapter_factory = getattr(
+            importlib.import_module("pcbparse.perception.yolo_component_adapter"),
+            "factory",
+        )
+        checkpoint_sha256 = _sha256(checkpoint_path)
+        per_class_thresholds: dict[str, float] = {}
+        threshold_audit: dict[str, object] | None = None
+        threshold_audit_path: Path | None = None
+        if args.component_shadow_per_class_thresholds_audit is not None:
+            threshold_audit_path = (
+                args.component_shadow_per_class_thresholds_audit.expanduser().resolve(
+                    strict=True
+                )
+            )
+            threshold_module = importlib.import_module(
+                "evaluate_yolo_component_tiled_validation"
+            )
+            per_class_thresholds, threshold_audit = (
+                threshold_module._per_class_thresholds_from_audit(
+                    threshold_audit_path,
+                    workspace=ROOT.resolve(strict=True),
+                    checkpoint_sha256=checkpoint_sha256,
+                    population_floor=args.component_shadow_score_threshold,
+                )
+            )
+        entry = {
+            "task": "component",
+            "sha256": checkpoint_sha256,
+            "category_table_path": str(category_path),
+            "category_table_sha256": _sha256(category_path),
+            "inference": {
+                "device": "auto",
+                "score_threshold": args.component_shadow_score_threshold,
+                "nms_iou": args.component_shadow_nms_iou,
+                "max_detections": args.component_shadow_max_detections,
+                "imgsz": args.component_shadow_imgsz,
+                "per_class_score_thresholds": per_class_thresholds,
+            },
+        }
+        provider.component_provider = adapter_factory(checkpoint_path, entry)
+        component_candidate = {
+            "checkpoint": str(checkpoint_path),
+            "model_sha256": checkpoint_sha256,
+            "category_table": str(category_path),
+            "category_table_sha256": _sha256(category_path),
+            "adapter": "pcbparse.perception.yolo_component_adapter:factory",
+            "version": f"validation-shadow-{checkpoint_sha256[:16]}",
+            "evidence_boundary": "unpackaged_validation_only",
+            "per_class_score_thresholds": json.dumps(
+                per_class_thresholds, sort_keys=True, separators=(",", ":")
+            ),
+            **(
+                {
+                    "threshold_audit": str(threshold_audit_path),
+                    "threshold_audit_sha256": _sha256(threshold_audit_path),
+                    "threshold_audit_payload_sha256": str(
+                        threshold_audit["calibration_payload_sha256"]
+                    ),
+                }
+                if threshold_audit_path is not None and threshold_audit is not None
+                else {}
+            ),
+        }
     output_dir = args.output_dir.resolve()
     ir_dir = output_dir / "ir"
     ir_dir.mkdir(parents=True, exist_ok=True)
@@ -101,7 +238,9 @@ def main() -> int:
                 {
                     "case_id": case_id,
                     "ir_path": str(ir_path),
-                    "provider_kind": "production",
+                    "provider_kind": (
+                        "candidate_shadow" if component_candidate is not None else "production"
+                    ),
                     "sidecar_access": False,
                     "image_sha256": ir.image.sha256,
                 }
@@ -128,6 +267,7 @@ def main() -> int:
         "failed": len(errors),
         "errors": errors,
         "manifest": str(manifest_path),
+        "component_candidate": component_candidate,
     }
     if not errors:
         report = evaluate_prediction_manifest(
@@ -156,6 +296,16 @@ def _selected_rows(path: Path, split: str) -> list[dict[str, object]]:
     if not selected:
         raise ValueError(f"split has no rows: {split}")
     return selected
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 if __name__ == "__main__":

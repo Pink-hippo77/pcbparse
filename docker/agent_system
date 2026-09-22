@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# The official platform injects generic LLM_* variables. Keep a compatible
+# mapping for future Qwen-enabled profiles without exposing the API key in logs.
+if [[ -n "${LLM_BASE_URL:-}" && -z "${QWEN_ENDPOINT:-}" ]]; then
+  export QWEN_ENDPOINT="$LLM_BASE_URL"
+fi
+if [[ -n "${LLM_API_KEY:-}" && -z "${QWEN_API_KEY:-}" ]]; then
+  export QWEN_API_KEY="$LLM_API_KEY"
+fi
+if [[ -n "${LLM_MODEL:-}" && -z "${QWEN_MODEL:-}" ]]; then
+  export QWEN_MODEL="$LLM_MODEL"
+fi
+
+exec python3 -m pcbparse.submission_agent "$@"

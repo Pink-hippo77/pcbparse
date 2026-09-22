@@ -70,6 +70,11 @@ def composite_provider_config_from_pipeline(
     tile_overlap = _strict_int(raw_image, "tile_overlap", defaults.tile_overlap)
     component_tile_size = _optional_strict_int(raw_image, "component_tile_size")
     component_tile_overlap = _optional_strict_int(raw_image, "component_tile_overlap")
+    component_inference_batch_size = _strict_positive_int(
+        raw_image,
+        "component_inference_batch_size",
+        defaults.component_inference_batch_size,
+    )
     wire_tile_size = _optional_strict_int(raw_image, "wire_tile_size")
     wire_tile_overlap = _optional_strict_int(raw_image, "wire_tile_overlap")
     component_candidate_min_score = _strict_unit_interval_number(
@@ -81,6 +86,97 @@ def composite_provider_config_from_pipeline(
         raw_image,
         "component_nms_iou",
         defaults.component_nms_iou,
+    )
+    component_center_preferred_nms_enabled = _strict_image_bool(
+        raw_image,
+        "component_center_preferred_nms_enabled",
+        defaults.component_center_preferred_nms_enabled,
+    )
+    component_center_preference_score_bonus = _strict_unit_interval_number(
+        raw_image,
+        "component_center_preference_score_bonus",
+        defaults.component_center_preference_score_bonus,
+    )
+    component_internal_border_margin_px = _strict_nonnegative_number(
+        raw_image,
+        "component_internal_border_margin_px",
+        defaults.component_internal_border_margin_px,
+    )
+    component_internal_border_confirmation_enabled = _strict_image_bool(
+        raw_image,
+        "component_internal_border_confirmation_enabled",
+        defaults.component_internal_border_confirmation_enabled,
+    )
+    component_internal_border_confirmation_iou = _strict_unit_interval_number(
+        raw_image,
+        "component_internal_border_confirmation_iou",
+        defaults.component_internal_border_confirmation_iou,
+    )
+    component_internal_border_confirmation_metric = _strict_choice(
+        raw_image,
+        "component_internal_border_confirmation_metric",
+        defaults.component_internal_border_confirmation_metric,
+        {"iou", "intersection_over_smaller"},
+    )
+    component_internal_border_confirmation_categories = _strict_string_tuple(
+        raw_image,
+        "component_internal_border_confirmation_categories",
+        defaults.component_internal_border_confirmation_categories,
+    )
+    component_internal_border_refinement_enabled = _strict_image_bool(
+        raw_image,
+        "component_internal_border_refinement_enabled",
+        defaults.component_internal_border_refinement_enabled,
+    )
+    component_internal_border_refinement_iou = _strict_unit_interval_number(
+        raw_image,
+        "component_internal_border_refinement_iou",
+        defaults.component_internal_border_refinement_iou,
+    )
+    component_internal_border_refinement_categories = _strict_string_tuple(
+        raw_image,
+        "component_internal_border_refinement_categories",
+        defaults.component_internal_border_refinement_categories,
+    )
+    component_internal_border_refinement_max_candidates = _strict_positive_int(
+        raw_image,
+        "component_internal_border_refinement_max_candidates",
+        defaults.component_internal_border_refinement_max_candidates,
+    )
+    component_internal_border_refinement_batch_size = _strict_positive_int(
+        raw_image,
+        "component_internal_border_refinement_batch_size",
+        defaults.component_internal_border_refinement_batch_size,
+    )
+    component_targeted_recovery_enabled = _strict_image_bool(
+        raw_image,
+        "component_targeted_recovery_enabled",
+        defaults.component_targeted_recovery_enabled,
+    )
+    component_targeted_recovery_categories = _strict_string_tuple(
+        raw_image,
+        "component_targeted_recovery_categories",
+        defaults.component_targeted_recovery_categories,
+    )
+    component_targeted_recovery_tile_size = _strict_positive_int(
+        raw_image,
+        "component_targeted_recovery_tile_size",
+        defaults.component_targeted_recovery_tile_size,
+    )
+    component_targeted_recovery_tile_overlap = _strict_nonnegative_int(
+        raw_image,
+        "component_targeted_recovery_tile_overlap",
+        defaults.component_targeted_recovery_tile_overlap,
+    )
+    component_targeted_recovery_min_dimension_px = _strict_positive_int(
+        raw_image,
+        "component_targeted_recovery_min_dimension_px",
+        defaults.component_targeted_recovery_min_dimension_px,
+    )
+    component_targeted_recovery_batch_size = _strict_positive_int(
+        raw_image,
+        "component_targeted_recovery_batch_size",
+        defaults.component_targeted_recovery_batch_size,
     )
     component_max_candidates = _optional_strict_positive_int(
         raw_image,
@@ -182,6 +278,11 @@ def composite_provider_config_from_pipeline(
         component_fallback_tile_size,
         component_fallback_tile_overlap,
     )
+    _validate_tile_pair(
+        "component_targeted_recovery_tile",
+        component_targeted_recovery_tile_size,
+        component_targeted_recovery_tile_overlap,
+    )
     _validate_tile_pair("tile", tile_size, tile_overlap)
     _validate_tile_pair(
         "component_tile",
@@ -198,7 +299,54 @@ def composite_provider_config_from_pipeline(
         tile_overlap=tile_overlap,
         component_tile_size=component_tile_size,
         component_tile_overlap=component_tile_overlap,
+        component_inference_batch_size=component_inference_batch_size,
         component_nms_iou=component_nms_iou,
+        component_center_preferred_nms_enabled=component_center_preferred_nms_enabled,
+        component_center_preference_score_bonus=component_center_preference_score_bonus,
+        component_internal_border_margin_px=component_internal_border_margin_px,
+        component_internal_border_confirmation_enabled=(
+            component_internal_border_confirmation_enabled
+        ),
+        component_internal_border_confirmation_iou=(
+            component_internal_border_confirmation_iou
+        ),
+        component_internal_border_confirmation_metric=(
+            component_internal_border_confirmation_metric
+        ),
+        component_internal_border_confirmation_categories=(
+            component_internal_border_confirmation_categories
+        ),
+        component_internal_border_refinement_enabled=(
+            component_internal_border_refinement_enabled
+        ),
+        component_internal_border_refinement_iou=(
+            component_internal_border_refinement_iou
+        ),
+        component_internal_border_refinement_categories=(
+            component_internal_border_refinement_categories
+        ),
+        component_internal_border_refinement_max_candidates=(
+            component_internal_border_refinement_max_candidates
+        ),
+        component_internal_border_refinement_batch_size=(
+            component_internal_border_refinement_batch_size
+        ),
+        component_targeted_recovery_enabled=component_targeted_recovery_enabled,
+        component_targeted_recovery_categories=(
+            component_targeted_recovery_categories
+        ),
+        component_targeted_recovery_tile_size=(
+            component_targeted_recovery_tile_size
+        ),
+        component_targeted_recovery_tile_overlap=(
+            component_targeted_recovery_tile_overlap
+        ),
+        component_targeted_recovery_min_dimension_px=(
+            component_targeted_recovery_min_dimension_px
+        ),
+        component_targeted_recovery_batch_size=(
+            component_targeted_recovery_batch_size
+        ),
         wire_tile_size=wire_tile_size,
         wire_tile_overlap=wire_tile_overlap,
         component_candidate_min_score=component_candidate_min_score,
@@ -438,7 +586,18 @@ def _parse_wire_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any
 
 
 def _parse_ocr_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]:
-    allowed = {"detector_threshold", "detector_min_area", "recognition_candidate_count"}
+    allowed = {
+        "detector_threshold",
+        "detector_min_area",
+        "recognition_candidate_count",
+        # Batch sizes are consumed by CompositeProviderConfig below rather
+        # than by the OCR model adapter.  They still belong to the strict
+        # pipeline OCR schema and must not be rejected as unknown keys.
+        "global_batch_size",
+        "component_batch_size",
+        "strip_batch_size",
+        "vertical_rotation_enabled",
+    }
     unknown = sorted(set(section) - allowed)
     if unknown:
         raise ValueError(f"pipeline ocr contains unsupported key(s): {unknown}")
@@ -461,6 +620,13 @@ def _parse_ocr_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]
                 "pipeline ocr.recognition_candidate_count must be a non-negative integer"
             )
         result["recognition_candidate_count"] = value
+    if "vertical_rotation_enabled" in section:
+        value = section["vertical_rotation_enabled"]
+        if type(value) is not bool:
+            raise ValueError(
+                "pipeline ocr.vertical_rotation_enabled must be a boolean"
+            )
+        result["vertical_rotation_enabled"] = value
     return result
 
 
@@ -488,6 +654,13 @@ def _apply_ocr_inference_overrides(provider: Any, overrides: Mapping[str, Any]) 
         raise ProductionProviderError(
             "pipeline OCR candidate overrides require a candidate-capable OCR adapter"
         )
+    if (
+        "vertical_rotation_enabled" in overrides
+        and not hasattr(provider, "vertical_rotation_enabled")
+    ):
+        raise ProductionProviderError(
+            "pipeline OCR vertical rotation requires a rotation-capable OCR adapter"
+        )
     try:
         if "detector_threshold" in overrides:
             provider.detector_threshold = float(overrides["detector_threshold"])
@@ -496,6 +669,10 @@ def _apply_ocr_inference_overrides(provider: Any, overrides: Mapping[str, Any]) 
         if "recognition_candidate_count" in overrides:
             provider.recognition_candidate_count = int(
                 overrides["recognition_candidate_count"]
+            )
+        if "vertical_rotation_enabled" in overrides:
+            provider.vertical_rotation_enabled = bool(
+                overrides["vertical_rotation_enabled"]
             )
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise ProductionProviderError(
@@ -590,6 +767,35 @@ def _strict_nonnegative_number(
     if resolved < 0:
         raise ValueError(f"pipeline image.{key} must be non-negative")
     return resolved
+
+
+def _strict_string_tuple(
+    section: Mapping[str, Any],
+    key: str,
+    default: tuple[str, ...],
+) -> tuple[str, ...]:
+    value = section[key] if key in section else list(default)
+    if not isinstance(value, (list, tuple)) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
+        raise ValueError(
+            f"pipeline image.{key} must contain non-empty strings"
+        )
+    return tuple(dict.fromkeys(item.strip() for item in value))
+
+
+def _strict_choice(
+    section: Mapping[str, Any],
+    key: str,
+    default: str,
+    choices: set[str],
+) -> str:
+    value = section[key] if key in section else default
+    if not isinstance(value, str) or value not in choices:
+        raise ValueError(
+            f"pipeline image.{key} must be one of {sorted(choices)}"
+        )
+    return value
 
 
 def _optional_strict_nonnegative_number(

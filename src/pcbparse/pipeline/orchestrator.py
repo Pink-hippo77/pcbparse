@@ -274,6 +274,9 @@ def _infer_one(
             ReferenceValidator(),
             GeometryValidator(),
             GraphValidator(
+                endpoint_tolerance_px=float(
+                    graph_config.get("endpoint_merge_tolerance_px", 3.0)
+                ),
                 collinear_merge_tolerance_px=float(
                     graph_config.get("collinear_merge_tolerance_px", 0.0)
                 ),

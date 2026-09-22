@@ -36,6 +36,10 @@ if str(SOURCE_ROOT) not in sys.path:
 from pcbparse.io import load_image, tile_image_view  # noqa: E402
 from pcbparse.perception.composite_provider import (  # noqa: E402
     _class_aware_nms,
+    _filter_unconfirmed_internal_border_components,
+    _predict_component_views,
+    _recover_targeted_components,
+    _refine_internal_border_components,
     _restore_components,
 )
 from pcbparse.perception.torch_component_adapter import (  # noqa: E402
@@ -54,6 +58,7 @@ EXPECTED_TILE_SIZE = 512
 EXPECTED_TILE_OVERLAP = 64
 EXPECTED_SCORE_THRESHOLD = 0.20
 EXPECTED_NMS_IOU = 0.55
+EXPECTED_MAX_COMPONENT_CANDIDATES = 128
 MATCH_IOU = 0.50
 MAX_DETECTIONS_PER_TILE = 300
 
@@ -244,10 +249,136 @@ def _fixed_protocol(
     tile_overlap = image.get("component_tile_overlap")
     if type(tile_overlap) is not int or tile_overlap < 0:
         raise ValueError("pipeline.image.component_tile_overlap must be non-negative")
+    inference_batch_size = _positive_integer(
+        image.get("component_inference_batch_size", 1),
+        "pipeline.image.component_inference_batch_size",
+    )
     score_threshold = _finite(
         component.get("min_score"), "thresholds.component.min_score"
     )
     nms_iou = _finite(component.get("nms_iou"), "thresholds.component.nms_iou")
+    pipeline_score_threshold = _finite(
+        image.get("component_candidate_min_score"),
+        "pipeline.image.component_candidate_min_score",
+    )
+    max_component_candidates = _positive_integer(
+        image.get("component_max_candidates"),
+        "pipeline.image.component_max_candidates",
+    )
+    center_preferred_nms = image.get("component_center_preferred_nms_enabled", False)
+    if type(center_preferred_nms) is not bool:
+        raise ValueError("component_center_preferred_nms_enabled must be a boolean")
+    center_preference_score_bonus = _finite(
+        image.get("component_center_preference_score_bonus", 1.0),
+        "pipeline.image.component_center_preference_score_bonus",
+    )
+    if not 0.0 <= center_preference_score_bonus <= 1.0:
+        raise ValueError("component_center_preference_score_bonus must be in [0,1]")
+    border_margin = _finite(
+        image.get("component_internal_border_margin_px", 32.0),
+        "pipeline.image.component_internal_border_margin_px",
+    )
+    if border_margin < 0.0:
+        raise ValueError("component_internal_border_margin_px must be non-negative")
+    border_confirmation_enabled = image.get(
+        "component_internal_border_confirmation_enabled", False
+    )
+    if type(border_confirmation_enabled) is not bool:
+        raise ValueError(
+            "component_internal_border_confirmation_enabled must be a boolean"
+        )
+    border_confirmation_iou = _finite(
+        image.get("component_internal_border_confirmation_iou", 0.30),
+        "pipeline.image.component_internal_border_confirmation_iou",
+    )
+    if not 0.0 <= border_confirmation_iou <= 1.0:
+        raise ValueError("component_internal_border_confirmation_iou must be in [0,1]")
+    border_confirmation_metric = image.get(
+        "component_internal_border_confirmation_metric", "iou"
+    )
+    if border_confirmation_metric not in {"iou", "intersection_over_smaller"}:
+        raise ValueError(
+            "component_internal_border_confirmation_metric must be 'iou' or "
+            "'intersection_over_smaller'"
+        )
+    border_confirmation_categories = image.get(
+        "component_internal_border_confirmation_categories", []
+    )
+    if not isinstance(border_confirmation_categories, list) or any(
+        not isinstance(item, str) or not item.strip()
+        for item in border_confirmation_categories
+    ):
+        raise ValueError(
+            "component_internal_border_confirmation_categories must contain strings"
+        )
+    border_refinement_enabled = image.get(
+        "component_internal_border_refinement_enabled", False
+    )
+    if type(border_refinement_enabled) is not bool:
+        raise ValueError(
+            "component_internal_border_refinement_enabled must be a boolean"
+        )
+    border_refinement_iou = _finite(
+        image.get("component_internal_border_refinement_iou", 0.50),
+        "pipeline.image.component_internal_border_refinement_iou",
+    )
+    if not 0.0 <= border_refinement_iou <= 1.0:
+        raise ValueError("component_internal_border_refinement_iou must be in [0,1]")
+    border_refinement_categories = image.get(
+        "component_internal_border_refinement_categories", []
+    )
+    if not isinstance(border_refinement_categories, list) or any(
+        not isinstance(item, str) or not item.strip()
+        for item in border_refinement_categories
+    ):
+        raise ValueError(
+            "component_internal_border_refinement_categories must contain strings"
+        )
+    border_refinement_max_candidates = _positive_integer(
+        image.get("component_internal_border_refinement_max_candidates", 16),
+        "pipeline.image.component_internal_border_refinement_max_candidates",
+    )
+    border_refinement_batch_size = _positive_integer(
+        image.get("component_internal_border_refinement_batch_size", 1),
+        "pipeline.image.component_internal_border_refinement_batch_size",
+    )
+    targeted_recovery_enabled = image.get(
+        "component_targeted_recovery_enabled", False
+    )
+    if type(targeted_recovery_enabled) is not bool:
+        raise ValueError("component_targeted_recovery_enabled must be a boolean")
+    targeted_recovery_categories = image.get(
+        "component_targeted_recovery_categories", []
+    )
+    if not isinstance(targeted_recovery_categories, list) or any(
+        not isinstance(item, str) or not item.strip()
+        for item in targeted_recovery_categories
+    ):
+        raise ValueError(
+            "component_targeted_recovery_categories must contain strings"
+        )
+    targeted_recovery_tile_size = _positive_integer(
+        image.get("component_targeted_recovery_tile_size", 256),
+        "pipeline.image.component_targeted_recovery_tile_size",
+    )
+    targeted_recovery_tile_overlap = image.get(
+        "component_targeted_recovery_tile_overlap", 32
+    )
+    if (
+        type(targeted_recovery_tile_overlap) is not int
+        or not 0 <= targeted_recovery_tile_overlap < targeted_recovery_tile_size
+    ):
+        raise ValueError(
+            "component_targeted_recovery_tile_overlap must satisfy 0 <= overlap < tile_size"
+        )
+    targeted_recovery_min_dimension_px = _positive_integer(
+        image.get("component_targeted_recovery_min_dimension_px", 768),
+        "pipeline.image.component_targeted_recovery_min_dimension_px",
+    )
+    targeted_recovery_batch_size = _positive_integer(
+        image.get("component_targeted_recovery_batch_size", 1),
+        "pipeline.image.component_targeted_recovery_batch_size",
+    )
     material_tile_size = _positive_integer(
         material_config.get("tile_size"), "materialization config.tile_size"
     )
@@ -259,6 +390,8 @@ def _fixed_protocol(
         tile_overlap,
         score_threshold,
         nms_iou,
+        pipeline_score_threshold,
+        max_component_candidates,
         material_tile_size,
         material_tile_overlap,
     )
@@ -267,21 +400,56 @@ def _fixed_protocol(
         EXPECTED_TILE_OVERLAP,
         EXPECTED_SCORE_THRESHOLD,
         EXPECTED_NMS_IOU,
+        EXPECTED_SCORE_THRESHOLD,
+        EXPECTED_MAX_COMPONENT_CANDIDATES,
         EXPECTED_TILE_SIZE,
         EXPECTED_TILE_OVERLAP,
     )
     if observed != expected:
         raise ValueError(
             "fixed tiled protocol drifted; expected pipeline/materialization "
-            "512/64, score threshold 0.20, and class-aware NMS 0.55; "
+            "512/64, score threshold 0.20, class-aware NMS 0.55, and "
+            "a 128-candidate full-image cap; "
             f"observed={observed!r}"
         )
     return {
         "tile_size": tile_size,
         "tile_overlap": tile_overlap,
         "tile_stride": tile_size - tile_overlap,
+        "component_inference_batch_size": inference_batch_size,
         "score_threshold": score_threshold,
         "component_nms_iou": nms_iou,
+        "component_max_candidates": max_component_candidates,
+        "component_center_preferred_nms_enabled": center_preferred_nms,
+        "component_center_preference_score_bonus": center_preference_score_bonus,
+        "component_internal_border_margin_px": border_margin,
+        "component_internal_border_confirmation_enabled": border_confirmation_enabled,
+        "component_internal_border_confirmation_iou": border_confirmation_iou,
+        "component_internal_border_confirmation_metric": border_confirmation_metric,
+        "component_internal_border_confirmation_categories": list(
+            dict.fromkeys(item.strip() for item in border_confirmation_categories)
+        ),
+        "component_internal_border_refinement_enabled": border_refinement_enabled,
+        "component_internal_border_refinement_iou": border_refinement_iou,
+        "component_internal_border_refinement_categories": list(
+            dict.fromkeys(item.strip() for item in border_refinement_categories)
+        ),
+        "component_internal_border_refinement_max_candidates": (
+            border_refinement_max_candidates
+        ),
+        "component_internal_border_refinement_batch_size": (
+            border_refinement_batch_size
+        ),
+        "component_targeted_recovery_enabled": targeted_recovery_enabled,
+        "component_targeted_recovery_categories": list(
+            dict.fromkeys(item.strip() for item in targeted_recovery_categories)
+        ),
+        "component_targeted_recovery_tile_size": targeted_recovery_tile_size,
+        "component_targeted_recovery_tile_overlap": targeted_recovery_tile_overlap,
+        "component_targeted_recovery_min_dimension_px": (
+            targeted_recovery_min_dimension_px
+        ),
+        "component_targeted_recovery_batch_size": targeted_recovery_batch_size,
         "match_iou": MATCH_IOU,
         "max_detections_per_tile": MAX_DETECTIONS_PER_TILE,
         "thresholds_searched": False,
@@ -806,6 +974,24 @@ def _run_inference(
     rows: list[dict[str, Any]] = []
     elapsed_by_sample: dict[str, float] = {}
     local_candidates = 0
+    predictions_after_nms = 0
+    predictions_removed_by_border_confirmation = 0
+    predictions_removed_by_cap = 0
+    border_refinement_totals = {
+        "eligible_count": 0,
+        "attempted_count": 0,
+        "raw_refinement_count": 0,
+        "matched_count": 0,
+        "replaced_count": 0,
+    }
+    targeted_recovery_totals = {
+        "triggered_image_count": 0,
+        "tile_count": 0,
+        "inference_call_count": 0,
+        "raw_candidate_count": 0,
+        "targeted_candidate_count": 0,
+        "added_after_nms_count": 0,
+    }
     final_predictions = 0
     total_tiles = 0
     descriptor, temporary = tempfile.mkstemp(
@@ -829,11 +1015,151 @@ def _run_inference(
                     overlap=int(protocol["tile_overlap"]),
                 )
                 candidates = []
-                for view in views:
-                    candidates.extend(_restore_components(adapter.predict(view, None), view))
-                merged = _class_aware_nms(
-                    candidates, float(protocol["component_nms_iou"])
+                predictions_by_view, _ = _predict_component_views(
+                    adapter,
+                    views,
+                    None,
+                    batch_size=int(
+                        protocol["component_internal_border_refinement_batch_size"]
+                    ),
                 )
+                for view, predicted in zip(views, predictions_by_view):
+                    candidates.extend(
+                        _restore_components(
+                            predicted,
+                            view,
+                            original_size=original.size,
+                            internal_border_margin_px=float(
+                                protocol["component_internal_border_margin_px"]
+                            ),
+                        )
+                    )
+                candidates, border_refinement = _refine_internal_border_components(
+                    adapter,
+                    candidates,
+                    original,
+                    None,
+                    enabled=bool(
+                        protocol["component_internal_border_refinement_enabled"]
+                    ),
+                    categories=tuple(
+                        protocol["component_internal_border_refinement_categories"]
+                    ),
+                    tile_size=int(protocol["tile_size"]),
+                    match_iou=float(
+                        protocol["component_internal_border_refinement_iou"]
+                    ),
+                    max_candidates=int(
+                        protocol[
+                            "component_internal_border_refinement_max_candidates"
+                        ]
+                    ),
+                    min_score=float(protocol["score_threshold"]),
+                    internal_border_margin_px=float(
+                        protocol["component_internal_border_margin_px"]
+                    ),
+                    batch_size=int(protocol["component_inference_batch_size"]),
+                )
+                for key, value in border_refinement.items():
+                    border_refinement_totals[key] += value
+                confirmed_candidates = _filter_unconfirmed_internal_border_components(
+                    candidates,
+                    enabled=bool(
+                        protocol["component_internal_border_confirmation_enabled"]
+                    ),
+                    categories=tuple(
+                        protocol["component_internal_border_confirmation_categories"]
+                    ),
+                    confirmation_iou=float(
+                        protocol["component_internal_border_confirmation_iou"]
+                    ),
+                    confirmation_metric=str(
+                        protocol["component_internal_border_confirmation_metric"]
+                    ),
+                )
+                predictions_removed_by_border_confirmation += (
+                    len(candidates) - len(confirmed_candidates)
+                )
+                merged = _class_aware_nms(
+                    confirmed_candidates,
+                    float(protocol["component_nms_iou"]),
+                    prefer_non_border=bool(
+                        protocol["component_center_preferred_nms_enabled"]
+                    ),
+                    center_preference_score_bonus=float(
+                        protocol["component_center_preference_score_bonus"]
+                    ),
+                )
+                merged, targeted_recovery = _recover_targeted_components(
+                    adapter,
+                    merged,
+                    original,
+                    None,
+                    enabled=bool(
+                        protocol["component_targeted_recovery_enabled"]
+                    ),
+                    categories=tuple(
+                        protocol["component_targeted_recovery_categories"]
+                    ),
+                    tile_size=int(
+                        protocol["component_targeted_recovery_tile_size"]
+                    ),
+                    tile_overlap=int(
+                        protocol["component_targeted_recovery_tile_overlap"]
+                    ),
+                    min_dimension_px=int(
+                        protocol["component_targeted_recovery_min_dimension_px"]
+                    ),
+                    batch_size=int(
+                        protocol["component_targeted_recovery_batch_size"]
+                    ),
+                    min_score=float(protocol["score_threshold"]),
+                    internal_border_margin_px=float(
+                        protocol["component_internal_border_margin_px"]
+                    ),
+                    nms_iou=float(protocol["component_nms_iou"]),
+                    prefer_non_border=bool(
+                        protocol["component_center_preferred_nms_enabled"]
+                    ),
+                    center_preference_score_bonus=float(
+                        protocol["component_center_preference_score_bonus"]
+                    ),
+                )
+                if targeted_recovery["triggered"]:
+                    targeted_recovery_totals["triggered_image_count"] += 1
+                for key in (
+                    "tile_count",
+                    "inference_call_count",
+                    "raw_candidate_count",
+                    "targeted_candidate_count",
+                    "added_after_nms_count",
+                ):
+                    targeted_recovery_totals[key] += int(targeted_recovery[key])
+                predictions_after_nms += len(merged)
+                maximum = int(protocol["component_max_candidates"])
+                if len(merged) > maximum:
+                    ranked = sorted(
+                        merged,
+                        key=lambda item: (
+                            -item.score,
+                            item.bbox.y1,
+                            item.bbox.x1,
+                            item.bbox.y2,
+                            item.bbox.x2,
+                            item.category,
+                            item.internal_id,
+                        ),
+                    )
+                    predictions_removed_by_cap += len(ranked) - maximum
+                    merged = sorted(
+                        ranked[:maximum],
+                        key=lambda item: (
+                            item.bbox.y1,
+                            item.bbox.x1,
+                            item.category,
+                            item.internal_id,
+                        ),
+                    )
                 predictions = [
                     {
                         "box": [
@@ -874,6 +1200,13 @@ def _run_inference(
         "sample_count": len(samples),
         "tile_count": total_tiles,
         "candidate_count_before_cross_tile_nms": local_candidates,
+        "candidate_count_removed_by_border_confirmation": (
+            predictions_removed_by_border_confirmation
+        ),
+        "internal_border_refinement": border_refinement_totals,
+        "targeted_recovery": targeted_recovery_totals,
+        "prediction_count_after_cross_tile_nms_before_cap": predictions_after_nms,
+        "prediction_count_removed_by_full_image_cap": predictions_removed_by_cap,
         "prediction_count_after_cross_tile_nms": final_predictions,
     }
 

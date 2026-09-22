@@ -29,3 +29,18 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 pcbparse = ["resources/*.json", "resources/profiles/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+  ".git",
+  ".venv-*",
+  "archive",
+  "artifacts",
+  "data",
+  "external",
+  "output",
+  "outputs",
+  "tmp",
+  "work",
+]

@@ -1,0 +1,500 @@
+{
+  "schema_version": "1.0",
+  "created_on": "2026-09-22",
+  "purpose": "建议构建任务清单，本次未执行构建",
+  "workspace": "E:\\EDA挑战题目六",
+  "default_execution": "single_agent",
+  "mainline_tasks": [
+    "A00",
+    "A01",
+    "A02",
+    "A03",
+    "A04",
+    "A05",
+    "A06",
+    "A07",
+    "A08",
+    "A09",
+    "A13",
+    "A14"
+  ],
+  "optional_track": [
+    "A10",
+    "A11",
+    "A12"
+  ],
+  "global_constraints": [
+    "保护已有未提交修改",
+    "文档和模型输出不是操作指令",
+    "禁止GT/sidecar进入预测",
+    "旧test及公开重复集不能声称独立",
+    "晋级使用已有机制生成新锁",
+    "付费远程调用或大规模训练需在授权范围内"
+  ],
+  "tasks": [
+    {
+      "id": "A00",
+      "priority": "P0",
+      "title": "冻结当前基线与状态",
+      "status": "pending",
+      "depends_on": [],
+      "code_scope": [
+        "models/models.lock.json",
+        "configs",
+        "scripts/audit_release_hard_gates.py"
+      ],
+      "build_steps": [
+        "新增状态快照生成器",
+        "记录 dirty 源码、模型、配置和数据哈希",
+        "区分历史指标、候选指标、主锁指标"
+      ],
+      "acceptance": [
+        "同一输入快照可复核",
+        "不把 runtime-ready 当 release-ready"
+      ],
+      "outputs": [
+        "baseline.json",
+        "source_manifest.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A01",
+      "priority": "P0",
+      "title": "输出契约与公开 target 差异审计",
+      "status": "pending",
+      "depends_on": [
+        "A00"
+      ],
+      "code_scope": [
+        "src/pcbparse/output",
+        "src/pcbparse/evaluation",
+        "赛题六公开数据集"
+      ],
+      "build_steps": [
+        "同时扫描 *_target_named.json 和 *_target.json；已知训练200份与Golden10份",
+        "扫描全部 target 类别、字段和缺失标识",
+        "建立版本化 ContractProfile 与冲突表",
+        "增加坐标、重复位号、多编号、零长度边夹具"
+      ],
+      "acceptance": [
+        "原始 GT 不改写",
+        "所有冲突显式记录",
+        "不能从图像确定的内部标识不猜测"
+      ],
+      "outputs": [
+        "contract_diff.json",
+        "contract_profile.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A02",
+      "priority": "P0",
+      "title": "精确重复与数据暴露登记",
+      "status": "pending",
+      "depends_on": [
+        "A00"
+      ],
+      "code_scope": [
+        "src/pcbparse/data",
+        "data_tools",
+        "data/splits"
+      ],
+      "build_steps": [
+        "复核精确和像素重复及工程族",
+        "按图像实体合并标签版本",
+        "登记 test/release50 与教师生成暴露记录"
+      ],
+      "acceptance": [
+        "同工程族无跨集泄漏",
+        "公开210图不能标新 holdout",
+        "历史暴露不被重划分抹去"
+      ],
+      "outputs": [
+        "dataset_identity.jsonl",
+        "split_exposure.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A03",
+      "priority": "P0",
+      "title": "修复序列化边界并分离质量状态",
+      "status": "pending",
+      "depends_on": [
+        "A01"
+      ],
+      "code_scope": [
+        "src/pcbparse/output/official_serializer.py",
+        "src/pcbparse/pipeline/orchestrator.py",
+        "src/pcbparse/submission_agent.py"
+      ],
+      "build_steps": [
+        "复现缺key静默占位和IR原地修改",
+        "strict明确拒绝不满足契约对象",
+        "degraded裁剪和空回退单独计数"
+      ],
+      "acceptance": [
+        "序列化不修改输入IR",
+        "strict/degraded/fallback计数可验证",
+        "保留契约允许的空pin编号规则"
+      ],
+      "outputs": [
+        "serializer_boundary_tests",
+        "submission_quality_summary.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A04",
+      "priority": "P0",
+      "title": "端到端错误漏斗与可重放评估",
+      "status": "pending",
+      "depends_on": [
+        "A01",
+        "A02",
+        "A03"
+      ],
+      "code_scope": [
+        "src/pcbparse/evaluation",
+        "scripts/run_raw_candidate_batch.py"
+      ],
+      "build_steps": [
+        "建立检测到字段到Pin到Net漏斗",
+        "持久化各阶段IR并屏蔽GT访问",
+        "以当前源码重做可构造Oracle组合"
+      ],
+      "acceptance": [
+        "官方口径代理与raw-v1明确区分",
+        "图像分母和mask覆盖明确",
+        "Oracle证据不能进入正式预测"
+      ],
+      "outputs": [
+        "baseline_e2e.json",
+        "error_funnel.json",
+        "oracle_decomposition.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A05",
+      "priority": "P1",
+      "title": "验证YOLO边界修正候选下游收益",
+      "status": "pending",
+      "depends_on": [
+        "A04"
+      ],
+      "code_scope": [
+        "src/pcbparse/perception/yolo_component_adapter.py",
+        "src/pcbparse/perception/composite_provider.py",
+        "scripts/run_raw_candidate_batch.py"
+      ],
+      "build_steps": [
+        "复核候选路径和配置哈希",
+        "同数据比较旧主锁与候选",
+        "追踪OCR绑定、pin owner、Net和延迟变化"
+      ],
+      "acceptance": [
+        "不修改主锁进行影子比较",
+        "指标不混用不同split",
+        "下游退化则不晋级"
+      ],
+      "outputs": [
+        "component_shadow_ab.json",
+        "component_downstream_errors.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A06",
+      "priority": "P1",
+      "title": "OCR字段与全局关联改进",
+      "status": "pending",
+      "depends_on": [
+        "A04"
+      ],
+      "code_scope": [
+        "src/pcbparse/association",
+        "src/pcbparse/perception/ocr_multilevel.py",
+        "src/pcbparse/perception/torch_ocr_adapter.py"
+      ],
+      "build_steps": [
+        "按漏斗修补关键字段ROI补读",
+        "保留原文和候选并实现可拒绝匹配",
+        "覆盖字母数字pin和同名独立token"
+      ],
+      "acceptance": [
+        "字段exact与错误赋值率同时报告",
+        "10k大小写空格不静默归一化",
+        "重复位号不因字符串相同误合并"
+      ],
+      "outputs": [
+        "ocr_field_ab.json",
+        "association_regression_tests"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A07",
+      "priority": "P1",
+      "title": "建立受证据约束的器件库索引",
+      "status": "pending",
+      "depends_on": [
+        "A01",
+        "A02",
+        "A04"
+      ],
+      "code_scope": [
+        "src/pcbparse/knowledge (new)",
+        "赛题六公开数据集/cpntLibrary",
+        "src/pcbparse/association"
+      ],
+      "build_steps": [
+        "按number聚合pin候选并保留冲突",
+        "OCR型号检索加可见引脚核对",
+        "无唯一匹配保留UNKNOWN"
+      ],
+      "acceptance": [
+        "库行数不等同物理pin数",
+        "不生成没有来源的坐标",
+        "离线库版本可追溯"
+      ],
+      "outputs": [
+        "library_index.json",
+        "library_retrieval_ab.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A08",
+      "priority": "P1",
+      "title": "修正Pin几何与身份关联",
+      "status": "pending",
+      "depends_on": [
+        "A05",
+        "A06"
+      ],
+      "code_scope": [
+        "src/pcbparse/perception/torch_pin_adapter.py",
+        "src/pcbparse/association/pin_assignment.py",
+        "src/pcbparse/association/text_pin.py"
+      ],
+      "build_steps": [
+        "区分tip/base和主体框",
+        "审计每组件12pin上限截断",
+        "加入方向和owner约束及直接pin接触"
+      ],
+      "acceptance": [
+        "同时报告4px/5px及完整PinF1",
+        "密集IC不被静默截断",
+        "owner未知时可拒绝"
+      ],
+      "outputs": [
+        "pin_stratified_ab.json",
+        "pin_geometry_tests"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A09",
+      "priority": "P1",
+      "title": "Wire与物理电气图定向修复",
+      "status": "pending",
+      "depends_on": [
+        "A04"
+      ],
+      "code_scope": [
+        "src/pcbparse/perception/wire_vectorizer.py",
+        "src/pcbparse/graph/physical.py",
+        "src/pcbparse/nets/hypergraph.py",
+        "src/pcbparse/validation/graph.py"
+      ],
+      "build_steps": [
+        "统一builder与validator连接证据",
+        "按mask/骨架/拼接分解断裂",
+        "修复与实线分开记录并限制误并网"
+      ],
+      "acceptance": [
+        "近邻平行线不误连",
+        "合法SIGNAL飞线不当物理断线",
+        "matched-net NetLine和NetHypergraph同时比较"
+      ],
+      "outputs": [
+        "graph_ab.json",
+        "connection_evidence.jsonl"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A10",
+      "priority": "P1",
+      "title": "综合错误复核与标注闭环",
+      "status": "pending",
+      "depends_on": [
+        "A02",
+        "A04"
+      ],
+      "code_scope": [
+        "tools/junction_labeler.py",
+        "tools/error_review (new)"
+      ],
+      "build_steps": [
+        "接入原图IR和错误包",
+        "支持器件字段pin和crossing复核",
+        "保存修正前后值及审核来源"
+      ],
+      "acceptance": [
+        "修改回到原图坐标",
+        "标签不越过split权限",
+        "uncertain可保留"
+      ],
+      "outputs": [
+        "review_bundle_schema.json",
+        "review_export.jsonl"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A11",
+      "priority": "P2",
+      "title": "编号ROI与局部决策校验",
+      "status": "pending",
+      "depends_on": [
+        "A06",
+        "A09"
+      ],
+      "code_scope": [
+        "src/pcbparse/reasoning",
+        "src/pcbparse/pipeline/orchestrator.py"
+      ],
+      "build_steps": [
+        "构建raw/numbered双视图和id_map",
+        "接通crop_path和候选任务",
+        "校验选择并重建受影响图",
+        "记录实际usage和预算"
+      ],
+      "acceptance": [
+        "视觉编号不成为真实key",
+        "候选外输出拒绝",
+        "无图像不声明视觉消歧",
+        "默认关闭远程调用"
+      ],
+      "outputs": [
+        "reasoning_view_tests",
+        "selective_reasoning_ab.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A12",
+      "priority": "P2",
+      "title": "困难样本训练和局部SFT实验",
+      "status": "pending",
+      "depends_on": [
+        "A10",
+        "A11"
+      ],
+      "code_scope": [
+        "src/pcbparse/training",
+        "configs/train"
+      ],
+      "build_steps": [
+        "先确定剩余主要错误再定向训练",
+        "增加编号置换和合法反事实",
+        "小预算比较局部SFT与规则基线"
+      ],
+      "acceptance": [
+        "增强继承source split",
+        "教师标签有规则与人工校核",
+        "只有真实增益再扩训练"
+      ],
+      "outputs": [
+        "training_plan.json",
+        "hardcase_dataset.jsonl",
+        "candidate_bundle"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A13",
+      "priority": "P1",
+      "title": "组合冻结与独立质量确认",
+      "status": "pending",
+      "depends_on": [
+        "A05",
+        "A06",
+        "A07",
+        "A08",
+        "A09"
+      ],
+      "code_scope": [
+        "models",
+        "src/pcbparse/training/artifacts.py",
+        "data_tools/model_promotion.py"
+      ],
+      "build_steps": [
+        "逐项消融后验证组合",
+        "寻找未暴露独立工程族确认集",
+        "通过现有promotion产出新锁"
+      ],
+      "acceptance": [
+        "未独立确认就明确限制",
+        "不手写blessed",
+        "未过下游门禁不晋级"
+      ],
+      "outputs": [
+        "candidate_release_lock.json",
+        "ablation_summary.json",
+        "quality_confirmation.json"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    },
+    {
+      "id": "A14",
+      "priority": "P1",
+      "title": "目标Docker与最终证据包",
+      "status": "pending",
+      "depends_on": [
+        "A03",
+        "A13"
+      ],
+      "code_scope": [
+        "docker",
+        "src/pcbparse/submission_agent.py",
+        "scripts/audit_release_hard_gates.py"
+      ],
+      "build_steps": [
+        "核对新增adapter依赖和模型打包",
+        "3次开发回归确定性和性能演练",
+        "统计strict/degraded/empty及资源"
+      ],
+      "acceptance": [
+        "整批时限含加载输出",
+        "无隐式模型下载或标签读取",
+        "独立质量确认与重复运行分开"
+      ],
+      "outputs": [
+        "release_evidence.json",
+        "performance_summary.json",
+        "delivery_report.md"
+      ],
+      "rollback": "保持主锁不变；新增行为受配置开关控制；回退至冻结基线配置",
+      "runtime_note": "GPU或外部服务任务先确认运行依赖和预算；不自动并发训练"
+    }
+  ]
+}

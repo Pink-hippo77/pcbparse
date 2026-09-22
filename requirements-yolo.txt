@@ -1,0 +1,3 @@
+# PyTorch/torchvision are supplied by the verified CUDA 12.6 runtime in
+# .venv-train through .venv-yolo/Lib/site-packages/pcbnet_torch_runtime.pth.
+ultralytics==8.4.149

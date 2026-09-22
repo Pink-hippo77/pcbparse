@@ -1,37 +1,38 @@
-FROM pytorch/pytorch:2.12.1-cuda12.6-cudnn9-runtime
+FROM edarace-agent-base:ubuntu24
+
+ARG PCBPARSE_PIP_INDEX_URL=https://pypi.org/simple
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONHASHSEED=0
+    PIP_DEFAULT_TIMEOUT=180 \
+    PIP_RETRIES=8 \
+    PYTHONHASHSEED=0 \
+    PCBPARSE_APP_ROOT=/submission/app \
+    LD_LIBRARY_PATH=/usr/local/lib/python3.12/dist-packages/nvidia/cuda_nvrtc/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cuda_runtime/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cublas/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cufft/lib:/usr/local/lib/python3.12/dist-packages/nvidia/curand/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cusolver/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cusparse/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nvjitlink/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nvtx/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cuda_cupti/lib
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /submission/app
 
-WORKDIR /app
-COPY pyproject.toml README.md requirements.lock requirements.runtime.lock /app/
-COPY src /app/src
-COPY data_tools /app/data_tools
-COPY configs /app/configs
-COPY models /app/models
-COPY docker/entrypoint.sh /app/entrypoint.sh
+COPY pyproject.toml README.md requirements.edarace.txt /submission/app/
+COPY src /submission/app/src
+COPY configs /submission/app/configs
+COPY models/models.lock.json /submission/app/models/models.lock.json
+COPY models/releases/v8-portable /submission/app/models/releases/v8-portable
+COPY docker/agent_system /submission/agent_system
 
-RUN python -m pip install --upgrade pip \
-    && python -m pip install -r requirements.runtime.lock \
-    && python -m pip install --no-deps . \
-    && chmod 0555 /app/entrypoint.sh
+RUN python3 -m pip install --break-system-packages --no-cache-dir \
+        --index-url "${PCBPARSE_PIP_INDEX_URL}" \
+        -r /submission/app/requirements.edarace.txt \
+    && python3 -m pip install --break-system-packages --no-cache-dir --no-deps \
+        /submission/app \
+    && chmod 0555 /submission/agent_system
 
-# Fail the image build if the copied lock cannot resolve its model bundle.
-# This catches worktree-relative paths and host-specific absolute paths before
-# the image is ever deployed.
-RUN python -m pcbparse.cli healthcheck --require-ready --config /app/configs/pipeline.yaml --models-lock /app/models/models.lock.json
+# BuildKit has no GPU device. Verify imports/serialization plus every model and
+# lineage byte here; execute the four runtime adapters after image creation.
+RUN python3 -m pcbparse.cli healthcheck \
+        --config /submission/app/configs/pipeline.edarace.yaml \
+        --models-lock /submission/app/models/models.lock.json \
+    && python3 -c "from pcbparse.perception.production_provider import composite_provider_config_from_pipeline, required_model_tasks_for_config; from pcbparse.config import load_config; from pcbparse.service.readiness import readiness_report; config=load_config('/submission/app/configs/pipeline.edarace.yaml'); tasks=required_model_tasks_for_config(composite_provider_config_from_pipeline(config)); report=readiness_report(provider_name='production', models_lock='/submission/app/models/models.lock.json', required_tasks=tasks, require_lineage=True); assert report['ready'], report"
 
-RUN mkdir -p /data/input /data/output
-
-EXPOSE 8080
-
-ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3).read()"]
-CMD ["python", "-m", "pcbparse.cli", "serve", "--host", "0.0.0.0", "--port", "8080", "--input-root", "/data/input", "--output-root", "/data/output", "--config", "/app/configs/pipeline.yaml", "--profile", "/app/configs/profiles/competition.yaml", "--provider", "production", "--models-lock", "/app/models/models.lock.json"]
+WORKDIR /submission
+ENTRYPOINT ["/submission/agent_system"]

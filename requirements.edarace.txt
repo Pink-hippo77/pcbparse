@@ -1,0 +1,12 @@
+# Dependencies missing from edarace-agent-base:ubuntu24.
+# Do not install torch or torchvision here: the official image owns its
+# CUDA-matched PyTorch runtime.
+annotated-types==0.8.0
+coloredlogs==15.0.1
+flatbuffers==25.12.19
+humanfriendly==10.0
+protobuf==7.36.1
+pydantic==2.13.4
+pydantic-core==2.46.4
+typing-inspection==0.4.2
+onnxruntime-gpu==1.21.1

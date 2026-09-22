@@ -8,7 +8,16 @@ import numpy as np
 from PIL import Image
 
 from pcbparse.ir.models import BBox, Component, Evidence, Junction, Pin, Point, TextToken
-from pcbparse.perception.composite_provider import CompositePerceptionProvider, CompositeProviderConfig
+from pcbparse.perception.composite_provider import (
+    CompositePerceptionProvider,
+    CompositeProviderConfig,
+    _class_aware_nms,
+    _filter_unconfirmed_internal_border_components,
+    _recover_targeted_components,
+    _refine_internal_border_components,
+    _restore_components,
+)
+from pcbparse.io.image_loader import load_image, tile_image_view
 from pcbparse.perception.protocols import WireMask
 from pcbparse.graph.physical import build_physical_graph
 from pcbparse.validation.graph import validate_graph
@@ -131,6 +140,473 @@ class JunctionStub:
 
 
 class CompositeProviderTests(unittest.TestCase):
+    def test_targeted_small_object_recovery_batches_and_filters_categories(self) -> None:
+        class RecoveryStub:
+            version = "component-targeted-recovery-stub"
+
+            def __init__(self) -> None:
+                self.batch_sizes: list[int] = []
+
+            def predict(self, image, ctx):
+                del image, ctx
+                raise AssertionError("batch recovery should use predict_many")
+
+            def predict_many(self, images, ctx):
+                del ctx
+                self.batch_sizes.append(len(images))
+                return [
+                    [
+                        Component(
+                            internal_id=f"switch-{index}",
+                            category="Switch",
+                            bbox=BBox(x1=40, y1=40, x2=70, y2=55),
+                            score=0.8,
+                            evidence=[
+                                Evidence(
+                                    evidence_id=f"switch-{index}",
+                                    source="detector",
+                                    view_id=image.view_id,
+                                )
+                            ],
+                        ),
+                        Component(
+                            internal_id=f"ignored-c-{index}",
+                            category="C",
+                            bbox=BBox(x1=90, y1=40, x2=120, y2=60),
+                            score=0.9,
+                            evidence=[
+                                Evidence(
+                                    evidence_id=f"ignored-c-{index}",
+                                    source="detector",
+                                    view_id=image.view_id,
+                                )
+                            ],
+                        ),
+                    ]
+                    for index, image in enumerate(images)
+                ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "board.png"
+            Image.new("RGB", (800, 256), "white").save(path)
+            original = load_image(path)
+            provider = RecoveryStub()
+            recovered, stats = _recover_targeted_components(
+                provider,
+                [],
+                original,
+                None,
+                enabled=True,
+                categories=("Switch",),
+                tile_size=256,
+                tile_overlap=32,
+                min_dimension_px=768,
+                batch_size=3,
+                min_score=0.2,
+                internal_border_margin_px=32.0,
+                nms_iou=0.55,
+                prefer_non_border=False,
+                center_preference_score_bonus=0.05,
+            )
+
+        self.assertEqual([3, 1], provider.batch_sizes)
+        self.assertEqual(4, stats["tile_count"])
+        self.assertEqual(2, stats["inference_call_count"])
+        self.assertEqual(8, stats["raw_candidate_count"])
+        self.assertEqual(4, stats["targeted_candidate_count"])
+        self.assertTrue(stats["triggered"])
+        self.assertTrue(recovered)
+        self.assertEqual({"Switch"}, {item.category for item in recovered})
+
+    def test_internal_border_refinement_batches_centred_crops_when_supported(self) -> None:
+        class BatchRefinementStub:
+            version = "component-batch-refinement-stub"
+
+            def __init__(self) -> None:
+                self.batch_view_ids: list[list[str]] = []
+
+            def predict(self, image, ctx):
+                del image, ctx
+                raise AssertionError("sequential prediction should not be used")
+
+            def predict_many(self, images, ctx):
+                del ctx
+                self.batch_view_ids.append([image.view_id for image in images])
+                return [[] for _ in images]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "board.png"
+            Image.new("RGB", (1600, 512), "white").save(path)
+            original = load_image(path)
+            candidates = [
+                Component(
+                    internal_id=f"candidate-{index}",
+                    category="Box",
+                    bbox=box,
+                    score=score,
+                    evidence=[
+                        Evidence(
+                            evidence_id=f"candidate-{index}",
+                            source="detector",
+                            metadata={"touches_internal_tile_border": True},
+                        )
+                    ],
+                )
+                for index, (box, score) in enumerate(
+                    [
+                        (BBox(x1=480, y1=80, x2=512, y2=150), 0.9),
+                        (BBox(x1=930, y1=200, x2=960, y2=280), 0.8),
+                    ]
+                )
+            ]
+            provider = BatchRefinementStub()
+
+            refined, stats = _refine_internal_border_components(
+                provider,
+                candidates,
+                original,
+                None,
+                enabled=True,
+                categories=("Box",),
+                tile_size=512,
+                match_iou=0.5,
+                max_candidates=8,
+                min_score=0.2,
+                internal_border_margin_px=32.0,
+                batch_size=8,
+            )
+
+        self.assertEqual(
+            [["component-refine:0000", "component-refine:0001"]],
+            provider.batch_view_ids,
+        )
+        self.assertEqual(2, stats["attempted_count"])
+        self.assertEqual(candidates, refined)
+
+    def test_internal_border_refinement_replaces_truncated_box_from_centred_crop(self) -> None:
+        class RefinementComponentStub:
+            version = "component-refinement-stub"
+
+            def __init__(self) -> None:
+                self.views = []
+
+            def predict(self, image, ctx):
+                del ctx
+                self.views.append(image)
+                return [
+                    Component(
+                        internal_id="refined",
+                        category="Box",
+                        bbox=BBox(x1=230, y1=90, x2=310, y2=170),
+                        score=0.91,
+                        evidence=[
+                            Evidence(
+                                evidence_id="refined",
+                                source="detector",
+                                view_id=image.view_id,
+                            )
+                        ],
+                    )
+                ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "board.png"
+            Image.new("RGB", (960, 512), "white").save(path)
+            original = load_image(path)
+            provider = RefinementComponentStub()
+            truncated = Component(
+                internal_id="truncated",
+                category="Box",
+                bbox=BBox(x1=480, y1=100, x2=512, y2=160),
+                score=0.88,
+                evidence=[
+                    Evidence(
+                        evidence_id="truncated",
+                        source="detector",
+                        view_id="tile_000_000",
+                        metadata={"touches_internal_tile_border": True},
+                    )
+                ],
+            )
+
+            refined, stats = _refine_internal_border_components(
+                provider,
+                [truncated],
+                original,
+                None,
+                enabled=True,
+                categories=("Box",),
+                tile_size=512,
+                match_iou=0.5,
+                max_candidates=8,
+                min_score=0.2,
+                internal_border_margin_px=32.0,
+            )
+
+            self.assertEqual(1, len(provider.views))
+            self.assertEqual([240, 0, 752, 512], provider.views[0].metadata["crop_box"])
+            self.assertEqual(BBox(x1=470, y1=90, x2=550, y2=170), refined[0].bbox)
+            self.assertTrue(
+                refined[0].evidence[0].metadata["internal_border_refinement"]
+            )
+            self.assertEqual(
+                {
+                    "eligible_count": 1,
+                    "attempted_count": 1,
+                    "raw_refinement_count": 1,
+                    "matched_count": 1,
+                    "replaced_count": 1,
+                },
+                stats,
+            )
+
+    def test_internal_border_refinement_is_recall_safe_when_no_match_exists(self) -> None:
+        class EmptyRefinementStub:
+            version = "component-refinement-empty-stub"
+
+            def predict(self, image, ctx):
+                del image, ctx
+                return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "board.png"
+            Image.new("RGB", (960, 512), "white").save(path)
+            original = load_image(path)
+            candidate = Component(
+                internal_id="candidate",
+                category="Box",
+                bbox=BBox(x1=480, y1=100, x2=512, y2=160),
+                score=0.88,
+                evidence=[
+                    Evidence(
+                        evidence_id="candidate",
+                        source="detector",
+                        metadata={"touches_internal_tile_border": True},
+                    )
+                ],
+            )
+
+            refined, stats = _refine_internal_border_components(
+                EmptyRefinementStub(),
+                [candidate],
+                original,
+                None,
+                enabled=True,
+                categories=("Box",),
+                tile_size=512,
+                match_iou=0.5,
+                max_candidates=8,
+                min_score=0.2,
+                internal_border_margin_px=32.0,
+            )
+
+            self.assertIs(candidate, refined[0])
+            self.assertEqual(0, stats["replaced_count"])
+
+    def test_component_center_preferred_nms_only_changes_overlapping_tie_break(self) -> None:
+        border = Component(
+            internal_id="border",
+            category="R",
+            bbox=BBox(x1=100, y1=100, x2=150, y2=150),
+            score=0.90,
+            evidence=[
+                Evidence(
+                    evidence_id="border",
+                    source="detector",
+                    metadata={"touches_internal_tile_border": True},
+                )
+            ],
+        )
+        centered = Component(
+            internal_id="centered",
+            category="R",
+            bbox=BBox(x1=102, y1=102, x2=152, y2=152),
+            score=0.80,
+            evidence=[
+                Evidence(
+                    evidence_id="centered",
+                    source="detector",
+                    metadata={"touches_internal_tile_border": False},
+                )
+            ],
+        )
+        separate = Component(
+            internal_id="separate",
+            category="R",
+            bbox=BBox(x1=300, y1=100, x2=350, y2=150),
+            score=0.70,
+        )
+
+        default = _class_aware_nms([border, centered, separate], 0.55)
+        preferred = _class_aware_nms(
+            [border, centered, separate],
+            0.55,
+            prefer_non_border=True,
+        )
+        conservative = _class_aware_nms(
+            [border, centered, separate],
+            0.55,
+            prefer_non_border=True,
+            center_preference_score_bonus=0.05,
+        )
+
+        self.assertEqual({"border", "separate"}, {item.internal_id for item in default})
+        self.assertEqual(
+            {"centered", "separate"},
+            {item.internal_id for item in preferred},
+        )
+        self.assertEqual(
+            {"border", "separate"},
+            {item.internal_id for item in conservative},
+        )
+
+    def test_component_restore_marks_only_internal_tile_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "board.png"
+            Image.new("RGB", (960, 512), "white").save(path)
+            original = load_image(path)
+            left_tile, right_tile = tile_image_view(
+                original,
+                tile_size=512,
+                overlap=64,
+            )
+            self.assertEqual([0, 0, 512, 512], left_tile.metadata["crop_box"])
+            self.assertEqual([448, 0, 960, 512], right_tile.metadata["crop_box"])
+
+            internal_edge = Component(
+                internal_id="internal",
+                category="R",
+                bbox=BBox(x1=470, y1=100, x2=505, y2=150),
+                evidence=[
+                    Evidence(
+                        evidence_id="internal",
+                        source="detector",
+                        view_id=left_tile.view_id,
+                    )
+                ],
+            )
+            external_edge = Component(
+                internal_id="external",
+                category="R",
+                bbox=BBox(x1=470, y1=100, x2=505, y2=150),
+                evidence=[
+                    Evidence(
+                        evidence_id="external",
+                        source="detector",
+                        view_id=right_tile.view_id,
+                    )
+                ],
+            )
+
+            restored_internal = _restore_components(
+                [internal_edge],
+                left_tile,
+                original_size=original.size,
+                internal_border_margin_px=32.0,
+            )[0]
+            restored_external = _restore_components(
+                [external_edge],
+                right_tile,
+                original_size=original.size,
+                internal_border_margin_px=32.0,
+            )[0]
+
+            self.assertTrue(
+                restored_internal.evidence[0].metadata[
+                    "touches_internal_tile_border"
+                ]
+            )
+            self.assertEqual(
+                7.0,
+                restored_internal.evidence[0].metadata[
+                    "internal_tile_border_distance_px"
+                ],
+            )
+            self.assertFalse(
+                restored_external.evidence[0].metadata[
+                    "touches_internal_tile_border"
+                ]
+            )
+
+    def test_internal_border_confirmation_targets_only_configured_categories(self) -> None:
+        def candidate(
+            internal_id: str,
+            category: str,
+            bbox: BBox,
+            view_id: str,
+            *,
+            border: bool,
+        ) -> Component:
+            return Component(
+                internal_id=internal_id,
+                category=category,
+                bbox=bbox,
+                score=0.8,
+                evidence=[
+                    Evidence(
+                        evidence_id=internal_id,
+                        source="detector",
+                        view_id=view_id,
+                        metadata={"touches_internal_tile_border": border},
+                    )
+                ],
+            )
+
+        supported_a = candidate(
+            "supported-a", "Box", BBox(x1=10, y1=10, x2=50, y2=50), "tile-a", border=True
+        )
+        supported_b = candidate(
+            "supported-b", "Box", BBox(x1=12, y1=12, x2=52, y2=52), "tile-b", border=False
+        )
+        unsupported = candidate(
+            "unsupported", "Box", BBox(x1=100, y1=10, x2=140, y2=50), "tile-a", border=True
+        )
+        untargeted = candidate(
+            "untargeted", "R", BBox(x1=200, y1=10, x2=240, y2=50), "tile-a", border=True
+        )
+
+        kept = _filter_unconfirmed_internal_border_components(
+            [supported_a, supported_b, unsupported, untargeted],
+            enabled=True,
+            categories=("Box",),
+            confirmation_iou=0.30,
+        )
+
+        self.assertEqual(
+            {"supported-a", "supported-b", "untargeted"},
+            {item.internal_id for item in kept},
+        )
+
+        truncated_a = candidate(
+            "truncated-a", "Box", BBox(x1=0, y1=0, x2=40, y2=100), "tile-a", border=True
+        )
+        truncated_b = candidate(
+            "truncated-b", "Box", BBox(x1=20, y1=0, x2=120, y2=100), "tile-b", border=True
+        )
+        self.assertEqual(
+            [],
+            _filter_unconfirmed_internal_border_components(
+                [truncated_a, truncated_b],
+                enabled=True,
+                categories=("Box",),
+                confirmation_iou=0.3,
+                confirmation_metric="iou",
+            ),
+        )
+        self.assertEqual(
+            {"truncated-a", "truncated-b"},
+            {
+                item.internal_id
+                for item in _filter_unconfirmed_internal_border_components(
+                    [truncated_a, truncated_b],
+                    enabled=True,
+                    categories=("Box",),
+                    confirmation_iou=0.3,
+                    confirmation_metric="intersection_over_smaller",
+                )
+            },
+        )
+
     def test_default_component_wire_tiles_remain_backward_compatible(self) -> None:
         config = CompositeProviderConfig()
 
