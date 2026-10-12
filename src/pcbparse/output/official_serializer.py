@@ -85,11 +85,18 @@ def _encoded_geometry(
 
 
 def _component_key_map(ir: CircuitIR) -> dict[str, str]:
+    """Map internal_id -> official key without mutating the input IR.
+
+    Missing designators are rejected: placeholder fill would hide OCR binding
+    failures and fabricate official identifiers.
+    """
     by_designator: dict[str, list[Any]] = defaultdict(list)
     for component in ir.components:
         if not isinstance(component.key, str) or not component.key.strip():
-            # Assign placeholder key for components without OCR-assigned keys
-            component.key = f"UNKNOWN_{component.internal_id}"
+            raise OfficialSchemaError(
+                f"component {component.internal_id} has no official key; "
+                "placeholder fill is forbidden (prune upstream in degraded mode)"
+            )
         by_designator[component.key].append(component)
 
     mapping: dict[str, str] = {}
@@ -139,15 +146,13 @@ def _pin_number_map(ir: CircuitIR, component_keys: Mapping[str, str]) -> dict[st
                         f"duplicate pin number {number!r} for component {component_keys[component_id]}"
                     )
                 used.add(number)
-        next_auto = 1
         for pin in ordered:
             numbers = explicit[pin.internal_id]
             if not numbers:
-                while str(next_auto) in used:
-                    next_auto += 1
-                numbers = (str(next_auto),)
-                used.add(str(next_auto))
-                next_auto += 1
+                raise OfficialSchemaError(
+                    f"pin {pin.internal_id} has no explicit representable number; "
+                    "auto-numbering is forbidden (prune upstream in degraded mode)"
+                )
             output[pin.internal_id] = numbers
     return output
 
@@ -256,11 +261,168 @@ def _net_zero_length_geometries(
     return [(point, point) for point in sorted(points)]
 
 
+def _missing_designator_ids(ir: CircuitIR) -> list[str]:
+    return [
+        component.internal_id
+        for component in ir.components
+        if not isinstance(component.key, str) or not component.key.strip()
+    ]
+
+
+def _pin_number_stats(ir: CircuitIR) -> dict[str, int]:
+    missing = 0
+    explicit = 0
+    for pin in ir.pins:
+        numbers = split_official_pin_numbers(pin.number)
+        if numbers:
+            explicit += len(numbers)
+        else:
+            missing += 1
+    return {"pin_number_missing": missing, "pin_explicit_numbers": explicit}
+
+
+def _prune_stats(ir: CircuitIR) -> dict[str, Any]:
+    empty: dict[str, Any] = {
+        "pruned_components": 0,
+        "pruned_pins": 0,
+        "pins_dropped_missing_number": 0,
+        "pins_dropped_unowned": 0,
+        "missing_key_internal_ids": [],
+        "nets_affected": 0,
+        "nets_dropped": 0,
+    }
+    raw = ir.metadata.get("degraded_submission_prune")
+    if not isinstance(raw, Mapping):
+        return empty
+
+    def _count(key: str) -> int:
+        value = raw.get(key, 0)
+        return int(value) if isinstance(value, (int, float)) else 0
+
+    def _ids(key: str) -> list[str]:
+        value = raw.get(key, [])
+        return [str(item) for item in value] if isinstance(value, list) else []
+
+    return {
+        "pruned_components": _count("components_dropped"),
+        "pruned_pins": _count("pins_dropped"),
+        "pins_dropped_missing_number": _count("pins_dropped_missing_number"),
+        "pins_dropped_unowned": _count("pins_dropped_unowned"),
+        "missing_key_internal_ids": _ids("component_ids_dropped"),
+        "nets_affected": _count("nets_affected"),
+        "nets_dropped": _count("nets_dropped"),
+    }
+
+
+def _wire_provenance(ir: CircuitIR) -> dict[str, Any]:
+    """Visible versus repaired wire provenance carried by the IR.
+
+    Official ``edges`` are written from IR segment geometry (visible wire and
+    mask-closing repaired spans).  Pure relation repairs (graph-level virtual
+    gap evidence) influence connectivity only and never become edges.
+    """
+
+    repaired_segments = sorted(
+        segment.internal_id
+        for segment in ir.segments
+        if any(item.source == "repair" for item in segment.evidence)
+    )
+    synthetic_segments = sorted(
+        segment.internal_id for segment in ir.segments if segment.synthetic
+    )
+    breaks = ir.metadata.get("wire_breaks")
+    return {
+        "official_edges_source": "ir_segments_including_mask_closing_repairs",
+        "relation_only_repairs_become_edges": False,
+        "virtual_repaired_segments": repaired_segments,
+        "virtual_repaired_segment_count": len(repaired_segments),
+        "synthetic_segments": synthetic_segments,
+        "synthetic_segment_count": len(synthetic_segments),
+        "mask_closing_repairs": len(ir.repairs),
+        "vectorizer_breaks": len(breaks) if isinstance(breaks, list) else 0,
+    }
+
+
+def serialize_official_with_quality(
+    ir: CircuitIR,
+    profile: str | Path | Mapping[str, Any] | None = None,
+    *,
+    mode: str = "strict",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Serialize VALIDATED IR and report quality-state counts.
+
+    Never mutates the input IR. ``mode`` is ``strict`` or ``degraded``.
+    Missing component keys / pin numbers are rejected in both modes: the
+    serializer never fabricates identifiers.  Upstream degraded pruning may drop
+    unrepresentable objects and records the deleted IDs; the quality dict then
+    separates explicit OCR-read pin numbers (``pin_explicit_numbers``) from
+    pruned missing numbers (``pins_dropped_missing_number``) so reports never
+    count invented numbers as OCR success.
+
+    ``quality["status"]`` is exactly one of ``strict_success`` (non-empty output
+    without pruning), ``degraded_nonempty`` (non-empty output after upstream
+    pruning) or ``empty_result`` (empty container, optionally from a legitimate
+    empty input). ``fallback_empty`` / ``failed_to_write`` are assigned later by
+    the submission layer and never appear here.
+    """
+    if mode not in {"strict", "degraded"}:
+        raise OfficialSchemaError(f"unsupported serialization mode {mode!r}")
+    missing_keys = _missing_designator_ids(ir)
+    if missing_keys:
+        raise OfficialSchemaError(
+            "serialization rejects components without official key "
+            f"(prune upstream in degraded mode): {missing_keys[:5]}"
+        )
+    pin_stats = _pin_number_stats(ir)
+    if pin_stats["pin_number_missing"]:
+        raise OfficialSchemaError(
+            "serialization rejects pins without explicit representable number "
+            f"(prune upstream in degraded mode): {pin_stats['pin_number_missing']} pin(s)"
+        )
+    output = serialize_official(ir, profile)
+    prune = _prune_stats(ir)
+    empty_output = not output["components"] and not output["pins"] and not output["nets"]
+    degraded_marks = bool(prune["pruned_components"] or prune["pruned_pins"])
+    if empty_output:
+        status = "empty_result"
+    elif degraded_marks:
+        status = "degraded_nonempty"
+    else:
+        status = "strict_success"
+    quality = {
+        "mode": mode,
+        "status": status,
+        "strict_success": status == "strict_success",
+        "degraded_nonempty": status == "degraded_nonempty",
+        "empty_result": status == "empty_result",
+        "fallback_empty": False,
+        "failed_to_write": False,
+        "pin_explicit_numbers": pin_stats["pin_explicit_numbers"],
+        "pin_number_missing": pin_stats["pin_number_missing"],
+        "pruned_components": prune["pruned_components"],
+        "pruned_pins": prune["pruned_pins"],
+        "pins_dropped_missing_number": prune["pins_dropped_missing_number"],
+        "pins_dropped_unowned": prune["pins_dropped_unowned"],
+        "missing_key_internal_ids": prune["missing_key_internal_ids"],
+        "nets_affected": prune["nets_affected"],
+        "nets_dropped": prune["nets_dropped"],
+        "legitimate_empty_input": empty_output and not degraded_marks,
+        "input_ir_mutated": False,
+        "wire_provenance": _wire_provenance(ir),
+    }
+    return output, quality
+
+
 def serialize_official(
     ir: CircuitIR,
     profile: str | Path | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Serialize a VALIDATED Circuit-IR into the exact official container shape."""
+    """Serialize a VALIDATED Circuit-IR into the exact official container shape.
+
+    Official net ``edges`` are written from IR wire segment geometry: visible
+    wire plus mask-closing repaired spans.  Pure relation repairs and virtual
+    gap evidence may join candidate connectivity but never generate edges.
+    """
 
     if ir.state != IRState.VALIDATED:
         raise OfficialSchemaError(

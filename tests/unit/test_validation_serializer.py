@@ -297,6 +297,16 @@ class ValidationTests(unittest.TestCase):
         )
         self.assertTrue(all(repair.config_hash == "cfg-1" for repair in repaired.repairs))
 
+    def test_missing_pin_number_is_rejected_not_auto_numbered(self) -> None:
+        ir = make_ir(state=IRState.VALIDATED)
+        ir.pins[0].number = ""
+        with self.assertRaises(OfficialSchemaError):
+            serialize_official(ir)
+        placeholder = make_ir(state=IRState.VALIDATED)
+        placeholder.pins[0].number = "∅"
+        with self.assertRaises(OfficialSchemaError):
+            serialize_official(placeholder)
+
     def test_repair_does_not_guess_component_key(self) -> None:
         ir = make_ir()
         ir.components[0].key = None
@@ -456,7 +466,7 @@ class SerializerTests(unittest.TestCase):
                 Pin(
                     internal_id="pin_2",
                     component_id="cmp_2",
-                    number="∅",
+                    number="1",
                     name="AUTO",
                     point=Point(x=10.25, y=20.5),
                 ),

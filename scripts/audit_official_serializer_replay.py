@@ -225,15 +225,12 @@ def _pin_number_map(ir: CircuitIR, component_keys: Mapping[str, str]) -> dict[st
             for pin in ordered
             for number in explicit[pin.internal_id]
         }
-        next_auto = 1
         for pin in ordered:
             numbers = explicit[pin.internal_id]
             if not numbers:
-                while str(next_auto) in used:
-                    next_auto += 1
-                numbers = (str(next_auto),)
-                used.add(str(next_auto))
-                next_auto += 1
+                raise ReplayAuditError(
+                    f"pin {pin.internal_id!r} has no explicit representable number"
+                )
             output[pin.internal_id] = numbers
     return output
 
@@ -521,7 +518,9 @@ def _orchestrator_state_contract() -> dict[str, Any]:
     )
     _require_file(path, "orchestrator state contract")
     source = path.read_text(encoding="utf-8")
-    serialize_at = source.find("output = serialize_official(ir, official_profile)")
+    serialize_at = source.find("output, quality = serialize_official_with_quality(")
+    if serialize_at < 0:
+        serialize_at = source.find("output = serialize_official(ir, official_profile)")
     persisted_at = source.find("ir.state = IRState.SERIALIZED", serialize_at + 1)
     verified = serialize_at >= 0 and persisted_at > serialize_at
     if not verified:
@@ -532,7 +531,7 @@ def _orchestrator_state_contract() -> dict[str, Any]:
         "verified": True,
         "path": path.relative_to(REPOSITORY_ROOT).as_posix(),
         "sha256": _sha256_file(path),
-        "contract": "serialize VALIDATED IR, then persist state SERIALIZED",
+        "contract": "serialize VALIDATED IR via unified quality entry, then persist state SERIALIZED",
     }
 
 

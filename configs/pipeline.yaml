@@ -44,6 +44,12 @@
     "merge_power_labels": false,
     "merge_ground_labels": false
   },
+  "ocr": {
+    "detector_threshold": 0.5,
+    "vertical_rotation_enabled": true,
+    "recognition_candidate_count": 5,
+    "recognizer_backend": "en_PP-OCRv5_mobile_rec"
+  },
   "qwen": {
     "enabled": false,
     "backend": "disabled",

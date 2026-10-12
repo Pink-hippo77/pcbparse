@@ -21,6 +21,8 @@ class ObjectMask:
 class TextTarget:
     value: str | None
     mask: ObjectMask
+    bbox: tuple[float, float, float, float] | None = None
+    text_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +69,7 @@ class RawGroundTruth:
     graph_total_connections: int
     graph_eligible_connections: int
     graph_mask_reasons: Mapping[str, int]
+    net_wire_ids: tuple[frozenset[str], ...] = ()
 
     def coverage(self) -> dict[str, Any]:
         return {
@@ -150,13 +153,16 @@ def build_raw_ground_truth(
                 category=str(component.get("category") or ""),
                 mask=mask,
                 designator=_target_from_refs(
-                    associated_refs.get("designator", ()), texts, "component_designator"
+                    associated_refs.get("designator", ()), texts, "component_designator",
+                    width=width, height=height,
                 ),
                 value=_target_from_refs(
-                    associated_refs.get("value", ()), texts, "component_value"
+                    associated_refs.get("value", ()), texts, "component_value",
+                    width=width, height=height,
                 ),
                 search_name=_target_from_refs(
-                    associated_refs.get("searchname", ()), texts, "component_search_name"
+                    associated_refs.get("searchname", ()), texts, "component_search_name",
+                    width=width, height=height,
                 ),
             )
         )
@@ -199,6 +205,7 @@ def build_raw_ground_truth(
                     ),
                     texts,
                     "pin_number",
+                    width=width, height=height,
                 ),
                 name=_target_from_refs(
                     _string_refs(
@@ -208,6 +215,7 @@ def build_raw_ground_truth(
                     ),
                     texts,
                     "pin_name",
+                    width=width, height=height,
                 ),
             )
         )
@@ -230,7 +238,7 @@ def build_raw_ground_truth(
         )
 
     eligible_pins = {item.raw_id: item for item in pins if item.mask.eligible}
-    nets, graph_total, graph_eligible, graph_reasons = _raw_connectivity(
+    nets, net_wires, graph_total, graph_eligible, graph_reasons = _raw_connectivity(
         edges=edges,
         root_pins=root_pins,
         texts=texts,
@@ -247,6 +255,7 @@ def build_raw_ground_truth(
         pins=tuple(pins),
         wires=tuple(wires),
         connectivity_nets=nets,
+        net_wire_ids=net_wires,
         graph_total_connections=graph_total,
         graph_eligible_connections=graph_eligible,
         graph_mask_reasons=dict(sorted(graph_reasons.items())),
@@ -282,7 +291,12 @@ def _associated_text_refs(
 
 
 def _target_from_refs(
-    refs: Sequence[str], texts: Mapping[str, Any], field_name: str
+    refs: Sequence[str],
+    texts: Mapping[str, Any],
+    field_name: str,
+    *,
+    width: int = 0,
+    height: int = 0,
 ) -> TextTarget:
     ordered = tuple(sorted(set(map(str, refs)), key=_natural_key))
     if not ordered:
@@ -295,7 +309,8 @@ def _target_from_refs(
     content = text.get("content")
     if not isinstance(content, str) or content == "":
         return TextTarget(None, ObjectMask(False, (f"empty_{field_name}",)))
-    return TextTarget(content, ObjectMask(True))
+    bbox = _bbox(text.get("location"), width=width, height=height) if width and height else None
+    return TextTarget(content, ObjectMask(True), bbox=bbox, text_id=ordered[0])
 
 
 def _raw_connectivity(
@@ -304,7 +319,7 @@ def _raw_connectivity(
     root_pins: Mapping[str, Any],
     texts: Mapping[str, Any],
     eligible_pins: Mapping[str, RawPin],
-) -> tuple[tuple[frozenset[str], ...], int, int, Counter[str]]:
+) -> tuple[tuple[frozenset[str], ...], tuple[frozenset[str], ...], int, int, Counter[str]]:
     active_edges = {
         str(edge_id): _mapping(value)
         for edge_id, value in edges.items()
@@ -392,6 +407,7 @@ def _raw_connectivity(
             labels_by_group[edge_to_group[edge_id]].add(_normal_net_name(content))
 
     electrical: dict[str, set[str]] = defaultdict(set)
+    electrical_wires: dict[str, set[str]] = defaultdict(set)
     for index, group in enumerate(physical_groups):
         labels = labels_by_group.get(index, set())
         if len(labels) == 1:
@@ -402,13 +418,16 @@ def _raw_connectivity(
                 mask_reasons["ambiguous_physical_net_labels"] += 1
             key = f"physical:{index}"
         electrical[key].update(pins_by_group.get(index, set()))
-    nets = tuple(
-        sorted(
-            (frozenset(pins) for pins in electrical.values()),
-            key=lambda pins: tuple(_natural_key(value) for value in sorted(pins, key=_natural_key)),
-        )
+        electrical_wires[key].update(group)
+    ordered_keys = sorted(
+        electrical,
+        key=lambda key: tuple(
+            _natural_key(value) for value in sorted(electrical[key], key=_natural_key)
+        ),
     )
-    return nets, total_connections, eligible_connections, mask_reasons
+    nets = tuple(frozenset(electrical[key]) for key in ordered_keys)
+    net_wires = tuple(frozenset(electrical_wires.get(key, ())) for key in ordered_keys)
+    return nets, net_wires, total_connections, eligible_connections, mask_reasons
 
 
 def _wire_paths(

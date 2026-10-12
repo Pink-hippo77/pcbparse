@@ -39,6 +39,7 @@ PRODUCTION_RUNTIME_SOURCE_DIRECTORIES = (
     "src/pcbparse/graph",
     "src/pcbparse/io",
     "src/pcbparse/ir",
+    "src/pcbparse/knowledge",
     "src/pcbparse/nets",
     "src/pcbparse/output",
     "src/pcbparse/perception",

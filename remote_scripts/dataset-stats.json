@@ -1,0 +1,495 @@
+{
+ "schema": "opt90-comp-dataset-stats-v1",
+ "gt_access": "training_derived_manifest_only",
+ "split_images": {
+  "train": 240,
+  "test": 30,
+  "val": 30
+ },
+ "boxes_per_category": {
+  "train": {
+   "Gnd": 2476,
+   "C": 2108,
+   "R": 1661,
+   "Box": 1055,
+   "V": 1000,
+   "NET_input": 418,
+   "D": 176,
+   "L": 175,
+   "LED": 167,
+   "PIN": 136,
+   "Net_short": 130,
+   "Switch": 118,
+   "Other": 78,
+   "Net_output": 63,
+   "MOSFET": 59,
+   "Buzzer": 57,
+   "AMP": 51,
+   "Crystal": 46,
+   "BJT": 45,
+   "M": 45,
+   "ANT": 37,
+   "Testpoint": 33,
+   "Fuse": 22,
+   "Battary": 21,
+   "Motor": 8,
+   "Jumper": 8,
+   "CIRCLE_HEADER": 8,
+   "Block": 7,
+   "SEG": 7,
+   "Transfomer": 5,
+   "ESD": 5,
+   "Dc": 4,
+   "Opt": 3,
+   "Net_bidirection": 2
+  },
+  "test": {
+   "Gnd": 303,
+   "C": 285,
+   "R": 223,
+   "Box": 170,
+   "V": 157,
+   "PIN": 72,
+   "NET_input": 33,
+   "Net_short": 33,
+   "LED": 23,
+   "L": 21,
+   "Buzzer": 15,
+   "D": 14,
+   "Testpoint": 13,
+   "Crystal": 11,
+   "Net_bidirection": 10,
+   "M": 9,
+   "Net_output": 8,
+   "Switch": 8,
+   "BJT": 8,
+   "ANT": 8,
+   "Block": 6,
+   "MOSFET": 5,
+   "Other": 3,
+   "Fuse": 2,
+   "Battary": 1,
+   "ESD": 1,
+   "Dc": 1
+  },
+  "val": {
+   "C": 228,
+   "Gnd": 222,
+   "R": 217,
+   "V": 120,
+   "Box": 90,
+   "NET_input": 58,
+   "Switch": 35,
+   "PIN": 21,
+   "L": 21,
+   "LED": 18,
+   "D": 17,
+   "BJT": 15,
+   "Buzzer": 9,
+   "Crystal": 8,
+   "MOSFET": 8,
+   "Other": 5,
+   "M": 4,
+   "ANT": 4,
+   "Battary": 3,
+   "AMP": 3,
+   "Fuse": 2,
+   "Net_bidirection": 1,
+   "Jumper": 1,
+   "Net_output": 1,
+   "Dc": 1
+  }
+ },
+ "boxes_per_domain": {
+  "kicad": {
+   "PIN": 82,
+   "Gnd": 54,
+   "C": 47,
+   "R": 33,
+   "V": 30,
+   "Box": 22,
+   "NET_input": 13,
+   "Crystal": 7,
+   "LED": 4,
+   "L": 2,
+   "MOSFET": 1
+  },
+  "datasheet": {
+   "C": 1508,
+   "Gnd": 1389,
+   "R": 1017,
+   "Box": 561,
+   "V": 288,
+   "NET_input": 286,
+   "L": 154,
+   "PIN": 121,
+   "D": 84,
+   "Buzzer": 70,
+   "LED": 52,
+   "Other": 48,
+   "ANT": 48,
+   "Switch": 45,
+   "AMP": 35,
+   "BJT": 31,
+   "MOSFET": 27,
+   "Crystal": 24,
+   "Battary": 20,
+   "Fuse": 15,
+   "CIRCLE_HEADER": 8,
+   "SEG": 7,
+   "Transfomer": 1,
+   "ESD": 1,
+   "Opt": 1
+  },
+  "ad": {
+   "Gnd": 194,
+   "C": 158,
+   "V": 111,
+   "R": 106,
+   "Box": 84,
+   "Testpoint": 37,
+   "Other": 14,
+   "Crystal": 11,
+   "D": 9,
+   "Jumper": 9,
+   "Net_bidirection": 9,
+   "Block": 6,
+   "NET_input": 6,
+   "Switch": 6,
+   "Net_output": 5,
+   "LED": 4,
+   "BJT": 2,
+   "MOSFET": 2,
+   "Transfomer": 1,
+   "Fuse": 1,
+   "L": 1
+  },
+  "jlc": {
+   "Gnd": 1364,
+   "R": 945,
+   "C": 908,
+   "V": 848,
+   "Box": 648,
+   "NET_input": 204,
+   "Net_short": 163,
+   "LED": 148,
+   "D": 114,
+   "Switch": 110,
+   "Net_output": 67,
+   "L": 60,
+   "M": 58,
+   "MOSFET": 42,
+   "BJT": 35,
+   "PIN": 26,
+   "Other": 24,
+   "Crystal": 23,
+   "AMP": 19,
+   "Buzzer": 11,
+   "Fuse": 10,
+   "Testpoint": 9,
+   "Motor": 8,
+   "Block": 7,
+   "Dc": 6,
+   "Battary": 5,
+   "ESD": 5,
+   "Net_bidirection": 4,
+   "Transfomer": 3,
+   "Opt": 2,
+   "ANT": 1
+  }
+ },
+ "box_side_px": {
+  "train": {
+   "n": 10234,
+   "p10": 14.3,
+   "p50": 26.7,
+   "p90": 56.2
+  },
+  "test": {
+   "n": 1443,
+   "p10": 13.4,
+   "p50": 27.9,
+   "p90": 58.6
+  },
+  "val": {
+   "n": 1112,
+   "p10": 16.1,
+   "p50": 27.2,
+   "p90": 50.9
+  }
+ },
+ "model_category_table": [
+  {
+   "id": 1,
+   "official_id": 0,
+   "model_label": 1,
+   "name": "V",
+   "source_category_id": "0",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 2,
+   "official_id": 1,
+   "model_label": 2,
+   "name": "Box",
+   "source_category_id": "1",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 3,
+   "official_id": 2,
+   "model_label": 3,
+   "name": "Gnd",
+   "source_category_id": "2",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 4,
+   "official_id": 3,
+   "model_label": 4,
+   "name": "R",
+   "source_category_id": "3",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 5,
+   "official_id": 4,
+   "model_label": 5,
+   "name": "C",
+   "source_category_id": "4",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 6,
+   "official_id": 5,
+   "model_label": 6,
+   "name": "D",
+   "source_category_id": "5",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 7,
+   "official_id": 6,
+   "model_label": 7,
+   "name": "L",
+   "source_category_id": "6",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 8,
+   "official_id": 7,
+   "model_label": 8,
+   "name": "Fuse",
+   "source_category_id": "7",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 9,
+   "official_id": 8,
+   "model_label": 9,
+   "name": "MOSFET",
+   "source_category_id": "8",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 10,
+   "official_id": 9,
+   "model_label": 10,
+   "name": "Opt",
+   "source_category_id": "9",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 11,
+   "official_id": 10,
+   "model_label": 11,
+   "name": "BJT",
+   "source_category_id": "10",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 12,
+   "official_id": 11,
+   "model_label": 12,
+   "name": "Buzzer",
+   "source_category_id": "11",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 13,
+   "official_id": 13,
+   "model_label": 13,
+   "name": "Crystal",
+   "source_category_id": "13",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 14,
+   "official_id": 14,
+   "model_label": 14,
+   "name": "Dc",
+   "source_category_id": "14",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 15,
+   "official_id": 16,
+   "model_label": 15,
+   "name": "M",
+   "source_category_id": "16",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 16,
+   "official_id": 17,
+   "model_label": 16,
+   "name": "Other",
+   "source_category_id": "17",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 17,
+   "official_id": 18,
+   "model_label": 17,
+   "name": "ESD",
+   "source_category_id": "18",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 18,
+   "official_id": 19,
+   "model_label": 18,
+   "name": "Battary",
+   "source_category_id": "19",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 19,
+   "official_id": 20,
+   "model_label": 19,
+   "name": "Switch",
+   "source_category_id": "20",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 20,
+   "official_id": 21,
+   "model_label": 20,
+   "name": "Transfomer",
+   "source_category_id": "21",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 21,
+   "official_id": 22,
+   "model_label": 21,
+   "name": "LED",
+   "source_category_id": "22",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 22,
+   "official_id": 23,
+   "model_label": 22,
+   "name": "AMP",
+   "source_category_id": "23",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 23,
+   "official_id": 24,
+   "model_label": 23,
+   "name": "NET_input",
+   "source_category_id": "24",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 24,
+   "official_id": 25,
+   "model_label": 24,
+   "name": "Block",
+   "source_category_id": "25",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 25,
+   "official_id": 26,
+   "model_label": 25,
+   "name": "ANT",
+   "source_category_id": "26",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 26,
+   "official_id": 27,
+   "model_label": 26,
+   "name": "Net_short",
+   "source_category_id": "27",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 27,
+   "official_id": 28,
+   "model_label": 27,
+   "name": "Net_output",
+   "source_category_id": "28",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 28,
+   "official_id": 29,
+   "model_label": 28,
+   "name": "Net_bidirection",
+   "source_category_id": "29",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 29,
+   "official_id": 30,
+   "model_label": 29,
+   "name": "SEG",
+   "source_category_id": "30",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 30,
+   "official_id": 31,
+   "model_label": 30,
+   "name": "CIRCLE_HEADER",
+   "source_category_id": "31",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 31,
+   "official_id": 32,
+   "model_label": 31,
+   "name": "PIN",
+   "source_category_id": "32",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 32,
+   "official_id": 33,
+   "model_label": 32,
+   "name": "Testpoint",
+   "source_category_id": "33",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 33,
+   "official_id": 34,
+   "model_label": 33,
+   "name": "Jumper",
+   "source_category_id": "34",
+   "supercategory": "pcb_component"
+  },
+  {
+   "id": 34,
+   "official_id": 35,
+   "model_label": 34,
+   "name": "Motor",
+   "source_category_id": "35",
+   "supercategory": "pcb_component"
+  }
+ ]
+}

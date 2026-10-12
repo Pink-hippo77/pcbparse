@@ -85,6 +85,7 @@ class PairMetricTests(unittest.TestCase):
 class OracleContractTests(unittest.TestCase):
     def test_strip_membership_is_deep_and_preserves_geometry(self) -> None:
         original = _fixture_ir()
+        original.segments[0].source_polyline_ids = ["hidden-oracle-path"]
 
         stripped = audit._strip_oracle_membership(original)
 
@@ -94,6 +95,8 @@ class OracleContractTests(unittest.TestCase):
         self.assertEqual([], stripped.pins[0].evidence)
         self.assertIsNone(stripped.segments[0].source_edge_id)
         self.assertIsNone(stripped.segments[0].source_polyline_id)
+        self.assertEqual([], stripped.segments[0].source_polyline_ids)
+        self.assertEqual(["hidden-oracle-path"], original.segments[0].source_polyline_ids)
         self.assertEqual([], stripped.segments[0].evidence)
         self.assertEqual(original.segments[0].start, stripped.segments[0].start)
 

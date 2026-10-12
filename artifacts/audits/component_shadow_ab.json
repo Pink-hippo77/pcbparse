@@ -1,0 +1,901 @@
+{
+  "schema_version": 1,
+  "kind": "component_yolo_border_refinement_shadow_ab",
+  "task_id": "A05",
+  "status": "shadow_complete_promotion_blocked",
+  "generated_at_utc": "2026-09-22T04:04:19Z",
+  "evaluator_id": "raw-v1-masked+tiled_iou50+paired_test_iou50",
+  "split_role": "development_regression",
+  "sidecar_access": false,
+  "models_lock_modified": false,
+  "models_lock_sha256_before": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "models_lock_sha256_after": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "roles": {
+    "main_lock": {
+      "task": "component",
+      "version": "component-34d79a6dfa4340e6",
+      "path": "releases/v8-portable/component/train-component-v5-fullmix/model.pt",
+      "sha256": "34d79a6dfa4340e64dc96de4945bcfea6e376d9a6f4949876b58d7e719697af5",
+      "adapter": "pcbparse.perception.torch_component_adapter:factory",
+      "identity": "blessed Faster R-CNN component from models/models.lock.json"
+    },
+    "candidate": {
+      "name": "yolo11n-v2-box-internal-border-refinement",
+      "checkpoint": "work/yolo/component-yolo11n-v2-precision/weights/best.pt",
+      "checkpoint_sha256": "134ec62e77e11cdccb296040a3fd346a3864f13a1d44de7fb7a55e6ae0d87c8b",
+      "adapter": "pcbparse.perception.yolo_component_adapter:factory",
+      "selected_strategy": {
+        "component_internal_border_margin_px": 32.0,
+        "component_internal_border_refinement_enabled": true,
+        "component_internal_border_refinement_iou": 0.5,
+        "component_internal_border_refinement_categories": [
+          "Box"
+        ],
+        "component_internal_border_refinement_max_candidates": 16,
+        "component_center_preferred_nms_enabled": true,
+        "component_center_preference_score_bonus": 0.05,
+        "rationale": "Re-run internal tile-edge Box detections in a 512px crop centred on the candidate. Replace the original only when the centred pass returns a same-class box with intersection-over-smaller >= 0.5; otherwise retain the original candidate."
+      },
+      "shadow_only": true,
+      "blessed": false
+    }
+  },
+  "policy": {
+    "shadow_comparison_without_lock_edit": true,
+    "splits_not_mixed": true,
+    "metric_contracts_not_mixed": [
+      "raw-v1 (same-data val E2E)",
+      "tiled_iou50 (border-refinement validation A/B)",
+      "global-score-ranked class-aware one-to-one IoU@0.5 (paired test)"
+    ],
+    "gt_in_predictions": false,
+    "oracle_in_predictions": false,
+    "downstream_regression_blocks_promotion": true
+  },
+  "same_data_val_raw_v1": {
+    "description": "Image-only raw-v1 shadow on the frozen 30-sample validation cases. Main lock runs the blessed Faster R-CNN component; candidate runs the YOLO checkpoint injected in memory. Same case_ids and image_sha256 values.",
+    "metric_contract": "raw-v1",
+    "split": "val",
+    "sample_count": 30,
+    "case_ids": [
+      "0030",
+      "0037",
+      "0038",
+      "0044",
+      "0055",
+      "0062",
+      "0065",
+      "0077",
+      "0089",
+      "0091",
+      "0092",
+      "0095",
+      "0125",
+      "0135",
+      "0140",
+      "0144",
+      "0147",
+      "0155",
+      "0165",
+      "0171",
+      "0188",
+      "0190",
+      "0202",
+      "0212",
+      "0234",
+      "0238",
+      "0267",
+      "0280",
+      "0283",
+      "0291"
+    ],
+    "cases_succeeded": {
+      "main_lock": 30,
+      "yolo_candidate_base": 30
+    },
+    "main_lock": {
+      "component_detection": {
+        "f1": 0.7650085763293311,
+        "fn": 220,
+        "fp": 328,
+        "ignored_predictions": 0,
+        "precision": 0.7311475409836066,
+        "recall": 0.802158273381295,
+        "tp": 892
+      },
+      "component_category": {
+        "accuracy": 0.9069506726457399,
+        "correct": 809,
+        "evaluated": 892,
+        "normalized_accuracy": 0.9069506726457399,
+        "normalized_correct": 809
+      },
+      "pin_detection": {
+        "f1": 0.4501160092807425,
+        "fn": 1767,
+        "fp": 366,
+        "ignored_predictions": 0,
+        "precision": 0.7046004842615012,
+        "recall": 0.3306818181818182,
+        "tp": 873
+      },
+      "pin_point_error_px": {
+        "count": 873,
+        "max": 4.993421259531586,
+        "median": 1.637002361124266,
+        "p95": 4.132677520175688
+      },
+      "graph_pairwise_connectivity": {
+        "f1": 0.059110629067245124,
+        "fn": 3151,
+        "fp": 319,
+        "precision": 0.2546728971962617,
+        "recall": 0.03343558282208589,
+        "tp": 109
+      },
+      "wire": {
+        "expected_hit_pixels": 125381,
+        "expected_pixels": 130075,
+        "f1": 0.4621974557758176,
+        "precision": 0.3039775115104084,
+        "predicted_hit_pixels": 130196,
+        "predicted_pixels": 428308,
+        "recall": 0.9639131270420911
+      },
+      "fields": {
+        "component.designator": {
+          "eligible": 364,
+          "exact_accuracy_end_to_end": 0.046703296703296704,
+          "exact_accuracy_on_matched": 0.052307692307692305,
+          "exact_correct": 17,
+          "matched_eligible": 325,
+          "normalized_accuracy_end_to_end": 0.046703296703296704,
+          "normalized_accuracy_on_matched": 0.052307692307692305,
+          "normalized_correct": 17
+        },
+        "component.search_name": {
+          "eligible": 78,
+          "exact_accuracy_end_to_end": 0.0,
+          "exact_accuracy_on_matched": 0.0,
+          "exact_correct": 0,
+          "matched_eligible": 61,
+          "normalized_accuracy_end_to_end": 0.0,
+          "normalized_accuracy_on_matched": 0.0,
+          "normalized_correct": 0
+        },
+        "component.value": {
+          "eligible": 272,
+          "exact_accuracy_end_to_end": 0.029411764705882353,
+          "exact_accuracy_on_matched": 0.03162055335968379,
+          "exact_correct": 8,
+          "matched_eligible": 253,
+          "normalized_accuracy_end_to_end": 0.029411764705882353,
+          "normalized_accuracy_on_matched": 0.03162055335968379,
+          "normalized_correct": 8
+        },
+        "pin.name": {
+          "eligible": 611,
+          "exact_accuracy_end_to_end": 0.004909983633387889,
+          "exact_accuracy_on_matched": 0.012345679012345678,
+          "exact_correct": 3,
+          "matched_eligible": 243,
+          "normalized_accuracy_end_to_end": 0.004909983633387889,
+          "normalized_accuracy_on_matched": 0.012345679012345678,
+          "normalized_correct": 3
+        },
+        "pin.number": {
+          "eligible": 650,
+          "exact_accuracy_end_to_end": 0.024615384615384615,
+          "exact_accuracy_on_matched": 0.051118210862619806,
+          "exact_correct": 16,
+          "matched_eligible": 313,
+          "normalized_accuracy_end_to_end": 0.024615384615384615,
+          "normalized_accuracy_on_matched": 0.051118210862619806,
+          "normalized_correct": 16
+        }
+      },
+      "coverage_objects": {
+        "component": {
+          "eligible": 1112,
+          "mask_reasons": {},
+          "masked": 0,
+          "total": 1112
+        },
+        "pin": {
+          "eligible": 2640,
+          "mask_reasons": {
+            "no_active_owner": 15
+          },
+          "masked": 15,
+          "total": 2655
+        },
+        "wire": {
+          "eligible": 1240,
+          "mask_reasons": {
+            "inactive_edge": 180,
+            "missing_wire_geometry": 75
+          },
+          "masked": 241,
+          "total": 1481
+        }
+      },
+      "coverage_fields": {
+        "component.designator": {
+          "eligible": 364,
+          "mask_reasons": {
+            "missing_component_designator": 748
+          },
+          "masked": 748,
+          "total": 1112
+        },
+        "component.search_name": {
+          "eligible": 78,
+          "mask_reasons": {
+            "missing_component_search_name": 1034
+          },
+          "masked": 1034,
+          "total": 1112
+        },
+        "component.value": {
+          "eligible": 272,
+          "mask_reasons": {
+            "ambiguous_component_value": 13,
+            "missing_component_value": 827
+          },
+          "masked": 840,
+          "total": 1112
+        },
+        "pin.name": {
+          "eligible": 611,
+          "mask_reasons": {
+            "missing_pin_name": 2029
+          },
+          "masked": 2029,
+          "total": 2640
+        },
+        "pin.number": {
+          "eligible": 650,
+          "mask_reasons": {
+            "missing_pin_number": 1990
+          },
+          "masked": 1990,
+          "total": 2640
+        }
+      }
+    },
+    "yolo_candidate_base": {
+      "component_detection": {
+        "f1": 0.8439450686641699,
+        "fn": 98,
+        "fp": 277,
+        "ignored_predictions": 0,
+        "precision": 0.7854376452362509,
+        "recall": 0.9118705035971223,
+        "tp": 1014
+      },
+      "component_category": {
+        "accuracy": 0.9575936883629191,
+        "correct": 971,
+        "evaluated": 1014,
+        "normalized_accuracy": 0.9575936883629191,
+        "normalized_correct": 971
+      },
+      "pin_detection": {
+        "f1": 0.5608871827681808,
+        "fn": 1325,
+        "fp": 734,
+        "ignored_predictions": 0,
+        "precision": 0.6417764763299171,
+        "recall": 0.4981060606060606,
+        "tp": 1315
+      },
+      "pin_point_error_px": {
+        "count": 1315,
+        "max": 4.993421259531586,
+        "median": 1.500034594777423,
+        "p95": 4.272586200191926
+      },
+      "graph_pairwise_connectivity": {
+        "f1": 0.14945586457073762,
+        "fn": 2951,
+        "fp": 566,
+        "precision": 0.35314285714285715,
+        "recall": 0.09478527607361963,
+        "tp": 309
+      },
+      "wire": {
+        "expected_hit_pixels": 125381,
+        "expected_pixels": 130075,
+        "f1": 0.4621974557758176,
+        "precision": 0.3039775115104084,
+        "predicted_hit_pixels": 130196,
+        "predicted_pixels": 428308,
+        "recall": 0.9639131270420911
+      },
+      "fields": {
+        "component.designator": {
+          "eligible": 364,
+          "exact_accuracy_end_to_end": 0.027472527472527472,
+          "exact_accuracy_on_matched": 0.029940119760479042,
+          "exact_correct": 10,
+          "matched_eligible": 334,
+          "normalized_accuracy_end_to_end": 0.027472527472527472,
+          "normalized_accuracy_on_matched": 0.029940119760479042,
+          "normalized_correct": 10
+        },
+        "component.search_name": {
+          "eligible": 78,
+          "exact_accuracy_end_to_end": 0.0,
+          "exact_accuracy_on_matched": 0.0,
+          "exact_correct": 0,
+          "matched_eligible": 77,
+          "normalized_accuracy_end_to_end": 0.0,
+          "normalized_accuracy_on_matched": 0.0,
+          "normalized_correct": 0
+        },
+        "component.value": {
+          "eligible": 272,
+          "exact_accuracy_end_to_end": 0.007352941176470588,
+          "exact_accuracy_on_matched": 0.00796812749003984,
+          "exact_correct": 2,
+          "matched_eligible": 251,
+          "normalized_accuracy_end_to_end": 0.011029411764705883,
+          "normalized_accuracy_on_matched": 0.01195219123505976,
+          "normalized_correct": 3
+        },
+        "pin.name": {
+          "eligible": 611,
+          "exact_accuracy_end_to_end": 0.01309328968903437,
+          "exact_accuracy_on_matched": 0.02572347266881029,
+          "exact_correct": 8,
+          "matched_eligible": 311,
+          "normalized_accuracy_end_to_end": 0.01309328968903437,
+          "normalized_accuracy_on_matched": 0.02572347266881029,
+          "normalized_correct": 8
+        },
+        "pin.number": {
+          "eligible": 650,
+          "exact_accuracy_end_to_end": 0.027692307692307693,
+          "exact_accuracy_on_matched": 0.049586776859504134,
+          "exact_correct": 18,
+          "matched_eligible": 363,
+          "normalized_accuracy_end_to_end": 0.027692307692307693,
+          "normalized_accuracy_on_matched": 0.049586776859504134,
+          "normalized_correct": 18
+        }
+      },
+      "coverage_objects": {
+        "component": {
+          "eligible": 1112,
+          "mask_reasons": {},
+          "masked": 0,
+          "total": 1112
+        },
+        "pin": {
+          "eligible": 2640,
+          "mask_reasons": {
+            "no_active_owner": 15
+          },
+          "masked": 15,
+          "total": 2655
+        },
+        "wire": {
+          "eligible": 1240,
+          "mask_reasons": {
+            "inactive_edge": 180,
+            "missing_wire_geometry": 75
+          },
+          "masked": 241,
+          "total": 1481
+        }
+      },
+      "coverage_fields": {
+        "component.designator": {
+          "eligible": 364,
+          "mask_reasons": {
+            "missing_component_designator": 748
+          },
+          "masked": 748,
+          "total": 1112
+        },
+        "component.search_name": {
+          "eligible": 78,
+          "mask_reasons": {
+            "missing_component_search_name": 1034
+          },
+          "masked": 1034,
+          "total": 1112
+        },
+        "component.value": {
+          "eligible": 272,
+          "mask_reasons": {
+            "ambiguous_component_value": 13,
+            "missing_component_value": 827
+          },
+          "masked": 840,
+          "total": 1112
+        },
+        "pin.name": {
+          "eligible": 611,
+          "mask_reasons": {
+            "missing_pin_name": 2029
+          },
+          "masked": 2029,
+          "total": 2640
+        },
+        "pin.number": {
+          "eligible": 650,
+          "mask_reasons": {
+            "missing_pin_number": 1990
+          },
+          "masked": 1990,
+          "total": 2640
+        }
+      }
+    },
+    "delta_yolo_base_minus_main_lock": {
+      "component_f1": 0.07893649233483879,
+      "component_precision": 0.054290104252644356,
+      "component_recall": 0.10971223021582732,
+      "pin_f1": 0.11077117348743831,
+      "graph_f1": 0.0903452355034925,
+      "wire_f1": 0.0
+    },
+    "border_confirm_neighbor_only": {
+      "warning": "border-confirmation policy, not border-refinement; not mixed into candidate scores",
+      "metrics": {
+        "component_detection": {
+          "f1": 0.8460575719649561,
+          "fn": 98,
+          "fp": 271,
+          "ignored_predictions": 0,
+          "precision": 0.7891050583657587,
+          "recall": 0.9118705035971223,
+          "tp": 1014
+        },
+        "component_category": {
+          "accuracy": 0.9575936883629191,
+          "correct": 971,
+          "evaluated": 1014,
+          "normalized_accuracy": 0.9575936883629191,
+          "normalized_correct": 971
+        },
+        "pin_detection": {
+          "f1": 0.5617257582229817,
+          "fn": 1325,
+          "fp": 727,
+          "ignored_predictions": 0,
+          "precision": 0.6439764936336925,
+          "recall": 0.4981060606060606,
+          "tp": 1315
+        },
+        "pin_point_error_px": {
+          "count": 1315,
+          "max": 4.993421259531586,
+          "median": 1.500034594777423,
+          "p95": 4.272586200191926
+        },
+        "graph_pairwise_connectivity": {
+          "f1": 0.14945586457073762,
+          "fn": 2951,
+          "fp": 566,
+          "precision": 0.35314285714285715,
+          "recall": 0.09478527607361963,
+          "tp": 309
+        },
+        "wire": {
+          "expected_hit_pixels": 125381,
+          "expected_pixels": 130075,
+          "f1": 0.4621974557758176,
+          "precision": 0.3039775115104084,
+          "predicted_hit_pixels": 130196,
+          "predicted_pixels": 428308,
+          "recall": 0.9639131270420911
+        },
+        "fields": {
+          "component.designator": {
+            "eligible": 364,
+            "exact_accuracy_end_to_end": 0.027472527472527472,
+            "exact_accuracy_on_matched": 0.029940119760479042,
+            "exact_correct": 10,
+            "matched_eligible": 334,
+            "normalized_accuracy_end_to_end": 0.027472527472527472,
+            "normalized_accuracy_on_matched": 0.029940119760479042,
+            "normalized_correct": 10
+          },
+          "component.search_name": {
+            "eligible": 78,
+            "exact_accuracy_end_to_end": 0.0,
+            "exact_accuracy_on_matched": 0.0,
+            "exact_correct": 0,
+            "matched_eligible": 77,
+            "normalized_accuracy_end_to_end": 0.0,
+            "normalized_accuracy_on_matched": 0.0,
+            "normalized_correct": 0
+          },
+          "component.value": {
+            "eligible": 272,
+            "exact_accuracy_end_to_end": 0.007352941176470588,
+            "exact_accuracy_on_matched": 0.00796812749003984,
+            "exact_correct": 2,
+            "matched_eligible": 251,
+            "normalized_accuracy_end_to_end": 0.011029411764705883,
+            "normalized_accuracy_on_matched": 0.01195219123505976,
+            "normalized_correct": 3
+          },
+          "pin.name": {
+            "eligible": 611,
+            "exact_accuracy_end_to_end": 0.01309328968903437,
+            "exact_accuracy_on_matched": 0.02572347266881029,
+            "exact_correct": 8,
+            "matched_eligible": 311,
+            "normalized_accuracy_end_to_end": 0.01309328968903437,
+            "normalized_accuracy_on_matched": 0.02572347266881029,
+            "normalized_correct": 8
+          },
+          "pin.number": {
+            "eligible": 650,
+            "exact_accuracy_end_to_end": 0.027692307692307693,
+            "exact_accuracy_on_matched": 0.049586776859504134,
+            "exact_correct": 18,
+            "matched_eligible": 363,
+            "normalized_accuracy_end_to_end": 0.027692307692307693,
+            "normalized_accuracy_on_matched": 0.049586776859504134,
+            "normalized_correct": 18
+          }
+        },
+        "coverage_objects": {
+          "component": {
+            "eligible": 1112,
+            "mask_reasons": {},
+            "masked": 0,
+            "total": 1112
+          },
+          "pin": {
+            "eligible": 2640,
+            "mask_reasons": {
+              "no_active_owner": 15
+            },
+            "masked": 15,
+            "total": 2655
+          },
+          "wire": {
+            "eligible": 1240,
+            "mask_reasons": {
+              "inactive_edge": 180,
+              "missing_wire_geometry": 75
+            },
+            "masked": 241,
+            "total": 1481
+          }
+        },
+        "coverage_fields": {
+          "component.designator": {
+            "eligible": 364,
+            "mask_reasons": {
+              "missing_component_designator": 748
+            },
+            "masked": 748,
+            "total": 1112
+          },
+          "component.search_name": {
+            "eligible": 78,
+            "mask_reasons": {
+              "missing_component_search_name": 1034
+            },
+            "masked": 1034,
+            "total": 1112
+          },
+          "component.value": {
+            "eligible": 272,
+            "mask_reasons": {
+              "ambiguous_component_value": 13,
+              "missing_component_value": 827
+            },
+            "masked": 840,
+            "total": 1112
+          },
+          "pin.name": {
+            "eligible": 611,
+            "mask_reasons": {
+              "missing_pin_name": 2029
+            },
+            "masked": 2029,
+            "total": 2640
+          },
+          "pin.number": {
+            "eligible": 650,
+            "mask_reasons": {
+              "missing_pin_number": 1990
+            },
+            "masked": 1990,
+            "total": 2640
+          }
+        }
+      },
+      "delta_vs_yolo_base_component_f1": 0.0021125033007862726
+    },
+    "note": "raw-v1 numbers compare main lock to the YOLO candidate path (per-class thresholds). Box-internal border-refinement is scored separately below and is never averaged into these raw-v1 figures."
+  },
+  "border_refinement_component_val": {
+    "metric_contract": "tiled_iou50",
+    "split": "val",
+    "sample_count": 30,
+    "ground_truth_count": 1112,
+    "baseline_role": "yolo candidate without border refinement",
+    "candidate_role": "yolo candidate with border refinement (Box)",
+    "baseline": {
+      "precision50": 0.7657587548638133,
+      "recall50": 0.8848920863309353,
+      "f1_50": 0.8210262828535669,
+      "bbox_map50": 0.7103597660511036,
+      "true_positives": 984,
+      "false_positives": 301,
+      "false_negatives": 128,
+      "Box_true_positives": 87,
+      "Box_false_positives": 95
+    },
+    "candidate": {
+      "precision50": 0.8013029315960912,
+      "recall50": 0.8848920863309353,
+      "f1_50": 0.841025641025641,
+      "bbox_map50": 0.7191801358045286,
+      "true_positives": 984,
+      "false_positives": 244,
+      "false_negatives": 128,
+      "Box_true_positives": 87,
+      "Box_false_positives": 37
+    },
+    "delta_candidate_minus_baseline": {
+      "precision50": 0.0355441767322779,
+      "recall50": 0.0,
+      "f1_50": 0.0199993581720741,
+      "bbox_map50": 0.008820369753425,
+      "true_positives": 0,
+      "false_positives": -57,
+      "false_negatives": 0,
+      "Box_true_positives": 0,
+      "Box_false_positives": -58
+    },
+    "refinement_runtime": {
+      "eligible_count": 144,
+      "attempted_count": 137,
+      "matched_count": 127,
+      "replaced_count": 127,
+      "raw_refinement_count": 1624,
+      "total_component_replay_seconds": 25.577544100000523
+    },
+    "source_status": {
+      "baseline_status": {
+        "path": "work/eval-component-yolo11n-v2-per-class-thresholds-border-confirm-box-ios-tiled512-val-cap128-20260915/diagnostic_status.json",
+        "sha256": "b5c8c4a92e2915ef1c8c646c218ba5b30cdc7f5b6d3fa3aaf4a8872680556e5f"
+      },
+      "candidate_status": {
+        "path": "work/eval-component-yolo11n-v2-border-refine-fullval-20260916/diagnostic_status.json",
+        "sha256": "4293b05a145cbd3797eea8f1441f3f2a0e25562f7d2142f1d5852e0d8a6f43d3"
+      },
+      "pipeline_config": {
+        "path": "configs/pipeline.component512-border-refine-box-experiment.yaml",
+        "sha256": "5953feb4ae46ca1071562559b5fcebea3a7222cc4e3b2f1ee99e67d191497434"
+      }
+    }
+  },
+  "border_refinement_component_test": {
+    "metric_contract": "global-score-ranked class-aware one-to-one IoU@0.5",
+    "split": "test",
+    "split_role": "local_frozen_confirmation_not_organizer_hidden",
+    "sample_count": 30,
+    "ground_truth_count": 1443,
+    "baseline_role": "yolo candidate without border refinement",
+    "candidate_role": "yolo candidate with border refinement (Box)",
+    "baseline": {
+      "precision50": 0.7546683837733419,
+      "recall50": 0.8121968121968122,
+      "f1_50": 0.7823765020026702,
+      "bbox_map50": 0.6255432249850328,
+      "true_positives": 1172,
+      "false_positives": 381,
+      "false_negatives": 271,
+      "prediction_count": 1553,
+      "pred_to_gt_ratio": 1.0762300762300763
+    },
+    "candidate": {
+      "precision50": 0.7873333333333333,
+      "recall50": 0.8184338184338185,
+      "f1_50": 0.8025823989126741,
+      "bbox_map50": 0.6355781485364489,
+      "true_positives": 1181,
+      "false_positives": 319,
+      "false_negatives": 262,
+      "prediction_count": 1500,
+      "pred_to_gt_ratio": 1.0395010395010396
+    },
+    "delta_candidate_minus_baseline": {
+      "bbox_map50": 0.010034923551416108,
+      "f1_50": 0.020205896910003962,
+      "false_negatives": -9.0,
+      "false_positives": -62.0,
+      "precision50": 0.03266494955999144,
+      "prediction_count": -53.0,
+      "recall50": 0.006237006237006293,
+      "true_positives": 9.0
+    },
+    "box_focus": {
+      "baseline": {
+        "ap50": 0.6117205709776864,
+        "f1_50": 0.704225352112676,
+        "false_negatives": 20,
+        "false_positives": 106,
+        "ground_truth": 170,
+        "official_category_id": 1,
+        "precision50": 0.5859375,
+        "predictions": 256,
+        "recall50": 0.8823529411764706,
+        "true_positives": 150
+      },
+      "candidate": {
+        "ap50": 0.8366849817101021,
+        "f1_50": 0.8501362397820164,
+        "false_negatives": 14,
+        "false_positives": 41,
+        "ground_truth": 170,
+        "official_category_id": 1,
+        "precision50": 0.7918781725888325,
+        "predictions": 197,
+        "recall50": 0.9176470588235294,
+        "true_positives": 156
+      },
+      "delta_recall50": 0.03529411764705881,
+      "false_positive_reduction": 65,
+      "false_positive_reduction_ratio": 0.6132075471698113
+    },
+    "decision_gates": [
+      {
+        "basis": "Require a material overall F1 improvement over the paired baseline.",
+        "metric": "delta.f1_50",
+        "observed": 0.020205896910003962,
+        "operator": "gte",
+        "passed": true,
+        "threshold": 0.01
+      },
+      {
+        "basis": "Limit absolute overall recall regression to 0.5 percentage points.",
+        "metric": "delta.recall50",
+        "observed": 0.006237006237006293,
+        "operator": "gte",
+        "passed": true,
+        "threshold": -0.005
+      },
+      {
+        "basis": "Confirm that the validation-observed false-positive reduction generalizes.",
+        "metric": "false_positive_reduction_ratio",
+        "observed": 0.16272965879265092,
+        "operator": "gte",
+        "passed": true,
+        "threshold": 0.1
+      },
+      {
+        "basis": "Require at least 20 percent fewer Box false positives.",
+        "metric": "box.false_positive_reduction_ratio",
+        "observed": 0.6132075471698113,
+        "operator": "gte",
+        "passed": true,
+        "threshold": 0.2
+      },
+      {
+        "basis": "Limit absolute Box recall regression to one percentage point.",
+        "metric": "box.delta_recall50",
+        "observed": 0.03529411764705881,
+        "operator": "gte",
+        "passed": true,
+        "threshold": -0.01
+      }
+    ],
+    "performance": {
+      "baseline_elapsed_seconds": 15.828063500001008,
+      "candidate_elapsed_seconds": 24.244572999999946,
+      "baseline_refinement_stats": {
+        "attempted_count": 0,
+        "eligible_count": 0,
+        "matched_count": 0,
+        "raw_refinement_count": 0,
+        "replaced_count": 0
+      },
+      "candidate_refinement_stats": {
+        "attempted_count": 197,
+        "eligible_count": 236,
+        "matched_count": 211,
+        "raw_refinement_count": 2349,
+        "replaced_count": 211
+      }
+    }
+  },
+  "composite_shadow_integration": {
+    "source": "artifacts/audits/component_yolo11n_v1_composite_shadow.json",
+    "note": "One-image in-memory Component swap vs locked downstream providers; integration check only.",
+    "checks": {
+      "all_pin_owners_resolve": true,
+      "component_boxes_within_source": true,
+      "component_provider_swapped_in_memory_only": true,
+      "component_version_propagated": true,
+      "locked_downstream_provider_loaded": true,
+      "models_lock_unchanged": true,
+      "perceived_ir_completed": true
+    },
+    "result": {
+      "sample_id": "0030",
+      "components": 18,
+      "pins": 24,
+      "texts": 383,
+      "junctions": 661,
+      "elapsed_seconds": 7.159993799999938,
+      "phase_timings_seconds": {
+        "component_detect": 1.0,
+        "image_load": 0.015,
+        "ocr_recognize": 3.735,
+        "pin_detect": 1.234,
+        "total_perception": 7.156,
+        "wire_segment": 1.172
+      }
+    }
+  },
+  "downstream_reference": {
+    "path": "artifacts/audits/component_downstream_errors.json",
+    "summary": "OCR binding / pin owner / Net / latency tracked there; promotion blocked by field regressions."
+  },
+  "interpretation_boundary": {
+    "validation_configuration_tuned": true,
+    "independent_test_confirmation_completed": "component_only",
+    "production_promotion_allowed": false,
+    "models_lock_modified": false,
+    "reason": "Shadow comparison is complete without editing the main lock. Component detection improves for the border-refinement candidate on val and test. Downstream raw-v1 shows large component/pin/net gains versus main lock but OCR field exact regressions on designator/value, so promotion stays blocked."
+  },
+  "promotion": {
+    "promotion_eligible": false,
+    "decision": "do_not_promote",
+    "downstream_regressed": true
+  },
+  "limitations": [
+    "The A/B result is selection-biased because the policy was derived from validation-set error analysis.",
+    "Only Component detection was measured; downstream Pin ownership, OCR association, Graph quality, and end-to-end latency remain unconfirmed.",
+    "The maximum of 16 refinement candidates applies per image, so seven eligible candidates were not separately attempted after per-image caps and crop deduplication.",
+    "raw-v1 is not the official evaluator and is not mixed with tiled or paired-test contracts.",
+    "Same-data raw-v1 pair is main lock vs YOLO base path; border-refinement adds component A/B only.",
+    "Public 210 images and prior test/release50 exposure are not claimed as independent holdouts."
+  ],
+  "lineage": {
+    "border_refinement_ab": {
+      "path": "artifacts/audits/component_yolo11n_v2_box_border_refinement_ab.json",
+      "sha256": "f5c96ea44ec3fa74f4650087ee96a0e57b6a4754541fe652c867dbcc47470973"
+    },
+    "border_confirmation_ab": {
+      "path": "artifacts/audits/component_yolo11n_v2_box_border_confirmation_ab.json",
+      "sha256": "fe3fb38540f101c53ccaec4ea546e7cd24f49fa179210158f87f56189b48bc29"
+    },
+    "paired_test_status": {
+      "path": "work/confirm-component-yolo11n-v2-border-refinement-test-20260916/paired_test_status.json",
+      "sha256": "3f551b3161709438f23f9a28f7f9ef038b89cad5399dc4659382b8d940afea06"
+    },
+    "main_lock_raw_summary": {
+      "path": "work/raw-production-component-v5-val-20260914/summary.json",
+      "sha256": "ac0ea814dbb154aa54b4f958c34f787ffa89442674a8e0500240b31fb76a449f"
+    },
+    "yolo_raw_summary": {
+      "path": "work/raw-yolo-component-v2-per-class-thresholds-shadow-val-20260914/summary.json",
+      "sha256": "713efc9cd5b50b00b3446783a65ab5c62b97cbfca81f713d25f594bd4b1e35cc"
+    },
+    "per_class_threshold_calibration": {
+      "path": "artifacts/audits/component_yolo11n_v2_per_class_threshold_calibration.json",
+      "sha256": "31e656efd6e75e503c2ec02e3f9ed7d9ca49b624a731a3b9aeb3a0588bceb2ec"
+    },
+    "candidate_pipeline_config": {
+      "path": "configs/pipeline.component512-border-refine-box-experiment.yaml",
+      "sha256": "5953feb4ae46ca1071562559b5fcebea3a7222cc4e3b2f1ee99e67d191497434"
+    },
+    "models_lock": {
+      "path": "models/models.lock.json",
+      "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+      "modified": false
+    }
+  }
+}

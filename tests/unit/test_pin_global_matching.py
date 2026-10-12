@@ -44,7 +44,7 @@ class PinGlobalMatchingTests(unittest.TestCase):
             pins,
             texts,
             diagnostics,
-            OCRAssociationConfig(),
+            OCRAssociationConfig(pin_max_distance_px=24.0),
         )
 
         self.assertEqual([pin.number for pin in pins], ["1", "2"])

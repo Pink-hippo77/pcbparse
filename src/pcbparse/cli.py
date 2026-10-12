@@ -51,6 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
             "annotation providers are marked sidecar_access=true and will be rejected by accuracy mode"
         ),
     )
+    infer.add_argument(
+        "--evidence-dir",
+        type=Path,
+        help=(
+            "Persist four-stage IR snapshots (perception/association/pre_prune/final) "
+            "for offline OCR diagnostics; never pollutes official JSON output"
+        ),
+    )
 
     health = commands.add_parser("healthcheck", help="Run import/config/serializer smoke checks")
     health.add_argument("--config", type=Path, default=_resource_path("pipeline.json"))
@@ -211,6 +219,9 @@ def _infer(args: argparse.Namespace) -> int:
     inputs = _discover_images(args.input)
     if not inputs:
         raise FileNotFoundError(f"no decodable images found under {args.input}")
+    evidence_sink = (
+        _make_evidence_sink(args.evidence_dir) if args.evidence_dir is not None else None
+    )
     results, errors = infer_batch(
         inputs,
         args.output,
@@ -218,6 +229,7 @@ def _infer(args: argparse.Namespace) -> int:
         config=config,
         official_profile=_resource_path("official_schema.json"),
         continue_on_error=not args.fail_fast,
+        evidence_sink=evidence_sink,
     )
     pipeline_status = "ok" if not errors else "partial"
     evaluation_manifest = (
@@ -431,6 +443,24 @@ def _discover_images(path: Path) -> list[Path]:
         except OSError:
             continue
     return images
+
+
+def _make_evidence_sink(directory: Path):
+    destination = directory.expanduser().resolve(strict=False)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    def sink(stage: str, ir: Any) -> None:
+        payload = json.dumps(
+            ir.model_dump(mode="json"),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8") + b"\n"
+        name = f"{stage}.circuit-ir.json"
+        _atomic_bytes(destination / name, payload)
+
+    return sink
 
 
 def _write_evaluation_artifacts(

@@ -3,16 +3,19 @@ from __future__ import annotations
 import math
 import re
 import unicodedata
-from typing import Any, Mapping, Sequence
+from typing import AbstractSet, Any, Mapping, Sequence
 
 from pcbparse.association.ocr_common import (
     canonical_details,
     lexical_candidates,
     make_rule_evidence,
+    match_key,
     point_bbox_distance,
     preferred_text,
+    resolved_text,
 )
 from pcbparse.ir.models import Component, Pin, TextToken, WireSegment
+from pcbparse.association.pin_label_context import BodyPinLabelContext
 
 
 """Conservative semantic-field inference for untyped OCR tokens.
@@ -29,11 +32,24 @@ assignment passes.
 
 
 _DESIGNATOR = re.compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$")
+# Pure-digit pin numbers keep this conservative pattern.  Alphanumeric pin
+# labels (A5, B12) use a separate recognition path below so simply widening
+# _PIN_NUMBER is not treated as sufficient coverage.
 _PIN_NUMBER = re.compile(r"^[0-9]{1,3}$")
+_ALNUM_PIN_NUMBER = re.compile(r"^(?:[A-Z]{1,2}[0-9]{1,2}|[0-9]{1,2}[A-Z]{1,2})$")
+# Pin names such as USB_D- / IOVDD keep their original spelling.
+_PIN_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_+.\-]*$")
 _LEXEME = re.compile(r"^[^\s,()]+$")
 _VALUEISH = re.compile(
-    r"^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*(?:[kKmMuUnNpP]?[A-Za-zΩµ%]*)?$"
+    r"^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*(?:[kKmMuUnNpP]?[A-Za-zΩµμ%]*)?$"
 )
+# A library entry can itself resemble a reference. Do not let a catalog
+# containing R123, SW123, etc. override these conventional reference forms.
+_REFERENCE_PREFIXES = frozenset({
+    "R", "C", "L", "D", "Q", "U", "J", "P", "S", "SW", "FB",
+    "Y", "X", "TP", "F", "K", "M", "B", "N", "E", "H", "A",
+    "G", "V", "O", "I", "IC", "LED", "CN", "CON", "JP", "RN",
+})
 _NETLIKE = re.compile(r"^[A-Za-z0-9_+.\-]+$")
 
 _KNOWN_POWER = frozenset(
@@ -70,6 +86,9 @@ def infer_semantic_fields(
     *,
     component_max_distance_factor: float = 2.0,
     pin_max_distance_px: float = 24.0,
+    known_model_names: AbstractSet[str] = frozenset(),
+    pin_body_name_context_enabled: bool = False,
+    pin_body_component_roi_context_enabled: bool = False,
 ) -> dict[str, Any]:
     """Assign conservative ``details`` labels to untyped OCR tokens in place.
 
@@ -99,6 +118,16 @@ def infer_semantic_fields(
     )
     pin_spatial_index = _build_pin_spatial_index(pins, pin_max_distance_px)
     segment_spatial_index = _build_segment_spatial_index(segments, 18.0)
+    if type(pin_body_name_context_enabled) is not bool:
+        raise ValueError('pin_body_name_context_enabled must be a boolean')
+    if type(pin_body_component_roi_context_enabled) is not bool:
+        raise ValueError('pin_body_component_roi_context_enabled must be a boolean')
+    if pin_body_component_roi_context_enabled and not pin_body_name_context_enabled:
+        raise ValueError('component ROI pin context requires pin_body_name_context_enabled')
+    pin_label_context = (BodyPinLabelContext(components, pins, texts, pin_max_distance_px)
+                         if pin_body_name_context_enabled else None)
+    body_name_overrides = 0
+    component_roi_name_overrides = 0
 
     for token in texts:
         if any(evidence.source == "dataset" for evidence in token.evidence):
@@ -111,14 +140,22 @@ def infer_semantic_fields(
             summary["preserved_typed"] += 1
             continue
         value = preferred_text(token)
+        resolved = resolved_text(token)
         if not value:
             summary["left_unknown"] += 1
             continue
+        # Conservative field classification: prefer pinnumber/pinname when
+        # the token is near a pin tip, prefer designator/value when near a
+        # component bbox center.  Never classify a pure-digit string as
+        # designator when it could be a pin number.
         metadata = _level_metadata(token)
         level = metadata.get("level", "global")
         side = metadata.get("side")
         roi_component_id = metadata.get("component_id")
+        # Bind raw_text + resolved_text + OCR candidates; keep each spelling.
         candidate_values = [value]
+        if resolved and resolved not in candidate_values:
+            candidate_values.append(resolved)
         for candidate in token.candidates:
             if (
                 isinstance(candidate, str)
@@ -132,6 +169,7 @@ def infer_semantic_fields(
         selected_value = value
         selected_rank = 0
         raw_inferred: str | None = None
+        selected_pin_label_hint: dict[str, Any] | None = None
         for candidate_rank, candidate_value in enumerate(candidate_values):
             candidate_inferred, candidate_component_id = _classify_token_value(
                 token,
@@ -147,7 +185,19 @@ def infer_semantic_fields(
                 component_candidates=component_spatial_index.query(token.bbox),
                 pin_candidates=pin_spatial_index.query(token.bbox),
                 segment_candidates=segment_spatial_index.query(token.bbox),
+                known_model_names=known_model_names,
             )
+            pin_label_hint = None
+            if (pin_label_context is not None and level != 'side_strip'
+                    and (level != 'component' or pin_body_component_roi_context_enabled)
+                    and candidate_inferred not in {'pinnumber', 'searchname'}):
+                pin_label_hint = pin_label_context.hint(token, _normalize(candidate_value))
+                if pin_label_hint is not None:
+                    pin_label_hint['previous_field'] = candidate_inferred
+                    candidate_inferred = 'pinname'
+                    # Body context classifies a role; regular matching still
+                    # resolves ownership with its confidence and margin gates.
+                    candidate_component_id = None
             if candidate_rank == 0:
                 raw_inferred = candidate_inferred
             if candidate_inferred is None:
@@ -165,6 +215,7 @@ def infer_semantic_fields(
             component_id = candidate_component_id
             selected_value = candidate_value
             selected_rank = candidate_rank
+            selected_pin_label_hint = pin_label_hint
             break
 
         if inferred is None:
@@ -176,6 +227,10 @@ def infer_semantic_fields(
             token.component_id = component_id
         by_field[inferred] = by_field.get(inferred, 0) + 1
         summary["classified"] += 1
+        if selected_pin_label_hint is not None and selected_pin_label_hint['previous_field'] != 'pinname':
+            body_name_overrides += 1
+            if level == 'component':
+                component_roi_name_overrides += 1
         if selected_rank > 0:
             summary["candidate_rescued"] += 1
         _record_inference(
@@ -186,9 +241,19 @@ def infer_semantic_fields(
             roi_component_id,
             selected_value=selected_value,
             selected_rank=selected_rank,
+            raw_text=token.raw_text,
+            resolved_value=resolved,
+            pin_label_hint=selected_pin_label_hint,
         )
 
     summary["by_field"] = dict(sorted(by_field.items()))
+    summary['pin_body_name_context'] = {'enabled': pin_body_name_context_enabled,
+                                        'field_overrides': body_name_overrides}
+    if pin_body_component_roi_context_enabled:
+        summary['pin_body_name_context'].update(
+            component_roi_enabled=True,
+            component_roi_field_overrides=component_roi_name_overrides,
+        )
     return summary
 
 
@@ -207,6 +272,7 @@ def _classify_token_value(
     component_candidates: Sequence[Component],
     pin_candidates: Sequence[Pin],
     segment_candidates: Sequence[WireSegment],
+    known_model_names: AbstractSet[str],
 ) -> tuple[str | None, str | None]:
     normalized = _normalize(value)
     if level == "side_strip":
@@ -224,6 +290,7 @@ def _classify_token_value(
             normalized,
             roi_component_id,
             component_index,
+            known_model_names=known_model_names,
         )
     inferred, _context_component_id, _context_pin_id = _classify_global(
         token,
@@ -237,6 +304,7 @@ def _classify_token_value(
         component_candidates=component_candidates,
         pin_candidates=pin_candidates,
         segment_candidates=segment_candidates,
+        known_model_names=known_model_names,
     )
     # Global proximity is sufficient to infer a semantic field, but it is not
     # explicit ownership evidence. The association stage resolves it later.
@@ -286,6 +354,13 @@ def _classify_side_strip(
         return "pinnumber", component_id
     if len(normalized) < 2:
         return None, component_id
+    # Alphanumeric pin labels (A5, B12) use a dedicated path — not a widened
+    # _PIN_NUMBER.  The component's own designator prefix still wins so R10 on
+    # a resistor strip is not misread as a pin number.
+    if _ALNUM_PIN_NUMBER.fullmatch(normalized):
+        component = component_index.get(component_id) if component_id else None
+        if component is None or not _prefix_compatible(component.category, normalized):
+            return "pinnumber", component_id
     if _DESIGNATOR.fullmatch(normalized) and component_id is not None:
         # A symbol's own reference designator can appear on the strip view;
         # keep it as pin text only when it is not the component's own prefix.
@@ -301,14 +376,22 @@ def _classify_component_roi(
     normalized: str,
     roi_component_id: str | None,
     component_index: Mapping[str, Component],
+    *,
+    known_model_names: AbstractSet[str] = frozenset(),
 ) -> tuple[str | None, str | None]:
     """Text captured inside a component ROI is a designator or value."""
 
     component_id = roi_component_id if roi_component_id in component_index else None
     component = component_index.get(component_id) if component_id else None
+    if component is not None and _is_catalog_body_model(token, normalized, component, known_model_names):
+        return "searchname", component_id
     if _DESIGNATOR.fullmatch(normalized):
         if component is None or _prefix_compatible(component.category, normalized):
             return "designator", component_id
+        # Designator-shaped but wrong prefix for this component (e.g. A5 inside
+        # an IC body) follows the alphanumeric pin-number path instead.
+        if _ALNUM_PIN_NUMBER.fullmatch(normalized):
+            return "pinnumber", component_id
         return None, component_id
     if _PIN_NUMBER.fullmatch(normalized):
         # KiCad/Altium draw pin numbers inside the symbol body, so short
@@ -332,6 +415,7 @@ def _classify_global(
     component_candidates: Sequence[Component] | None = None,
     pin_candidates: Sequence[Pin] | None = None,
     segment_candidates: Sequence[WireSegment] | None = None,
+    known_model_names: AbstractSet[str] = frozenset(),
 ) -> tuple[str | None, str | None, str | None]:
     """Classify free-floating tokens by text shape and spatial context."""
 
@@ -348,11 +432,31 @@ def _classify_global(
         candidates=pin_candidates,
     )
 
+    if nearest_component is not None and _is_catalog_body_model(
+        token, normalized, nearest_component[0], known_model_names
+    ):
+        return "searchname", nearest_component[0].internal_id, None
+
     if _DESIGNATOR.fullmatch(normalized):
         if nearest_component is not None:
             component = nearest_component[0]
             if _prefix_compatible(component.category, normalized):
+                # Pin-proximity guard: if a pin is much closer than the component,
+                # prefer pinnumber/pinname over designator (fixes wrong_field:designator).
+                if nearest_pin is not None:
+                    pin_dist = nearest_pin[1]
+                    comp_dist = nearest_component[1]
+                    if pin_dist < comp_dist * 0.5:
+                        if _ALNUM_PIN_NUMBER.fullmatch(normalized):
+                            return "pinnumber", nearest_pin[0].component_id, nearest_pin[0].internal_id
+                        return "pinname", nearest_pin[0].component_id, nearest_pin[0].internal_id
                 return "designator", component.internal_id, None
+        # Alphanumeric pin labels near a pin tip use the dedicated path.
+        if nearest_pin is not None and _ALNUM_PIN_NUMBER.fullmatch(normalized):
+            return "pinnumber", nearest_pin[0].component_id, nearest_pin[0].internal_id
+        # Designator-shaped but no compatible component: try pin name fallback.
+        if nearest_pin is not None and _looks_like_pin_name(normalized):
+            return "pinname", nearest_pin[0].component_id, nearest_pin[0].internal_id
         return None, None, None
 
     if _is_valueish(normalized) and nearest_component is not None:
@@ -546,6 +650,9 @@ def _record_inference(
     *,
     selected_value: str | None = None,
     selected_rank: int = 0,
+    raw_text: str | None = None,
+    resolved_value: str | None = None,
+    pin_label_hint: Mapping[str, Any] | None = None,
 ) -> None:
     evidence = make_rule_evidence(
         evidence_id=f"semantic:{token.internal_id}",
@@ -558,10 +665,14 @@ def _record_inference(
             "level": level,
             "side": side,
             "crop_component_id": roi_component_id,
+            "raw_text": raw_text if raw_text is not None else token.raw_text,
+            "resolved_value": resolved_value,
+            "match_key": match_key(selected_value or token.raw_text),
             "lexical_candidates": lexical_candidates(token),
             "selected_text": selected_value,
             "selected_candidate_rank": selected_rank,
             "candidate_recovery": selected_rank > 0,
+            **({'paired_body_pin_label': dict(pin_label_hint)} if pin_label_hint is not None else {}),
         },
     )
     token.evidence.append(evidence)
@@ -593,10 +704,33 @@ def _is_valueish(normalized: str) -> bool:
     if "." in normalized:
         return True
     # Unit-suffixed tokens (10k, 0.1uF, 4.7k, 220V, 100nF, 1K, 1M, 10µF).
-    if re.search(r"[A-Za-zΩµ%]", normalized):
+    if re.search(r"[A-Za-zΩµμ%]", normalized):
         return True
     # Long digit runs (>= 4) are almost never pin numbers.
     return len(re.sub(r"[^0-9]", "", normalized)) >= 4
+
+
+def _is_catalog_body_model(
+    token: TextToken, normalized: str, component: Component,
+    known_model_names: AbstractSet[str],
+) -> bool:
+    """Exact static model evidence inside an IC body; never invent a key."""
+    if component.category.upper() not in {"BOX", "IC", "U", "REGULATOR", "VREG", "LDO"}:
+        return False
+    name = normalized.upper()
+    if name not in known_model_names:
+        return False
+    if len(name) < 4 or _PIN_NUMBER.fullmatch(name) or name in _KNOWN_POWER or _is_valueish(normalized):
+        return False
+    if _DESIGNATOR.fullmatch(name):
+        prefix = re.match(r"^[A-Z]+", name)
+        if prefix is not None and prefix.group(0) in _REFERENCE_PREFIXES:
+            return False
+    # ROI crops have a halo: crop ownership alone does not establish that a
+    # part name is inside the body. Require the text's full box to be inside.
+    body = component.bbox
+    box = token.bbox
+    return body.x1 <= box.x1 <= box.x2 <= body.x2 and body.y1 <= box.y1 <= box.y2 <= body.y2
 
 
 def _looks_like_pin_name(normalized: str) -> bool:
@@ -606,6 +740,9 @@ def _looks_like_pin_name(normalized: str) -> bool:
         return False
     if _DESIGNATOR.fullmatch(normalized):
         return True  # e.g. P14 next to a pin is treated as pin text contextually
+    # USB_D- / IOVDD and similar pin names keep their original spelling.
+    if _PIN_NAME.fullmatch(normalized):
+        return any(character.isalpha() for character in normalized)
     return any(character.isalpha() for character in normalized)
 
 
@@ -618,6 +755,12 @@ def _looks_like_search_name(normalized: str) -> bool:
 
 def _looks_like_netlabel(normalized: str) -> bool:
     if not _NETLIKE.fullmatch(normalized) or len(normalized) < 2:
+        return False
+    # A short number beside a detected stroke is often an unbound pin label.
+    # Geometry alone does not establish it as a signal name: repeating such
+    # numbers could merge unrelated wires. Authoritatively typed net labels
+    # bypass this inference pass and retain numeric names.
+    if normalized.isdecimal():
         return False
     upper = normalized.upper()
     if upper in _KNOWN_POWER:

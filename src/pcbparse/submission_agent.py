@@ -37,6 +37,10 @@ _EMPTY_OFFICIAL_OUTPUT: dict[str, dict[str, Any]] = {
     "nets": {},
 }
 
+_DEGRADED_CASE_STATUSES = frozenset(
+    {"degraded_nonempty", "fallback_empty", "failed_to_write"}
+)
+
 
 class SubmissionAgentError(RuntimeError):
     """Raised when the EDARace batch contract cannot be satisfied."""
@@ -162,21 +166,26 @@ def run_submission(
                     output_path,
                     provider=runtime.provider,
                     config=runtime.config,
+                    deadline_at=started_monotonic + total_limit,
                 )
                 manifest = result.context.manifest()
                 _merge_token_totals(token_totals, manifest.get("tokens"))
                 diagnostics = _diagnostic_summary(result.diagnostics)
+                quality = getattr(result, "quality", None)
+                quality_record = dict(quality) if isinstance(quality, Mapping) else {}
+                status = _case_status(quality_record, result)
                 case = {
                     "case_name": image_path.stem,
                     "input_file": image_path.name,
                     "output_file": output_path.relative_to(destination).as_posix(),
-                    "status": "ok",
-                    "degraded": diagnostics["warning"] > 0,
+                    "status": status,
+                    "degraded": status in _DEGRADED_CASE_STATUSES,
                     "fallback": False,
                     "elapsed_seconds": _rounded(time.monotonic() - case_started),
                     "input_sha256": _sha256_file(image_path),
                     "output_sha256": result.output_hash,
                     "diagnostics": diagnostics,
+                    "quality": quality_record,
                     "model_versions": manifest.get("model_versions", {}),
                     "tokens": _token_mapping(manifest.get("tokens")),
                     "error": None,
@@ -204,8 +213,10 @@ def run_submission(
             case["elapsed_seconds"],
         )
 
-    _assert_exact_output_coverage(inputs, final_results)
-    fallback_count = sum(bool(case["fallback"]) for case in cases)
+    _assert_exact_output_coverage(inputs, final_results, cases)
+    status_counts = Counter(case["status"] for case in cases)
+    fallback_count = status_counts["fallback_empty"]
+    failed_write_count = status_counts["failed_to_write"]
     degraded_count = sum(bool(case["degraded"]) for case in cases)
     report = {
         "schema_version": 1,
@@ -214,7 +225,11 @@ def run_submission(
             "name": "pcb-schematic-parser",
             "version": __version__,
         },
-        "status": "completed" if fallback_count == 0 else "completed_with_fallbacks",
+        "status": (
+            "completed"
+            if fallback_count == 0 and failed_write_count == 0
+            else "completed_with_fallbacks"
+        ),
         "started_at_utc": started_at,
         "completed_at_utc": _utc_now(),
         "elapsed_seconds": _rounded(time.monotonic() - started_monotonic),
@@ -225,12 +240,27 @@ def run_submission(
         "runtime": _runtime_record(runtime, initialization_error),
         "token_usage": token_totals,
         "summary": {
-            "status": "ok" if fallback_count == 0 else "degraded",
+            "status": (
+                "ok"
+                if fallback_count == 0 and failed_write_count == 0
+                else "degraded"
+            ),
             "total_cases": len(cases),
-            "successful_cases": len(cases) - fallback_count,
+            "successful_cases": len(cases) - fallback_count - failed_write_count,
             "fallback_cases": fallback_count,
+            "failed_to_write_cases": failed_write_count,
             "degraded_cases": degraded_count,
-            "output_files": len(cases),
+            "status_counts": {
+                name: status_counts[name]
+                for name in (
+                    "strict_success",
+                    "degraded_nonempty",
+                    "empty_result",
+                    "fallback_empty",
+                    "failed_to_write",
+                )
+            },
+            "output_files": sum(1 for case in cases if case.get("output_file")),
         },
         "cases": cases,
     }
@@ -329,20 +359,41 @@ def _write_fallback_case(
     elapsed_seconds: float,
     reason: str,
 ) -> dict[str, Any]:
-    atomic_write_official_json(_EMPTY_OFFICIAL_OUTPUT, output_path)
     diagnostics = getattr(error, "diagnostics", [])
-    return {
+    write_error: dict[str, Any] | None = None
+    try:
+        atomic_write_official_json(_EMPTY_OFFICIAL_OUTPUT, output_path)
+        status = "fallback_empty"
+        output_file: str | None = f"final_results/{output_path.name}"
+        output_sha256: str | None = official_json_hash(_EMPTY_OFFICIAL_OUTPUT)
+    except Exception as exc:  # noqa: BLE001 - report, never abort the batch
+        status = "failed_to_write"
+        output_file = None
+        output_sha256 = None
+        write_error = {
+            "type": type(exc).__name__,
+            "message": _safe_error_message(exc),
+        }
+    record = {
         "case_name": image_path.stem,
         "input_file": image_path.name,
-        "output_file": f"final_results/{output_path.name}",
-        "status": "fallback_empty",
+        "output_file": output_file,
+        "status": status,
         "degraded": True,
-        "fallback": True,
+        "fallback": status == "fallback_empty",
         "fallback_reason": reason,
         "elapsed_seconds": _rounded(elapsed_seconds),
         "input_sha256": _sha256_file(image_path),
-        "output_sha256": official_json_hash(_EMPTY_OFFICIAL_OUTPUT),
+        "output_sha256": output_sha256,
         "diagnostics": _diagnostic_summary(diagnostics),
+        "quality": {
+            "status": status,
+            "strict_success": False,
+            "degraded_nonempty": False,
+            "empty_result": False,
+            "fallback_empty": status == "fallback_empty",
+            "failed_to_write": status == "failed_to_write",
+        },
         "model_versions": {},
         "tokens": {"calls": 0, "input_tokens": 0, "output_tokens": 0},
         "error": {
@@ -350,10 +401,33 @@ def _write_fallback_case(
             "message": _safe_error_message(error),
         },
     }
+    if write_error is not None:
+        record["write_error"] = write_error
+    return record
 
 
-def _assert_exact_output_coverage(inputs: Iterable[Path], final_results: Path) -> None:
-    expected = {f"{path.stem}_Pred.json" for path in inputs}
+def _case_status(quality: Mapping[str, Any], result: Any) -> str:
+    """One primary status per case; never claim success without evidence."""
+    status = str(quality.get("status", "")) if isinstance(quality, Mapping) else ""
+    if status in {"strict_success", "degraded_nonempty", "empty_result"}:
+        return status
+    output = getattr(result, "output", None)
+    if isinstance(output, Mapping) and not any(
+        output.get(key) for key in ("components", "pins", "nets")
+    ):
+        return "empty_result"
+    return "degraded_nonempty"
+
+
+def _assert_exact_output_coverage(
+    inputs: Iterable[Path], final_results: Path, cases: Iterable[Mapping[str, Any]]
+) -> None:
+    unwritten = {
+        f"{case['case_name']}_Pred.json"
+        for case in cases
+        if not case.get("output_file")
+    }
+    expected = {f"{path.stem}_Pred.json" for path in inputs} - unwritten
     actual = {
         path.name
         for path in final_results.iterdir()

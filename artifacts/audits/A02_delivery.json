@@ -1,0 +1,205 @@
+{
+  "acceptance": {
+    "historical_exposure_preserved": "passed",
+    "no_independence_claim": "passed",
+    "public_210_not_new_holdout": "passed",
+    "same_family_no_cross_split": "passed"
+  },
+  "changes": [
+    "Added data_tools/exposure_registry.py (A02 identity + exposure registry CLI).",
+    "Added tests/unit/test_exposure_registry.py (17 unit tests).",
+    "Generated artifacts/audits/dataset_identity.jsonl (one record per image entity).",
+    "Generated artifacts/audits/split_exposure.json (families, exposure events, constraints).",
+    "Did NOT modify models/models.lock.json.",
+    "Did NOT rewrite Dataset300 CVJsonStd or public target JSON ground truth.",
+    "Did NOT modify pre-existing uncommitted files baseline.json / source_manifest.json / freeze_baseline_snapshot.py."
+  ],
+  "commands": [
+    ".venv-test\\Scripts\\python.exe -m pytest tests/unit/test_exposure_registry.py -q",
+    ".venv-test\\Scripts\\python.exe -m data_tools.exposure_registry"
+  ],
+  "config_sha256": "ae5e67b4f73a5528dc10a3a0dad320f5d2794ee57131ba36f89614d30f08a8f4",
+  "dirty_source_files": [
+    {
+      "bytes": 50291,
+      "path": "data_tools/exposure_registry.py",
+      "sha256": "55b202d37034085f50c62b081639b167df5615d8c426fa3c63a25301742e1f88"
+    },
+    {
+      "bytes": 18162,
+      "path": "tests/unit/test_exposure_registry.py",
+      "sha256": "f7362a9fad44565149fb1dbb4b069f8ccfcc84c3f940251553267f8733ee3fe0"
+    },
+    {
+      "bytes": 801766,
+      "path": "artifacts/audits/dataset_identity.jsonl",
+      "sha256": "a14910a0aabc05f7e570ef1abd24b68af79ba37d5ebc45c8cd1257bdf061d1ed"
+    },
+    {
+      "bytes": 158727,
+      "path": "artifacts/audits/split_exposure.json",
+      "sha256": "1b4335f4e01de9f21d14b67d7f53f6db5049a6bf4c64100c66e24f6041c91be4"
+    }
+  ],
+  "dirty_source_manifest_sha256": "b0ce23315ceabdb0c356dc91ac60ec797f0ba85ca23bea9e52068c9e4a406e22",
+  "evaluator_id": "pcbparse-exposure-registry-1.0 (offline identity/exposure audit; not an accuracy evaluator)",
+  "failure_cases": [],
+  "generated_at_utc": "2026-09-22T02:36:31.273159+00:00",
+  "input_manifest_sha256": "b47b35bdab34fb3a52492fa48fcd7db55e95374d6438b22dd1ad8f76b8f2dbea",
+  "known_limitations": [
+    "No independent holdout exists. test(30)+release50(50) are historically exposed; public 210 are Dataset300 byte-duplicates. Do not report independent generalization.",
+    "work/ exposure scan is best-effort (directory-name + JSONL/JSON sample-id heuristics); it may miss free-text sample references and may over-capture 4-digit tokens in status JSON.",
+    "Teacher/synthetic junction generation is registered as train-scope auxiliary labeling exposure (configs/train junction_synthetic_per_class + src/pcbparse/training/synthetic_junction.py). No separate teacher-generated image corpus was found in-repo; if offline teacher labels were produced outside this workspace they are not registered here.",
+    "Near-duplicate grouping uses perceptual dhash-16x16 distance<=12 with 2% aspect-ratio tolerance; it can miss scale/crop variants and can false-positive on flat schematic fills. Pixel_hash catches re-encodes only.",
+    "usable_fields/ambiguous_fields classify CVJsonStd designator and pin_number coverage per image; missing labels stay ambiguous and must not be treated as negatives (650/2155 components have designator, 1508/5163 pins have number historically).",
+    "Public target / target_named labels are stored as parallel label_versions and never overwrite CVJsonStd. No unified IR conversion is produced by A02 (that is a later importer task).",
+    "unique_images=297 < 300 because 3 Dataset300 samples share identical image bytes with another sample; split_role_counts therefore sum to 297, not 300."
+  ],
+  "metrics": [
+    {
+      "baseline": null,
+      "candidate": 297,
+      "confidence_interval": null,
+      "delta": null,
+      "denominator": null,
+      "eligible": 297,
+      "masked": 0,
+      "name": "unique_images",
+      "note": "300 Dataset300 sample images collapse to 297 unique sha256; 210 public files map onto the same hash set.",
+      "numerator": 297,
+      "scope": "Dataset300+public exact-unique image entities (sha256)"
+    },
+    {
+      "baseline": 287,
+      "candidate": 287,
+      "confidence_interval": null,
+      "delta": 0,
+      "denominator": null,
+      "eligible": 297,
+      "masked": 0,
+      "name": "families",
+      "note": "Baseline 287 = data/splits/dataset300_split_summary.json total_groups.",
+      "numerator": 287,
+      "scope": "exact + pixel_hash + source_family + perceptual near-dup (dhash<=12)"
+    },
+    {
+      "baseline": 198,
+      "candidate": 198,
+      "confidence_interval": null,
+      "delta": 0,
+      "denominator": 210,
+      "eligible": 210,
+      "masked": 0,
+      "name": "public_images_matching_dataset300",
+      "note": "210 public image files -> 198 unique sha256, all present in Dataset300 (docs/对标分析证据_20260922.json).",
+      "numerator": 198,
+      "scope": "public image entities with Dataset300 byte-identity"
+    },
+    {
+      "baseline": 0,
+      "candidate": 0,
+      "confidence_interval": null,
+      "delta": 0,
+      "denominator": 210,
+      "eligible": 210,
+      "masked": 0,
+      "name": "public_images_not_matching_dataset300",
+      "note": "Must stay 0; public 210 cannot be a new holdout.",
+      "numerator": 0,
+      "scope": "public image entities without Dataset300 byte-identity"
+    },
+    {
+      "baseline": 1,
+      "candidate": 1,
+      "confidence_interval": null,
+      "delta": 0,
+      "denominator": 1,
+      "eligible": 1,
+      "masked": 0,
+      "name": "constraint_public_210_not_new_holdout",
+      "numerator": 1,
+      "scope": "hard constraint"
+    },
+    {
+      "baseline": 1,
+      "candidate": 1,
+      "confidence_interval": null,
+      "delta": 0,
+      "denominator": 1,
+      "eligible": 1,
+      "masked": 0,
+      "name": "constraint_same_family_no_cross_split",
+      "numerator": 1,
+      "scope": "hard constraint"
+    },
+    {
+      "baseline": 1,
+      "candidate": 1,
+      "confidence_interval": null,
+      "delta": 0,
+      "denominator": 1,
+      "eligible": 1,
+      "masked": 0,
+      "name": "constraint_historical_exposure_preserved",
+      "numerator": 1,
+      "scope": "hard constraint"
+    },
+    {
+      "baseline": 4,
+      "candidate": 126,
+      "confidence_interval": null,
+      "delta": 122,
+      "denominator": null,
+      "eligible": 126,
+      "masked": 0,
+      "name": "exposure_events_registered",
+      "note": "4 frozen historical events + 120 work + 2 teacher; all independence_claimed=false.",
+      "numerator": 126,
+      "scope": "historical + work scan + teacher/synthetic"
+    }
+  ],
+  "model_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "outputs": {
+    "dataset_identity_jsonl": {
+      "path": "artifacts/audits/dataset_identity.jsonl",
+      "records": 297,
+      "sha256": "a14910a0aabc05f7e570ef1abd24b68af79ba37d5ebc45c8cd1257bdf061d1ed"
+    },
+    "split_exposure_json": {
+      "path": "artifacts/audits/split_exposure.json",
+      "sha256": "1b4335f4e01de9f21d14b67d7f53f6db5049a6bf4c64100c66e24f6041c91be4"
+    }
+  },
+  "protected_uncommitted_files": [
+    {
+      "bytes": 20004,
+      "modified_by_a02": false,
+      "path": "artifacts/audits/baseline.json",
+      "sha256": "74459b85c0651f451d2c62d2094ac15c1c2e7b244cd54d593b3409027140cec4"
+    },
+    {
+      "bytes": 95603,
+      "modified_by_a02": false,
+      "path": "artifacts/audits/source_manifest.json",
+      "sha256": "f8a202d31c6d6ce5043d7366f486e35356d5173525253d90f57dfd51d8f38885"
+    },
+    {
+      "bytes": 9843,
+      "modified_by_a02": false,
+      "path": "scripts/freeze_baseline_snapshot.py",
+      "sha256": "f3c5332229c2f3c537624c391ed73719973da6a0347b8633f3fc9be258ea62ec"
+    },
+    {
+      "bytes": 14902,
+      "modified_by_a02": false,
+      "path": "models/models.lock.json",
+      "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413"
+    }
+  ],
+  "rollback": "A02 is additive-only. Delete or ignore artifacts/audits/dataset_identity.jsonl and artifacts/audits/split_exposure.json; disable via not running data_tools.exposure_registry. Main lock models/models.lock.json unchanged. Original GT unchanged. Rollback target: frozen baseline config (artifacts/audits/baseline.json from A00).",
+  "sidecar_access": false,
+  "source_commit": "3510d644122510b11775f4c834e738faaca30287",
+  "split_role": "development_regression",
+  "status": "implemented",
+  "task_id": "A02"
+}

@@ -21,9 +21,12 @@ class OCRAssociationConfig:
     component_unique_margin: float = 0.10
     # Global OCR remains reassignable until field resolution unless disabled.
     bind_global_component_targets: bool = True
-    pin_max_distance_px: float = 24.0
-    pin_min_score: float = 0.75
+    pin_max_distance_px: float = 36.0
+    pin_min_score: float = 0.60
     pin_unique_margin: float = 0.10
+    pin_body_name_context_enabled: bool = False
+    pin_body_component_roi_context_enabled: bool = False
+    pin_name_row_penalty: float = 0.0
     pin_ocr_gate_enabled: bool = False
     pin_ocr_gate_max_distance_px: float = 3.0
     pin_ocr_gate_min_text_score: float = 0.50
@@ -31,6 +34,8 @@ class OCRAssociationConfig:
     netlabel_unique_margin_px: float = 3.0
     netlabel_min_text_score: float = 0.60
     max_recorded_candidates: int = 5
+    component_model_catalog_path: str | None = None
+    component_model_catalog_sha256: str | None = None
 
     def __post_init__(self) -> None:
         positive = {
@@ -61,8 +66,25 @@ class OCRAssociationConfig:
                 raise ValueError(f"{name} must be in [0, 1]")
         if type(self.pin_ocr_gate_enabled) is not bool:
             raise ValueError("pin_ocr_gate_enabled must be a boolean")
+        if type(self.pin_body_name_context_enabled) is not bool:
+            raise ValueError("pin_body_name_context_enabled must be a boolean")
+        if type(self.pin_body_component_roi_context_enabled) is not bool:
+            raise ValueError("pin_body_component_roi_context_enabled must be a boolean")
+        if self.pin_body_component_roi_context_enabled and not self.pin_body_name_context_enabled:
+            raise ValueError("component ROI pin context requires pin_body_name_context_enabled")
+        row_penalty = float(self.pin_name_row_penalty)
+        if isinstance(self.pin_name_row_penalty, bool) or not math.isfinite(row_penalty) or not 0 <= row_penalty <= 1:
+            raise ValueError("pin_name_row_penalty must be a finite number in [0, 1]")
         if type(self.bind_global_component_targets) is not bool:
             raise ValueError("bind_global_component_targets must be a boolean")
+        path, digest = self.component_model_catalog_path, self.component_model_catalog_sha256
+        if (path is None) != (digest is None):
+            raise ValueError("model catalog path and sha256 must be provided together")
+        if path is not None:
+            if not isinstance(path, str) or not path.strip():
+                raise ValueError("model catalog path must be nonempty")
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                raise ValueError("model catalog sha256 must be lowercase SHA256")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -118,16 +140,50 @@ def canonical_details(details: str) -> str:
     return re.sub(r"[^a-z]", "", unicodedata.normalize("NFKC", details).casefold())
 
 
+def match_key(value: str) -> str:
+    """Identity key for cross-view matching only.
+
+    NFKC + casefold + whitespace collapse.  Never write this back into
+    ``raw_text`` / field outputs: ``10k`` / ``10K`` / ``10 k`` stay distinct
+    original strings even though they share a match key.
+    """
+
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return " ".join(normalized.split())
+
+
 def preferred_text(token: TextToken) -> str | None:
-    for value in (token.resolved_text, token.raw_text):
+    """Return the output-facing string for a token.
+
+    Prefers ``raw_text`` so the original spelling (``10k`` / ``10K`` /
+    ``10 k``) is never silently rewritten by a resolved/normalized form.
+    Only outer whitespace is stripped; case and internal spaces are kept.
+    """
+
+    for value in (token.raw_text, token.resolved_text):
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
 
 
+def resolved_text(token: TextToken) -> str | None:
+    """Return the resolved/normalized hypothesis when present."""
+
+    value = token.resolved_text
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
 def lexical_candidates(token: TextToken) -> list[str]:
+    """Bind raw_text, resolved_text and OCR candidates for matching.
+
+    All three spellings are retained so a match can consider the original
+    string and any resolved form without collapsing them into one output.
+    """
+
     values: list[str] = []
-    for value in (token.resolved_text, token.raw_text, *token.candidates):
+    for value in (token.raw_text, token.resolved_text, *token.candidates):
         if isinstance(value, str):
             normalized = value.strip()
             if normalized and normalized not in values:
@@ -217,10 +273,15 @@ def field_choice(
     min_score: float,
     unique_margin: float,
 ) -> tuple[str, str | None, float, float | None]:
-    """Choose one distinct value from accepted token-target proposals."""
+    """Choose one exact value string from accepted token-target proposals.
+
+    Distinct originals (``10k`` / ``10K`` / ``10 k``) compete as separate
+    candidates so the winner keeps its own spelling.  Case/space variants
+    that score within ``unique_margin`` are rejected as ambiguous rather
+    than silently normalized into one form.
+    """
 
     best_by_value: dict[str, float] = {}
-    display_by_normalized: dict[str, str] = {}
     for candidate in candidates:
         if candidate.get("target_status") != "accepted":
             continue
@@ -230,21 +291,20 @@ def field_choice(
         score = candidate.get("score")
         if not isinstance(value, str) or not isinstance(score, (int, float)):
             continue
-        normalized = value.casefold()
-        display_by_normalized.setdefault(normalized, value)
-        best_by_value[normalized] = max(best_by_value.get(normalized, -1.0), float(score))
+        # Exact-string identity: never casefold/space-collapse the output.
+        best_by_value[value] = max(best_by_value.get(value, -1.0), float(score))
     if not best_by_value:
         return "no_accepted_candidate", None, 0.0, None
     ranked = sorted(best_by_value.items(), key=lambda item: (-item[1], item[0]))
-    best_normalized, best_score = ranked[0]
+    best_value, best_score = ranked[0]
     if best_score < min_score:
         return "below_threshold", None, best_score, None
     if len(ranked) == 1:
-        return "accepted", display_by_normalized[best_normalized], best_score, None
+        return "accepted", best_value, best_score, None
     margin = best_score - ranked[1][1]
     if margin < unique_margin:
         return "ambiguous", None, best_score, margin
-    return "accepted", display_by_normalized[best_normalized], best_score, margin
+    return "accepted", best_value, best_score, margin
 
 
 __all__ = [
@@ -258,7 +318,9 @@ __all__ = [
     "field_choice",
     "lexical_candidates",
     "make_rule_evidence",
+    "match_key",
     "point_bbox_distance",
     "preferred_text",
+    "resolved_text",
     "upsert_evidence",
 ]

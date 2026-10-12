@@ -15,23 +15,31 @@ class OfficialSchemaError(ValueError):
     """Raised when an official profile or serialized submission is invalid."""
 
 
+EMPTY_PIN_NUMBER_TOKENS = frozenset({"", "∅", "Ø", "None", "null", "NULL", "none"})
+PIN_NUMBER_SPLIT_RE = re.compile(r"[,，]")
+
+
 def split_official_pin_numbers(value: object) -> tuple[str, ...]:
-    """Return explicit official pin numbers, or empty for auto-numbering.
+    """Return explicit official pin numbers, or empty when unrepresentable.
 
     The guide requires comma-delimited values such as ``5,6,7`` to become
-    separate pins and sends blank/placeholder/OCR-noise values through stable
-    automatic numbering.  Dots and parentheses cannot be represented without
-    colliding with the documented ``(U1.A5,R1.1)`` HyperGraph grammar.
+    separate pins.  Blank/placeholder/OCR-noise values return empty: callers
+    must reject or prune them and must never invent pin numbers.  Dots and
+    parentheses cannot be represented without colliding with the documented
+    ``(U1.A5,R1.1)`` HyperGraph grammar.
     """
 
     if not isinstance(value, str):
         return ()
     text = value.strip()
-    if not text or text in {"∅", "Ø"}:
+    if not text or text in EMPTY_PIN_NUMBER_TOKENS:
         return ()
-    parts = tuple(part.strip() for part in re.split(r"[,，]", text))
+    parts = tuple(part.strip() for part in PIN_NUMBER_SPLIT_RE.split(text))
     if not parts or any(
-        not part or any(char in part for char in ".()") for part in parts
+        not part
+        or part in EMPTY_PIN_NUMBER_TOKENS
+        or any(char in part for char in ".()")
+        for part in parts
     ):
         return ()
     return tuple(dict.fromkeys(parts))

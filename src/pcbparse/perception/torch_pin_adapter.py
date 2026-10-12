@@ -42,6 +42,9 @@ class PinAdapterConfig:
     base_length_pixels: float = 8.0
     box_margin_px: float = 0.0
     box_prior_mode: str = "filled_rect_v1"
+    pin_budget_mode: str = "fixed"
+    pin_budget_floor: int = 12
+    pin_budget_pitch_px: float = 8.0
     device: str = "auto"
 
     def __post_init__(self) -> None:
@@ -69,8 +72,45 @@ class PinAdapterConfig:
             raise ValueError(
                 "box_prior_mode must be filled_rect_v1 or boundary_band_v2"
             )
+        if self.pin_budget_mode not in {"fixed", "edge_length_v1"}:
+            raise ValueError("pin_budget_mode must be fixed or edge_length_v1")
+        if type(self.pin_budget_floor) is not int or self.pin_budget_floor <= 0:
+            raise ValueError("pin_budget_floor must be a positive integer")
+        if self.pin_budget_floor > self.max_detections_per_component:
+            raise ValueError("pin_budget_floor cannot exceed max_detections_per_component")
+        if not _finite(self.pin_budget_pitch_px) or self.pin_budget_pitch_px <= 0:
+            raise ValueError("pin_budget_pitch_px must be finite and positive")
         if not isinstance(self.device, str) or not self.device:
             raise ValueError("device must be a non-empty string")
+
+    def pin_budget_for(
+        self, box_rect: tuple[float, float, float, float] | None
+    ) -> int:
+        """Visible-edge-length driven per-component decode budget.
+
+        ``fixed`` reproduces the legacy hard cap exactly.  ``edge_length_v1``
+        budgets one pin slot per ``pin_budget_pitch_px`` inference-canvas
+        pixels of the component bounding-box perimeter (pins sit on that
+        rectangle and the decoder NMS cannot resolve two pins closer than
+        ``output_stride * nms_radius_heatmap`` pixels), clamped to
+        ``[pin_budget_floor, max_detections_per_component]``.  Small parts
+        therefore keep a tight budget while dense ICs are not silently
+        truncated at the global cap.
+        """
+
+        if self.pin_budget_mode == "fixed":
+            return self.max_detections_per_component
+        if box_rect is None:
+            return self.pin_budget_floor
+        try:
+            x1, y1, x2, y2 = (float(value) for value in box_rect)
+        except (TypeError, ValueError):
+            return self.pin_budget_floor
+        perimeter = 2.0 * (abs(x2 - x1) + abs(y2 - y1))
+        if not math.isfinite(perimeter) or perimeter <= 0:
+            return self.pin_budget_floor
+        budget = math.ceil(perimeter / self.pin_budget_pitch_px)
+        return max(self.pin_budget_floor, min(self.max_detections_per_component, budget))
 
     @classmethod
     def from_entry(cls, entry: Mapping[str, Any]) -> "PinAdapterConfig":
@@ -91,6 +131,9 @@ class PinAdapterConfig:
             "base_length_pixels",
             "box_margin_px",
             "box_prior_mode",
+            "pin_budget_mode",
+            "pin_budget_floor",
+            "pin_budget_pitch_px",
             "device",
         }
         merged.update({key: entry[key] for key in direct_names if key in entry})
@@ -166,6 +209,7 @@ class TorchPinProvider:
                 tensors.append(inference_tensor)
                 geometries.append(geometry)
                 box_rects.append(_component_box_rect_heatmap(component_view, geometry))
+            budgets = [self.config.pin_budget_for(rect) for rect in box_rects]
 
             torch = _require_torch()
             inference_batch = torch.cat(tensors, dim=0)
@@ -177,7 +221,7 @@ class TorchPinProvider:
                 score_threshold=self.config.score_threshold,
                 nms_kernel=self.config.nms_kernel,
                 nms_radius=self.config.nms_radius_heatmap,
-                max_detections=self.config.max_detections_per_component,
+                max_detections=budgets,
                 box_rects=[
                     tuple(value / stride for value in box_rect)
                     if box_rect is not None

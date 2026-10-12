@@ -1,0 +1,105 @@
+{
+  "artifacts": [
+    "artifacts/audits/graph_ab.json",
+    "artifacts/audits/connection_evidence.jsonl",
+    "artifacts/audits/A09_delivery.json"
+  ],
+  "changes": [
+    "src/pcbparse/graph/physical.py: shared ConnectionEvidence + bounded gap repair + near-parallel lateral cap",
+    "src/pcbparse/validation/graph.py: validator uses shared evidence; SIGNAL flywire is INFO not physical disconnect",
+    "src/pcbparse/perception/wire_vectorizer.py: break lineage (mask/skeleton/stitch) + virtual gap repair records",
+    "src/pcbparse/nets/hypergraph.py: per-pin evidence + matched-net NetLine vs NetHypergraph",
+    "src/pcbparse/pipeline/orchestrator.py: forward gap_repair_max_px into builder and GraphValidator",
+    "src/pcbparse/validation/common.py: info() diagnostic helper",
+    "tests/unit/test_wire_graph_a09.py",
+    "scripts/audit_wire_graph_a09.py"
+  ],
+  "commands": [
+    "$env:PYTHONPATH=(Resolve-Path '.\\src').Path; & .\\.venv-test\\Scripts\\python.exe -m pytest tests/unit/test_wire_graph_a09.py -q",
+    "$env:PYTHONPATH=(Resolve-Path '.\\src').Path; & .\\.venv-test\\Scripts\\python.exe scripts/audit_wire_graph_a09.py"
+  ],
+  "dirty_source_manifest_sha256": "f8a202d31c6d6ce5043d7366f486e35356d5173525253d90f57dfd51d8f38885",
+  "evaluator_id": "internal_wire_graph_a09_unittest",
+  "failure_cases": [],
+  "known_limitations": [
+    "graph_ab fixtures are synthetic; no frozen validation-split E2E NetHypergraph promotion",
+    "wire break lineage is geometric (endpoint-gap based), not a full mask/skeleton pixel-level provenance replay",
+    "near-parallel legacy baseline is reconstructed from the uncapped alignment rule rather than a code checkout"
+  ],
+  "metrics": [
+    {
+      "baseline": "builder/validator dual adjacency; unbounded gap risk; no break lineage",
+      "candidate": "shared ConnectionEvidence; hard gap bound 12px; virtual gap marked; break lineage",
+      "delta": "all A09 acceptance fixtures green",
+      "denominator": 16,
+      "eligible": 16,
+      "masked": 0,
+      "name": "a09_unit_tests",
+      "numerator": 16,
+      "scope": "tests/unit/test_wire_graph_a09.py"
+    },
+    {
+      "baseline": "1 false merge",
+      "candidate": "0 false merge",
+      "delta": "lateral offset capped at 2px independent of gap tolerance",
+      "denominator": 1,
+      "eligible": 1,
+      "masked": 0,
+      "name": "near_parallel_false_merge",
+      "numerator": 0,
+      "scope": "synthetic near-parallel fixture"
+    },
+    {
+      "baseline": "repairs not separately marked",
+      "candidate": "virtual_repairs=1 residual_breaks=1",
+      "delta": "virtual repairs carry virtual=true solid_wire=false",
+      "denominator": 2,
+      "eligible": 2,
+      "masked": 0,
+      "name": "virtual_gap_repairs_marked",
+      "numerator": 2,
+      "scope": "wire_vectorizer gap closing + residual break lineage"
+    },
+    {
+      "baseline": "NetLine and NetHypergraph not co-reported on matched pairs",
+      "candidate": "both metrics returned from one assignment",
+      "delta": "paired reporting enabled",
+      "denominator": 1.0,
+      "eligible": 1,
+      "masked": 0,
+      "name": "matched_net_net_hypergraph_f1",
+      "numerator": 0.857143,
+      "scope": "synthetic matched-net comparison"
+    },
+    {
+      "baseline": "NetLine and NetHypergraph not co-reported on matched pairs",
+      "candidate": "both metrics returned from one assignment",
+      "delta": "paired reporting enabled",
+      "denominator": 1.0,
+      "eligible": 1,
+      "masked": 0,
+      "name": "matched_net_net_line_f1",
+      "numerator": 1.0,
+      "scope": "synthetic matched-net comparison"
+    },
+    {
+      "baseline": "risk of treating flywire as physical disconnect",
+      "candidate": "NET.SIGNAL_FLYWIRE INFO; no NET.DISCONNECTED_SEGMENTS",
+      "delta": "physical disconnect stays on PhysicalNet only",
+      "denominator": 1,
+      "eligible": 1,
+      "masked": 0,
+      "name": "signal_flywire_false_disconnects",
+      "numerator": 0,
+      "scope": "SIGNAL label merge fixture"
+    }
+  ],
+  "model_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "models_lock_modified": false,
+  "rollback": "git checkout -- src/pcbparse/graph/physical.py src/pcbparse/validation/graph.py src/pcbparse/validation/common.py src/pcbparse/perception/wire_vectorizer.py src/pcbparse/nets/hypergraph.py src/pcbparse/nets/__init__.py tests/unit/test_wire_graph_a09.py scripts/audit_wire_graph_a09.py artifacts/audits/graph_ab.json artifacts/audits/connection_evidence.jsonl artifacts/audits/A09_delivery.json",
+  "sidecar_access": false,
+  "source_commit": "3510d644122510b11775f4c834e738faaca30287",
+  "split_role": "development_regression",
+  "status": "implemented",
+  "task_id": "A09"
+}

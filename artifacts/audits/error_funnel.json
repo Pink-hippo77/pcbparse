@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "kind": "error_funnel",
+  "task_id": "A04",
+  "stages": [
+    {
+      "stage": "visible_labels",
+      "count": 0
+    },
+    {
+      "stage": "text_detected",
+      "count": 0
+    },
+    {
+      "stage": "text_recognized",
+      "count": 0
+    },
+    {
+      "stage": "field_classified",
+      "count": 0
+    },
+    {
+      "stage": "owner_bound",
+      "count": 0
+    },
+    {
+      "stage": "official_field_correct",
+      "count": 0
+    },
+    {
+      "stage": "pin_localized",
+      "count": 0
+    },
+    {
+      "stage": "pin_owner_correct",
+      "count": 0
+    },
+    {
+      "stage": "net_membership_correct",
+      "count": 0
+    }
+  ],
+  "policy": {
+    "official_proxy_vs_raw_v1": "explicitly_distinct",
+    "oracle_must_not_enter_predictions": true,
+    "image_denominator_required": true
+  }
+}

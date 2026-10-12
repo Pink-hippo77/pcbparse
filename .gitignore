@@ -74,3 +74,20 @@ Desktop.ini
 *.tmp
 *.bak
 tmp/
+
+# Local agent sessions, presentation builds, and remote workspace mirrors
+.codex-reference2-review/
+.codex-review/
+.codex-workthought-build/
+.goal/
+.remote_mirror/
+.remote_scripts/
+remote_src/
+_pin_diag/
+.tmp_remote_analyze.py
+overlay_*.png
+
+# Local environment overrides
+.env.*
+!.env.example
+!.env.sample

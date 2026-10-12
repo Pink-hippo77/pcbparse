@@ -54,7 +54,9 @@ from pcbparse.training.artifacts import (  # noqa: E402
     ModelCard,
     build_candidate_lock_entry,
     load_candidate_bundle,
+    validate_source_repository_commit,
 )
+from pcbparse.training.config import ModelTask  # noqa: E402
 
 
 PROMOTION_SCHEMA_VERSION = 1
@@ -182,6 +184,68 @@ class JunctionHumanReviewEvidence(_StrictModel):
         return self
 
 
+class PretrainedExternalReviewEvidence(_StrictModel):
+    """Human attestation required before a pretrained-external candidate is blessed.
+
+    An externally pretrained asset carries no dataset300 training lineage, so
+    promotion additionally requires an explicit human review of the pinned
+    source commit, the upstream asset hashes, and the license.  The evidence
+    file must bind the exact candidate manifest bytes it approves.
+    """
+
+    schema_version: Literal[1]
+    kind: Literal["pretrained_external_human_review"]
+    decision: Literal["approve_for_production_promotion"]
+    task: ModelTask
+    lineage_mode: Literal["pretrained_external"]
+    candidate_manifest_sha256: str
+    descriptor_sha256: str
+    source_repository_commit: str
+    source_asset_sha256: tuple[str, ...] = Field(min_length=1)
+    source_license: str
+    dataset_config_hash: str
+    split_manifest_sha256: str
+    provenance_verified: Literal[True]
+    reviewer_confirmed: Literal[True]
+    reviewer: str = Field(min_length=1)
+    review_id: str = Field(min_length=1)
+    reviewed_at_utc: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_review(self) -> "PretrainedExternalReviewEvidence":
+        for field_name in (
+            "candidate_manifest_sha256",
+            "descriptor_sha256",
+            "dataset_config_hash",
+            "split_manifest_sha256",
+        ):
+            if not _SHA256.fullmatch(getattr(self, field_name)):
+                raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
+        validate_source_repository_commit(self.source_repository_commit)
+        if not _declared_text(self.source_license):
+            raise ValueError("source_license must be non-placeholder text")
+        seen: set[str] = set()
+        for digest in self.source_asset_sha256:
+            if not _SHA256.fullmatch(digest):
+                raise ValueError(
+                    "source_asset_sha256 must contain lowercase SHA-256 digests"
+                )
+            if digest in seen:
+                raise ValueError("source_asset_sha256 must not repeat a digest")
+            seen.add(digest)
+        if not _declared_text(self.reviewer) or not _declared_text(self.review_id):
+            raise ValueError("reviewer and review_id must be non-placeholder text")
+        try:
+            reviewed_at = datetime.fromisoformat(
+                self.reviewed_at_utc.replace("Z", "+00:00")
+            )
+        except ValueError as exc:
+            raise ValueError("reviewed_at_utc must be an ISO-8601 timestamp") from exc
+        if reviewed_at.tzinfo is None or reviewed_at.utcoffset() is None:
+            raise ValueError("reviewed_at_utc must include a timezone")
+        return self
+
+
 @dataclass(frozen=True, slots=True)
 class _VerifiedBundle:
     manifest_path: Path
@@ -191,6 +255,13 @@ class _VerifiedBundle:
     card_path: Path
     card: ModelCard
     entry: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _BoundPretrainedExternalReview:
+    path: Path
+    sha256: str
+    review: PretrainedExternalReviewEvidence
 
 
 def reviewed_samples_sha256(class_coverage: Sequence[Mapping[str, Any]]) -> str:
@@ -327,6 +398,7 @@ def assemble_model_lock(
     junction_mode: JunctionMode = "learned_model",
     production_config: str | Path | None = None,
     human_review_evidence: str | Path | None = None,
+    pretrained_external_review_evidence: Sequence[str | Path] | None = None,
     report_output: str | Path | None = None,
 ) -> dict[str, Any]:
     """Verify the configured candidates and atomically create a lock plus report.
@@ -337,6 +409,9 @@ def assemble_model_lock(
     fixed protocol fixture. Learned-Junction promotion requires explicit
     six-class official-real-validation review. Deterministic-Junction mode uses
     an exact four-model plan and a config/source/vectorizer runtime contract.
+    ``pretrained_external`` candidates keep the same gates and additionally
+    require one binding ``PretrainedExternalReviewEvidence`` per candidate
+    before their entry may be blessed.
     """
 
     output_path = Path(output).expanduser().resolve(strict=False)
@@ -380,7 +455,12 @@ def assemble_model_lock(
     review: JunctionHumanReviewEvidence | None = None
     review_path: Path | None = None
     review_sha256: str | None = None
+    external_reviews: dict[str, _BoundPretrainedExternalReview] = {}
     smoke_results: list[dict[str, Any]] = []
+    if not promote and pretrained_external_review_evidence:
+        raise ModelPromotionError(
+            "pretrained_external_review_evidence is only accepted with promote=True"
+        )
     if promote:
         _verify_promotion_declarations(ordered)
         if junction_mode == "learned_model":
@@ -394,6 +474,9 @@ def assemble_model_lock(
             review_sha256 = _sha256_file(review_path, "junction human-review evidence")
             review = _load_human_review_evidence(review_path)
             _bind_human_review(review, junction)
+        external_reviews = _verify_pretrained_external_reviews(
+            ordered, pretrained_external_review_evidence
+        )
         for item in ordered:
             smoke_results.append(_load_and_smoke(item))
     elif human_review_evidence is not None:
@@ -421,6 +504,14 @@ def assemble_model_lock(
                 entry["real_val_class_coverage"] = {
                     row.class_name: row.sample_count for row in review.class_coverage
                 }
+            elif item.manifest.lineage_mode == "pretrained_external":
+                external = external_reviews[str(item.manifest.task)]
+                entry["pretrained_external_review_evidence_path"] = _relative_path(
+                    external.path,
+                    output_path.parent,
+                    "pretrained-external human-review evidence",
+                )
+                entry["pretrained_external_review_evidence_sha256"] = external.sha256
         else:
             # Keep this assignment explicit: staging metadata can never be
             # interpreted as authority, even if an upstream format changes.
@@ -452,17 +543,25 @@ def assemble_model_lock(
         input_rows.append(
             {
                 "task": item.manifest.task,
+                "lineage_mode": item.manifest.lineage_mode,
                 "candidate_manifest_path": str(item.manifest_path),
                 "candidate_manifest_sha256": item.manifest_sha256,
                 "artifact_sha256": item.manifest.artifact_sha256,
                 "artifact_bytes": item.manifest.artifact_bytes,
                 "model_card_sha256": item.manifest.model_card_sha256,
+                "training_config_sha256": item.manifest.training_config_sha256,
+                "source_repository_commit": item.manifest.source_repository_commit,
+                "source_asset_sha256": list(item.manifest.source_asset_sha256),
+                "source_license": item.manifest.source_license,
                 "evaluation_predictions_sha256": item.manifest.evaluation.predictions_sha256,
                 "export_input_manifest_sha256": (
                     item.manifest.export_consistency.input_manifest_sha256
                 ),
             }
         )
+    has_pretrained_external = any(
+        item.manifest.lineage_mode == "pretrained_external" for item in ordered
+    )
     report: dict[str, Any] = {
         "schema_version": PROMOTION_SCHEMA_VERSION,
         "kind": "model_promotion_report",
@@ -487,6 +586,12 @@ def assemble_model_lock(
             "deterministic_junction_config_and_vectorizer_contract": bool(
                 deterministic_contract
             ),
+            "pretrained_external_source_pin_and_descriptor_binding": (
+                has_pretrained_external
+            ),
+            "pretrained_external_human_review": bool(
+                promote and external_reviews
+            ),
         },
         "fixture": {
             "name": _FIXTURE_SPEC["name"],
@@ -494,6 +599,21 @@ def assemble_model_lock(
             "smoke_results": smoke_results,
         },
         "junction_human_review": None,
+        "pretrained_external_reviews": [
+            {
+                "task": task,
+                "path": str(bound.path),
+                "sha256": bound.sha256,
+                "review_id": bound.review.review_id,
+                "reviewer": bound.review.reviewer,
+                "source_repository_commit": bound.review.source_repository_commit,
+                "source_asset_sha256": list(bound.review.source_asset_sha256),
+                "source_license": bound.review.source_license,
+                "provenance_verified": True,
+                "reviewer_confirmed": True,
+            }
+            for task, bound in sorted(external_reviews.items())
+        ],
         "deterministic_junction_contract": deterministic_contract,
     }
     if review is not None and review_path is not None and review_sha256 is not None:
@@ -558,6 +678,7 @@ def _verify_bundle(path: str | Path, lock_directory: Path) -> _VerifiedBundle:
         raise ModelPromotionError(f"model card is invalid: {card_path}: {exc}") from exc
     comparisons = {
         "task": (card.task, manifest.task),
+        "lineage_mode": (card.lineage_mode, manifest.lineage_mode),
         "version": (card.version, manifest.version),
         "license": (card.license, manifest.license),
         "training_config_sha256": (
@@ -578,6 +699,15 @@ def _verify_bundle(path: str | Path, lock_directory: Path) -> _VerifiedBundle:
             card.split_manifest_sha256,
             manifest.split_manifest_sha256,
         ),
+        "source_repository_commit": (
+            card.source_repository_commit,
+            manifest.source_repository_commit,
+        ),
+        "source_asset_sha256": (
+            card.source_asset_sha256,
+            manifest.source_asset_sha256,
+        ),
+        "source_license": (card.source_license, manifest.source_license),
         "artifact_sha256": (card.artifact_sha256, manifest.artifact_sha256),
         "artifact_bytes": (card.artifact_bytes, manifest.artifact_bytes),
         "gate_policy": (card.gate_policy, manifest.gate_policy),
@@ -591,6 +721,23 @@ def _verify_bundle(path: str | Path, lock_directory: Path) -> _VerifiedBundle:
     if mismatches:
         raise ModelPromotionError(
             f"model card differs from candidate manifest for fields: {', '.join(mismatches)}"
+        )
+    if manifest.lineage_mode == "pretrained_external":
+        # Descriptor bundles are accepted only with their multi-asset evidence:
+        # a lone descriptor can never prove its own bytes.
+        attached = {attachment.sha256 for attachment in manifest.evidence_attachments}
+        if not set(manifest.source_asset_sha256) <= attached:
+            raise ModelPromotionError(
+                "pretrained-external candidate does not carry its source assets "
+                "as hash-bound evidence attachments"
+            )
+    elif (
+        manifest.source_repository_commit is not None
+        or manifest.source_license is not None
+        or manifest.source_asset_sha256
+    ):
+        raise ModelPromotionError(
+            "dataset300-trained candidate declares pretrained-external source pinning"
         )
     return _VerifiedBundle(
         manifest_path=manifest_path,
@@ -655,6 +802,108 @@ def _bind_human_review(
         raise ModelPromotionError(
             "junction candidate evaluation must use the val split before production promotion"
         )
+
+
+def _load_pretrained_external_review(path: Path) -> PretrainedExternalReviewEvidence:
+    try:
+        return PretrainedExternalReviewEvidence.model_validate(_load_strict_json(path))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ModelPromotionError(
+            f"pretrained-external human-review evidence is invalid: {path}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _bind_pretrained_external_review(
+    review: PretrainedExternalReviewEvidence, item: _VerifiedBundle
+) -> None:
+    manifest = item.manifest
+    expected = {
+        "candidate_manifest_sha256": item.manifest_sha256,
+        "descriptor_sha256": manifest.artifact_sha256,
+        "source_repository_commit": manifest.source_repository_commit,
+        "source_license": manifest.source_license,
+        "dataset_config_hash": manifest.dataset_config_hash,
+        "split_manifest_sha256": manifest.split_manifest_sha256,
+    }
+    for field_name, expected_value in expected.items():
+        if getattr(review, field_name) != expected_value:
+            raise ModelPromotionError(
+                f"pretrained-external human review {field_name} does not bind "
+                "the candidate lineage"
+            )
+    if review.task != manifest.task:
+        raise ModelPromotionError(
+            "pretrained-external human review task does not bind the candidate"
+        )
+    reviewed = tuple(review.source_asset_sha256)
+    pinned = tuple(manifest.source_asset_sha256)
+    if len(reviewed) != len(pinned) or set(reviewed) != set(pinned):
+        raise ModelPromotionError(
+            "pretrained-external human review source_asset_sha256 does not bind "
+            "the candidate assets"
+        )
+    if manifest.evaluation.split != "val":
+        raise ModelPromotionError(
+            "pretrained-external candidate evaluation must use the val split "
+            "before production promotion"
+        )
+
+
+def _verify_pretrained_external_reviews(
+    items: Sequence[_VerifiedBundle],
+    provided: Sequence[str | Path] | None,
+) -> dict[str, _BoundPretrainedExternalReview]:
+    """Bind exactly one human review to every pretrained-external candidate."""
+
+    external = [
+        item for item in items if item.manifest.lineage_mode == "pretrained_external"
+    ]
+    paths = [Path(path).expanduser().resolve(strict=False) for path in (provided or ())]
+    if not external and not paths:
+        return {}
+    if not external:
+        raise ModelPromotionError(
+            "pretrained_external_review_evidence was supplied but no candidate "
+            "declares lineage_mode='pretrained_external'"
+        )
+    if not paths:
+        raise ModelPromotionError(
+            "pretrained_external candidates require human review evidence of kind "
+            "pretrained_external_human_review before promotion"
+        )
+    if len(paths) != len(external):
+        raise ModelPromotionError(
+            f"exactly {len(external)} pretrained-external review evidence file(s) "
+            f"are required, got {len(paths)}"
+        )
+    loaded: list[tuple[Path, str, PretrainedExternalReviewEvidence]] = []
+    for path in paths:
+        sha256 = _sha256_file(path, "pretrained-external human-review evidence")
+        loaded.append((path, sha256, _load_pretrained_external_review(path)))
+    if len({row[2].candidate_manifest_sha256 for row in loaded}) != len(loaded):
+        raise ModelPromotionError(
+            "pretrained-external human review evidence files must bind distinct "
+            "candidate manifests"
+        )
+    bound: dict[str, _BoundPretrainedExternalReview] = {}
+    for item in external:
+        matches = [
+            row
+            for row in loaded
+            if row[2].candidate_manifest_sha256 == item.manifest_sha256
+        ]
+        if len(matches) != 1:
+            raise ModelPromotionError(
+                f"pretrained-external candidate {item.manifest.task!r} needs exactly "
+                "one human review evidence file binding its manifest"
+            )
+        path, sha256, review = matches[0]
+        _bind_pretrained_external_review(review, item)
+        bound[str(item.manifest.task)] = _BoundPretrainedExternalReview(
+            path=path, sha256=sha256, review=review
+        )
+    return bound
 
 
 def _load_and_smoke(item: _VerifiedBundle) -> dict[str, Any]:
@@ -992,6 +1241,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Strict Junction six-class official-real-val human-review JSON (promotion only).",
     )
+    parser.add_argument(
+        "--pretrained-external-review-evidence",
+        action="append",
+        type=Path,
+        default=None,
+        help=(
+            "Strict pretrained-external provenance human-review JSON, one per "
+            "pretrained_external candidate bundle (promotion only)."
+        ),
+    )
     return parser
 
 
@@ -1005,6 +1264,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             junction_mode=args.junction_mode,
             production_config=args.production_config,
             human_review_evidence=args.human_review_evidence,
+            pretrained_external_review_evidence=(
+                args.pretrained_external_review_evidence
+            ),
             report_output=args.report_output,
         )
     except Exception as exc:  # CLI boundary: concise, machine-readable failure.
@@ -1031,6 +1293,7 @@ __all__ = [
     "JunctionClassCoverage",
     "JunctionHumanReviewEvidence",
     "ModelPromotionError",
+    "PretrainedExternalReviewEvidence",
     "REQUIRED_TASKS",
     "assemble_model_lock",
     "build_parser",

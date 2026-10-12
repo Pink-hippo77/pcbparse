@@ -313,6 +313,21 @@ class ProductionEvaluationHarnessTests(unittest.TestCase):
             self.assertFalse(row["sidecar_access"])
             self.assertEqual("ok", row["status"])
             self.assertIsNone(row["error"])
+            self.assertEqual("empty_result", row["quality"]["status"])
+            self.assertTrue(row["quality"]["legitimate_empty_input"])
+            self.assertEqual(
+                {"perception", "association", "pre_prune", "final"},
+                set(row["stage_evidence"]),
+            )
+            for stage, evidence in row["stage_evidence"].items():
+                evidence_path = first.output_dir / evidence["path"]
+                payload = evidence_path.read_bytes()
+                self.assertEqual(hashlib.sha256(payload).hexdigest(), evidence["sha256"])
+                snapshot = json.loads(payload)
+                self.assertEqual(evidence["counts"]["components"], len(snapshot["components"]))
+                self.assertEqual("SERIALIZED" if stage == "final" else (
+                    "PERCEIVED" if stage == "perception" else "ASSOCIATED"
+                ), snapshot["state"])
             self.assertEqual(
                 "run_context_runtime_evidence_v1",
                 row["runtime_evidence"]["contract"],

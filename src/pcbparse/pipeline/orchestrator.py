@@ -1,22 +1,27 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import tempfile
 import traceback
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
 from pcbparse.association import associate_ocr
+from pcbparse.graph.palette_wire import apply_palette_wire_filter, prepare_palette_wire
 from pcbparse.graph.physical import build_physical_graph
 from pcbparse.ir.models import CircuitIR, Diagnostic, IRState
 from pcbparse.nets.hypergraph import build_electrical_nets
+from pcbparse.output.official_schema import split_official_pin_numbers
 from pcbparse.output.official_serializer import (
     atomic_write_official_json,
     official_json_hash,
-    serialize_official,
+    serialize_official_with_quality,
 )
-from pcbparse.pipeline.context import RunContext
+from pcbparse.pipeline.context import RunContext, stable_file_hash
 from pcbparse.reasoning.orchestrator import run_selective_reasoning
 from pcbparse.reasoning.qwen_client import (
     CandidateOnlyReasoner,
@@ -52,6 +57,7 @@ class InferenceResult:
     ir: CircuitIR
     diagnostics: list[Diagnostic]
     context: RunContext
+    quality: dict[str, Any] = field(default_factory=dict)
 
 
 def _submission_mode(config: dict[str, Any]) -> str:
@@ -68,52 +74,77 @@ def _is_debug_execution(config: dict[str, Any]) -> bool:
 
 
 def _prune_unrepresentable(ir: Any) -> None:
-    """Drop objects the official schema cannot represent (never guess)."""
+    """Drop objects the official schema cannot represent (never guess).
+
+    Records deleted object IDs and affected nets so degraded output stays
+    auditable; missing component keys / pin numbers are never fabricated.
+    """
     valid_components = {
         item.internal_id
         for item in ir.components
         if isinstance(item.key, str) and item.key.strip()
     }
     total_components = len(ir.components)
+    missing_number_pin_ids = sorted(
+        item.internal_id
+        for item in ir.pins
+        if item.component_id in valid_components
+        and not split_official_pin_numbers(item.number)
+    )
+    unowned_pin_ids = sorted(
+        item.internal_id
+        for item in ir.pins
+        if item.component_id not in valid_components
+    )
     valid_pins = {
         item.internal_id
         for item in ir.pins
-        # The guide explicitly supports empty/noisy pinNumber values through
-        # deterministic pin_1, pin_2, ... conversion.  Only ownerless pins or
-        # pins whose owner was pruned remain unrepresentable.
-        if item.component_id in valid_components
+        if item.internal_id not in set(missing_number_pin_ids)
+        and item.internal_id not in set(unowned_pin_ids)
     }
     total_pins = len(ir.pins)
+    removed_component_ids = sorted(
+        item.internal_id for item in ir.components if item.internal_id not in valid_components
+    )
+    removed_pin_ids = sorted(
+        item.internal_id for item in ir.pins if item.internal_id not in valid_pins
+    )
     ir.components = [item for item in ir.components if item.internal_id in valid_components]
     ir.pins = [item for item in ir.pins if item.internal_id in valid_pins]
+    nets_affected = 0
+    affected_net_ids: list[str] = []
     for net in ir.physical_nets:
-        net.pins = [pid for pid in net.pins if pid in valid_pins]
+        kept = [pid for pid in net.pins if pid in valid_pins]
+        if len(kept) != len(net.pins):
+            nets_affected += 1
+            affected_net_ids.append(net.internal_id)
+        net.pins = kept
     for net in ir.electrical_nets:
-        net.pins = [pid for pid in net.pins if pid in valid_pins]
-    ir.electrical_nets = [net for net in ir.electrical_nets if net.pins]
+        kept = [pid for pid in net.pins if pid in valid_pins]
+        if len(kept) != len(net.pins):
+            nets_affected += 1
+            affected_net_ids.append(net.internal_id)
+        net.pins = kept
+    kept_electrical = [net for net in ir.electrical_nets if net.pins]
+    dropped_net_ids = sorted(
+        net.internal_id for net in ir.electrical_nets if not net.pins
+    )
+    nets_dropped = len(ir.electrical_nets) - len(kept_electrical)
+    ir.electrical_nets = kept_electrical
     ir.metadata["degraded_submission_prune"] = {
         "components_dropped": total_components - len(ir.components),
+        "component_ids_dropped": removed_component_ids,
         "pins_dropped": total_pins - len(ir.pins),
+        "pin_ids_dropped": removed_pin_ids,
+        "pins_dropped_missing_number": len(missing_number_pin_ids),
+        "pin_ids_dropped_missing_number": missing_number_pin_ids,
+        "pins_dropped_unowned": len(unowned_pin_ids),
+        "pin_ids_dropped_unowned": unowned_pin_ids,
+        "nets_affected": nets_affected,
+        "affected_net_ids": sorted(affected_net_ids),
+        "nets_dropped": nets_dropped,
+        "dropped_net_ids": dropped_net_ids,
     }
-
-
-_QUALITY_ERROR_CODES = frozenset(
-    {
-        "NET.DISCONNECTED_SEGMENTS",
-        "JUNCTION.INSUFFICIENT_BRANCHES",
-        "COMPONENT.MISSING_KEY",
-    }
-)
-
-
-def _downgrade_quality_errors(
-    diagnostics: list[Any],
-) -> list[Any]:
-    """In degraded mode, quality gaps are warnings; schema/ref/geometry stay hard."""
-    for item in diagnostics:
-        if item.severity == "ERROR" and item.code in _QUALITY_ERROR_CODES:
-            item.severity = "WARNING"
-    return diagnostics
 
 
 def infer_one(
@@ -123,9 +154,11 @@ def infer_one(
     provider: IRProvider,
     config: dict[str, Any],
     official_profile: str | Path | dict[str, Any] | None = None,
+    evidence_sink: Any = None,
+    deadline_at: float | None = None,
 ) -> InferenceResult:
     source = Path(input_path)
-    ctx = RunContext.start(source, config)
+    ctx = RunContext.start(source, config, deadline_at=deadline_at)
     try:
         return _infer_one(
             input_path,
@@ -133,6 +166,7 @@ def infer_one(
             provider=provider,
             config=config,
             official_profile=official_profile,
+            evidence_sink=evidence_sink,
             _context=ctx,
         )
     except Exception as exc:
@@ -158,11 +192,21 @@ def _infer_one(
     provider: IRProvider,
     config: dict[str, Any],
     official_profile: str | Path | dict[str, Any] | None = None,
+    evidence_sink: Any = None,
     _context: RunContext | None = None,
 ) -> InferenceResult:
     source = Path(input_path)
     destination = Path(output_path)
     ctx = _context or RunContext.start(source, config)
+    graph_config = config.get("graph", {})
+    palette_enabled = graph_config.get("palette_wire_filter_enabled", False)
+    if type(palette_enabled) is not bool:
+        raise ValueError("graph.palette_wire_filter_enabled must be a boolean")
+    palette_context = None
+
+    def _snapshot(stage: str) -> None:
+        if evidence_sink is not None:
+            evidence_sink(stage, ir)
 
     with ctx.stage("perception") as trace:
         ir = provider.build_ir(source, ctx)
@@ -183,6 +227,13 @@ def _infer_one(
         if provider_version:
             ctx.model_versions.setdefault("provider", str(provider_version))
         trace["object_count"] = len(ir.components) + len(ir.pins) + len(ir.segments)
+    _snapshot("perception")
+
+    if palette_enabled:
+        with ctx.stage("wire_palette_prepare") as trace:
+            palette_context = prepare_palette_wire(source, ir)
+            trace["object_count"] = len(palette_context.palette["votes"])
+            trace["message"] = palette_context.palette["reason"]
 
     with ctx.stage("association") as trace:
         associate_ocr(ir, config)
@@ -193,11 +244,14 @@ def _infer_one(
             diagnostics = report.get("diagnostics", {})
             if isinstance(diagnostics, dict):
                 trace["message"] = f"ocr_association_diagnostics={diagnostics.get('total', 0)}"
+    _snapshot("association")
 
+    _snapshot("pre_prune")
     if _submission_mode(config) == "degraded":
         # Degraded output is explicit and local to this image. Drop objects
-        # that cannot be represented safely; pin numbers may still be assigned
-        # deterministically at serialization time, but ownership is never guessed.
+        # that cannot be represented safely (missing key / missing pin number /
+        # unowned pin), recording deleted IDs and affected nets. Never invent
+        # keys or pin numbers.
         _prune_unrepresentable(ir)
 
     # Junction decisions change physical connectivity, so selective reasoning
@@ -221,6 +275,8 @@ def _infer_one(
     graph_config = config.get("graph", {})
     association_config = config.get("association", {})
     with ctx.stage("physical_graph") as trace:
+        if palette_context is not None:
+            apply_palette_wire_filter(ir, palette_context)
         ir.physical_nets, snap_decisions = build_physical_graph(
             ir,
             endpoint_tolerance_px=float(graph_config.get("endpoint_merge_tolerance_px", 3.0)),
@@ -241,6 +297,7 @@ def _infer_one(
             ),
             pin_point_projection_max_px=float(graph_config.get("pin_point_projection_max_px", 0.0)),
             unique_margin=float(association_config.get("unique_margin", 1.5)),
+            gap_repair_max_px=float(graph_config.get("gap_repair_max_px", 12.0)),
         )
         ir.metadata["snap_decisions"] = [
             {
@@ -283,6 +340,7 @@ def _infer_one(
                 collinear_gap_merge_tolerance_px=float(
                     graph_config.get("collinear_gap_merge_tolerance_px", 0.0)
                 ),
+                gap_repair_max_px=float(graph_config.get("gap_repair_max_px", 12.0)),
             ),
         )
         repaired = repair_ir_once(ir, config_hash=ctx.config_hash)
@@ -292,17 +350,6 @@ def _infer_one(
         diagnostics = merge_diagnostics(repaired.diagnostics, validator_issues)
         repaired.diagnostics = diagnostics
         ir = repaired
-        if _submission_mode(config) == "degraded":
-            diagnostics = _downgrade_quality_errors(diagnostics)
-            ir.diagnostics = diagnostics
-            remaining_errors = [
-                item for item in diagnostics if item.severity == "ERROR"
-            ]
-            if not remaining_errors and ir.state in {
-                IRState.SEMANTIC,
-                IRState.VALIDATED,
-            }:
-                ir.state = IRState.VALIDATED
         errors = [item for item in diagnostics if item.severity == "ERROR"]
         trace["object_count"] = len(diagnostics)
         if errors:
@@ -319,11 +366,17 @@ def _infer_one(
             ir.state = IRState.VALIDATED
 
     with ctx.stage("serialization") as trace:
-        output = serialize_official(ir, official_profile)
+        serialize_mode = (
+            "degraded" if _is_debug_execution(config) else _submission_mode(config)
+        )
+        output, quality = serialize_official_with_quality(
+            ir, official_profile, mode=serialize_mode
+        )
         output_hash = official_json_hash(output, official_profile)
         atomic_write_official_json(output, destination, official_profile)
         trace["object_count"] = len(output["components"]) + len(output["pins"]) + len(output["nets"])
         ir.state = IRState.SERIALIZED
+    _snapshot("final")
 
     return InferenceResult(
         input_path=source,
@@ -333,6 +386,7 @@ def _infer_one(
         ir=ir,
         diagnostics=diagnostics,
         context=ctx,
+        quality=quality,
     )
 
 
@@ -376,11 +430,22 @@ def infer_batch(
     config: dict[str, Any],
     official_profile: str | Path | dict[str, Any] | None = None,
     continue_on_error: bool = True,
+    evidence_sink: Any = None,
 ) -> tuple[list[InferenceResult], list[dict[str, Any]]]:
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
-    ordered_inputs = sorted((Path(item) for item in inputs), key=lambda path: path.as_posix())
-    duplicate_stems = sorted(stem for stem, count in Counter(path.stem for path in ordered_inputs).items() if count > 1)
+    ordered_inputs = sorted(
+        (Path(item) for item in inputs),
+        key=lambda path: (path.stem.casefold(), path.as_posix().casefold(), path.as_posix()),
+    )
+    # Official output names are derived from the stem.  Windows filesystems
+    # are case-insensitive, so a case-sensitive check would allow Board.png
+    # and board.png to overwrite one another during serialization.
+    duplicate_stems = sorted(
+        stem
+        for stem, count in Counter(path.stem.casefold() for path in ordered_inputs).items()
+        if count > 1
+    )
     if duplicate_stems:
         raise ValueError(
             "batch input stems would overwrite output files; duplicate stems="
@@ -398,23 +463,118 @@ def infer_batch(
                     provider=provider,
                     config=config,
                     official_profile=official_profile,
+                    evidence_sink=evidence_sink,
                 )
             )
         except Exception as exc:
+            context_manifest = getattr(exc, "context_manifest", {})
+            if not isinstance(context_manifest, dict):
+                context_manifest = {}
+            trace = context_manifest.get("trace", [])
+            last_stage = None
+            if isinstance(trace, list) and trace:
+                last = trace[-1]
+                if isinstance(last, dict):
+                    last_stage = last.get("stage")
             record = {
+                "error_id": _error_id(
+                    input_item,
+                    error_type=type(exc).__name__,
+                    message=str(exc),
+                    config_hash=context_manifest.get("config_hash"),
+                ),
                 "input": str(input_item),
                 "output": str(output_path),
+                "input_sha256": _safe_file_hash(input_item),
+                "config_hash": context_manifest.get("config_hash"),
+                "run_id": context_manifest.get("run_id"),
+                "failed_stage": last_stage,
+                "trace": trace if isinstance(trace, list) else [],
                 "error_type": type(exc).__name__,
                 "message": str(exc),
-                "diagnostics": [item.model_dump(mode="json") for item in getattr(exc, "diagnostics", [])],
+                "diagnostics": _diagnostic_payloads(getattr(exc, "diagnostics", [])),
             }
             errors.append(record)
             if not continue_on_error:
                 raise
     if errors:
         error_path = destination / "error_manifest.json"
-        payload = json.dumps(errors, ensure_ascii=False, indent=2, sort_keys=True)
-        temporary = error_path.with_suffix(".json.tmp")
-        temporary.write_text(payload + "\n", encoding="utf-8")
-        temporary.replace(error_path)
+        _atomic_write_json(error_path, errors)
     return results, errors
+
+
+def _error_id(
+    input_path: Path,
+    *,
+    error_type: str,
+    message: str,
+    config_hash: Any,
+) -> str:
+    """Build a stable identifier for one failed image/config execution."""
+
+    payload = json.dumps(
+        {
+            "config_hash": config_hash,
+            "error_type": error_type,
+            "input": str(input_path),
+            "message": message,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _safe_file_hash(path: Path) -> str | None:
+    try:
+        return stable_file_hash(path)
+    except (OSError, ValueError):
+        # The input may disappear between discovery and execution.  Preserve
+        # the failure record without masking the original pipeline exception.
+        return None
+
+
+def _diagnostic_payloads(value: Any) -> list[dict[str, Any]]:
+    """Serialize failure diagnostics without masking the original exception."""
+
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple)):
+        value = [value]
+    payloads: list[dict[str, Any]] = []
+    for item in value:
+        model_dump = getattr(item, "model_dump", None)
+        if callable(model_dump):
+            try:
+                rendered = model_dump(mode="json")
+            except Exception:  # pragma: no cover - defensive failure path
+                rendered = None
+            if isinstance(rendered, dict):
+                payloads.append(rendered)
+                continue
+        if isinstance(item, dict):
+            payloads.append(dict(item))
+        else:
+            payloads.append({"message": str(item)})
+    return payloads
+
+
+def _atomic_write_json(path: Path, value: Any) -> None:
+    payload = (
+        json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2, sort_keys=True)
+        + "\n"
+    ).encode("utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise

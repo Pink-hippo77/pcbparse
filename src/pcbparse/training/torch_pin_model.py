@@ -317,7 +317,7 @@ def decode_pin_heatmaps(
     score_threshold: float = 0.3,
     nms_kernel: int = 3,
     nms_radius: float = 1.0,
-    max_detections: int = 256,
+    max_detections: int | Sequence[int] = 256,
     box_rects: Sequence[tuple[float, float, float, float]] | None = None,
     box_margin: float = 0.0,
     box_prior_mode: str = "filled_rect_v1",
@@ -326,6 +326,9 @@ def decode_pin_heatmaps(
 
     Coordinates are returned in heatmap units.  A caller that works in image
     pixels must multiply them by the dataset/model output stride (four).
+    ``max_detections`` is either one shared budget or one budget per batch
+    item, so dense components can receive an edge-length driven budget while
+    small components keep a tight one.
     """
 
     torch = _require_torch()
@@ -335,25 +338,35 @@ def decode_pin_heatmaps(
         raise ValueError("nms_kernel must be a positive odd integer")
     if not _finite_number(nms_radius) or float(nms_radius) < 0:
         raise ValueError("nms_radius must be finite and non-negative")
-    if type(max_detections) is not int or max_detections <= 0:
-        raise ValueError("max_detections must be a positive integer")
+    value = split_pin_outputs(outputs)
+    logits = value["heatmap_logits"]
+    batch_count = int(logits.shape[0])
+    if isinstance(max_detections, bool) or isinstance(max_detections, int):
+        if type(max_detections) is not int or max_detections <= 0:
+            raise ValueError("max_detections must be a positive integer")
+        budgets = [max_detections] * batch_count
+    else:
+        budgets = list(max_detections)
+        if len(budgets) != batch_count:
+            raise ValueError("max_detections must contain one budget per batch item")
+        if any(type(budget) is not int or budget <= 0 for budget in budgets):
+            raise ValueError("max_detections budgets must be positive integers")
+    scores = torch.sigmoid(logits)
+    pooled = torch.nn.functional.max_pool2d(
+        scores, kernel_size=nms_kernel, stride=1, padding=nms_kernel // 2
+    )
+    maxima = (scores >= pooled) & (scores >= float(score_threshold))
     if not _finite_number(box_margin) or float(box_margin) < 0:
         raise ValueError("box_margin must be finite and non-negative")
     if box_prior_mode not in {"filled_rect_v1", "boundary_band_v2"}:
         raise ValueError(
             "box_prior_mode must be filled_rect_v1 or boundary_band_v2"
         )
-    value = split_pin_outputs(outputs)
-    logits = value["heatmap_logits"]
-    scores = torch.sigmoid(logits)
-    pooled = torch.nn.functional.max_pool2d(
-        scores, kernel_size=nms_kernel, stride=1, padding=nms_kernel // 2
-    )
-    maxima = (scores >= pooled) & (scores >= float(score_threshold))
     if box_rects is not None and box_margin > 0 and len(box_rects) != int(scores.shape[0]):
         raise ValueError("box_rects must contain one rectangle per batch item")
     result: list[list[dict[str, Any]]] = []
     for batch_index in range(scores.shape[0]):
+        budget = budgets[batch_index]
         ys, xs = torch.where(maxima[batch_index, 0])
         if xs.numel() == 0:
             result.append([])
@@ -413,7 +426,7 @@ def decode_pin_heatmaps(
                     "anchor": (anchor_x, anchor_y),
                 }
             )
-            if len(detections) >= max_detections:
+            if len(detections) >= budget:
                 break
         result.append(detections)
     return result
@@ -428,7 +441,7 @@ def compute_pin_metrics(
     pck_thresholds: Iterable[float] = (2.0, 3.0, 5.0),
     nms_kernel: int = 3,
     nms_radius: float = 1.0,
-    max_detections: int = 256,
+    max_detections: int | Sequence[int] = 256,
     box_rects: Sequence[tuple[float, float, float, float]] | None = None,
     box_margin_px: float = 0.0,
     box_prior_mode: str = "filled_rect_v1",

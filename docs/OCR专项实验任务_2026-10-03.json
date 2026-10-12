@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-03",
+  "status": "proposed",
+  "plan": "docs/OCR全面优化专项方案_2026-10-03.md",
+  "scope": "研究和执行方案，未启动实施",
+  "baseline": {
+    "production": "models/models.lock.json",
+    "development": "cycle79; server reports only this turn",
+    "latest_reports": [
+      "docs/server_binding_and_topology_checkpoint_2026-10-03.md",
+      "docs/server_full_module_phase1_2026-10-03.md",
+      "docs/server_updated_10gt_audit_2026-10-03.md"
+    ]
+  },
+  "corrections": [
+    "0030 R3属于邻近电阻，不是LM334芯片需恢复的位号",
+    "cycle91编号增加49但连接TP下降6/FP增加57，已拒绝",
+    "既有torch_train_cli OCR不训练PP-OCRv6 medium",
+    "10GT历史暴露不确定，只作回归"
+  ],
+  "dependencies_policy": "依赖是完成诊断/实验结案，不要求所有候选获胜；O06条件可选；只有validated候选入选O10",
+  "numeric_targets": "新增提升门槛仅开发建议；既有更严格门槛保持；所有收益未测",
+  "constraints": [
+    "Circuit-IR唯一内部表示",
+    "训练仅dataset300-v2 train240及其合法派生",
+    "单GPU串行且smoke先行",
+    "推理禁止GT/sidecar",
+    "缺key/number不造字段",
+    "保持原文大小写空格符号",
+    "全量严格Validator 0 ERROR",
+    "每图600s及有效配置批次预算",
+    "不手改模型锁blessed/status",
+    "官方evaluator缺失不报告正式成绩"
+  ],
+  "tasks": [
+    {
+      "id": "O00",
+      "priority": "P0",
+      "status": "proposed",
+      "depends_on": [],
+      "title": "双基线、失败实验及数据暴露核验",
+      "resource": "CPU",
+      "action": "冻结Bprod与Bdev79；采用cycle96和第一阶段更正，10GT仅回归",
+      "acceptance": "模型/代码/配置/字典/输入/evaluator均有哈希；未核验项明确标记",
+      "estimate": "0.5天",
+      "existing_paths": [
+        "models/models.lock.json",
+        "configs/pipeline.edarace.yaml"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o00-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O01",
+      "priority": "P0",
+      "status": "proposed",
+      "depends_on": [
+        "O00"
+      ],
+      "title": "全阶段trace和D0-D3离线诊断",
+      "resource": "CPU；需要新感知时单GPU串行",
+      "action": "检测、几何、识别、合并、角色、owner、输出分离；oracle独立离线",
+      "acceptance": "计数闭合；错误与空结果区分；D0不改输出；字段/字高/长度分桶",
+      "estimate": "1-2天",
+      "existing_paths": [
+        "src/pcbparse/perception/onnx_ocr_adapter.py",
+        "src/pcbparse/perception/ocr_multilevel.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o01-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O02",
+      "priority": "P0",
+      "status": "proposed",
+      "depends_on": [
+        "O01"
+      ],
+      "title": "检测识别绑定三类监督和困难裁剪",
+      "resource": "CPU",
+      "action": "只用train240；核验214/26原group和权重暴露；重复目标权重归一",
+      "acceptance": "真实crop可核验；含糊masked；GT不进入绑定输入；10GT/val/test/release50不训练",
+      "estimate": "1-2天",
+      "existing_paths": [
+        "src/pcbparse/training/ocr_materialize.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o02-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O03",
+      "priority": "P1",
+      "status": "proposed",
+      "depends_on": [
+        "O01",
+        "O02"
+      ],
+      "title": "小字补检及有条件的检测微调",
+      "resource": "单GPU串行",
+      "action": "有限单因素阈值/扩框与pin邻域提议；确证漏检再训练det",
+      "acceptance": "建议小字recall+5pp且审查区域precision下降不超1pp；最终编号增加且网络不退化",
+      "estimate": "1-2天另加训练",
+      "existing_paths": [
+        "src/pcbparse/perception/onnx_ocr_processing.py",
+        "src/pcbparse/perception/ocr_multilevel.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o03-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O04",
+      "priority": "P0",
+      "status": "proposed",
+      "depends_on": [
+        "O01"
+      ],
+      "title": "crop、方向与完整行对照",
+      "resource": "单GPU串行识别",
+      "action": "固定模型；记录原quad与像素；区分scale对检测与识别的作用",
+      "acceptance": "建议难例exact+3pp、常规下降不超1pp；不拼造字符串",
+      "estimate": "1天",
+      "existing_paths": [
+        "src/pcbparse/perception/onnx_ocr_processing.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o04-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O05",
+      "priority": "P1",
+      "status": "proposed",
+      "depends_on": [
+        "O02",
+        "O04"
+      ],
+      "title": "medium训练桥接、识别微调及导出",
+      "resource": "单GPU串行训练；smoke先行",
+      "action": "先核验匹配Paddle训练checkpoint/字典/辅助头与版本；不使用原Torch CLI冒充medium训练",
+      "acceptance": "建议目标桶exact+3pp整体不退化；真实crop与最终字段验证；导出合同和lineage完整",
+      "estimate": "2-4天及资产/训练排队",
+      "existing_paths": [
+        "src/pcbparse/training/artifacts.py",
+        "src/pcbparse/perception/onnx_ocr_adapter.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o05-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O06",
+      "priority": "P2",
+      "status": "proposed",
+      "depends_on": [
+        "O05"
+      ],
+      "title": "SVTRv2或PARSeq条件对照",
+      "resource": "单GPU串行",
+      "action": "仅medium微调结案后仍有正确crop识别缺口才启动；两个备选先选一个",
+      "acceptance": "同crop/训练来源/时间口径；最终质量收益；不默认双模型",
+      "estimate": "可选1-3天",
+      "existing_paths": [
+        "src/pcbparse/perception/recognizer_backend.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o06-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O07",
+      "priority": "P0",
+      "status": "proposed",
+      "depends_on": [
+        "O01",
+        "O04"
+      ],
+      "title": "按需ONNX序列候选与物理文字分组",
+      "resource": "CPU；序列概率由串行GPU获取",
+      "action": "k3/k5局部解码；原文和成员框绑定；大小写变体传播；重复观察不多票",
+      "acceptance": "一对一覆盖评价；错误接受不增加；确定性；正确候选保留改善",
+      "estimate": "1-2天",
+      "existing_paths": [
+        "src/pcbparse/perception/onnx_ocr_processing.py",
+        "src/pcbparse/perception/ocr_multilevel.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o07-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O08",
+      "priority": "P0",
+      "status": "proposed",
+      "depends_on": [
+        "O02",
+        "O07"
+      ],
+      "title": "联合角色、owner和pin行选择",
+      "resource": "CPU",
+      "action": "复用Hungarian/DP和unknown；区分缺pin与绑错pin；审计pin增删与网络代价",
+      "acceptance": "沿用改变字段精度98%且至少20目标并报告区间；TP不降FP不增；不拿字段数抵消退化",
+      "estimate": "1-2天",
+      "existing_paths": [
+        "src/pcbparse/association/semantic_fields.py",
+        "src/pcbparse/association/text_component.py",
+        "src/pcbparse/association/text_pin.py",
+        "src/pcbparse/association/pin_assignment.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o08-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O09",
+      "priority": "P1",
+      "status": "proposed",
+      "depends_on": [
+        "O00"
+      ],
+      "title": "fast_exact复用、缓存与复制画像",
+      "resource": "CPU及单GPU配对测量",
+      "action": "复用已有候选；宽度排序已存在；按画像决定跨ROI合批/IO Binding",
+      "acceptance": "5轮交替；纯性能最终JSON一致；建议中位耗时-10%；全量数值合同不变",
+      "estimate": "1天",
+      "existing_paths": [
+        "src/pcbparse/perception/onnx_ocr_processing.py",
+        "src/pcbparse/perception/onnx_ocr_adapter.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o09-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    },
+    {
+      "id": "O10",
+      "priority": "P1",
+      "status": "proposed",
+      "depends_on": [
+        "O00",
+        "O01",
+        "O02",
+        "O03",
+        "O04",
+        "O05",
+        "O07",
+        "O08",
+        "O09"
+      ],
+      "title": "组合fresh、严格验收与晋级审查",
+      "resource": "单GPU串行推理；独立CPU评估",
+      "action": "依赖需有结论，rejected分支不集成；可选O06只在启动时等待结案",
+      "acceptance": "5图→val30→fresh四模型；五字段+网络；strict/预算/lineage；model_promotion唯一晋级",
+      "estimate": "1-2天",
+      "existing_paths": [
+        "src/pcbparse/output/official_serializer.py",
+        "src/pcbparse/pipeline/orchestrator.py",
+        "data_tools/model_promotion.py"
+      ],
+      "implementation_needed": true,
+      "output_directory": "work/ocr-special-20261003/o10-<unique-run>/",
+      "rollback": "独立候选配置/feature flag，退回Bdev79，保留报告和必要恢复资产"
+    }
+  ],
+  "research_sources": [
+    {
+      "title": "PCBnet",
+      "url": "https://arxiv.org/html/2608.27923v1",
+      "use": "原理图局部OCR与角色/对齐约束"
+    },
+    {
+      "title": "SINA",
+      "url": "https://arxiv.org/html/2607.01609v1",
+      "use": "几何上下文与读取分工"
+    },
+    {
+      "title": "PaddleOCR Fine-tune",
+      "url": "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version2.x/ppocr/model_train/finetune.en.md",
+      "use": "领域数据与训练方法；非v6超参配方"
+    },
+    {
+      "title": "PP-OCRv6",
+      "url": "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/algorithm/PP-OCRv6/PP-OCRv6.en.md",
+      "use": "核对训练和推理架构"
+    },
+    {
+      "title": "DBNet",
+      "url": "https://arxiv.org/abs/1911.08947",
+      "use": "检测与后处理"
+    },
+    {
+      "title": "Text detection",
+      "url": "https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/module_usage/text_detection.md",
+      "use": "检测参数"
+    },
+    {
+      "title": "SVTRv2",
+      "url": "https://arxiv.org/abs/2411.15858",
+      "use": "条件识别器对照"
+    },
+    {
+      "title": "PARSeq",
+      "url": "https://arxiv.org/abs/2207.06966",
+      "use": "条件异构识别对照"
+    },
+    {
+      "title": "Calibration",
+      "url": "https://proceedings.mlr.press/v70/guo17a.html",
+      "use": "分数校准"
+    },
+    {
+      "title": "ORT I/O Binding",
+      "url": "https://onnxruntime.ai/docs/performance/tune-performance/iobinding.html",
+      "use": "设备复制优化"
+    }
+  ]
+}

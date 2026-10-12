@@ -44,7 +44,8 @@
     "component_unique_margin": 0.0,
     "pin_min_score": 0.3,
     "pin_unique_margin": 0.0,
-    "netlabel_min_text_score": 0.5
+    "netlabel_min_text_score": 0.5,
+    "pin_name_row_penalty": 0.22
   },
   "graph": {
     "endpoint_merge_tolerance_px": 1.0,
@@ -56,7 +57,8 @@
     "learned_junctions_enabled": false,
     "allow_virtual_repair_ratio": 0.08,
     "collinear_merge_tolerance_px": 0.75,
-    "collinear_gap_merge_tolerance_px": 6.0
+    "collinear_gap_merge_tolerance_px": 6.0,
+    "palette_wire_filter_enabled": true
   },
   "labels": {
     "min_text_score": 0.75,
@@ -85,7 +87,10 @@
   },
   "pin": {
     "score_threshold": 0.75,
-    "max_detections_per_component": 12,
+    "max_detections_per_component": 128,
+    "pin_budget_mode": "edge_length_v1",
+    "pin_budget_floor": 12,
+    "pin_budget_pitch_px": 8.0,
     "box_prior_mode": "filled_rect_v1",
     "box_margin_px": 16.0
   },

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import math
 from dataclasses import dataclass, field
 
 
@@ -12,6 +13,13 @@ class BudgetExceeded(RuntimeError):
 class TimeBudget:
     total_seconds: float
     started_at: float = field(default_factory=time.monotonic)
+    deadline_at: float | None = None
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.total_seconds) or self.total_seconds < 0:
+            raise ValueError("total_seconds must be finite and non-negative")
+        if self.deadline_at is not None and not math.isfinite(self.deadline_at):
+            raise ValueError("deadline_at must be finite")
 
     @property
     def elapsed_seconds(self) -> float:
@@ -19,10 +27,13 @@ class TimeBudget:
 
     @property
     def remaining_seconds(self) -> float:
-        return max(0.0, self.total_seconds - self.elapsed_seconds)
+        deadline = self.started_at + self.total_seconds
+        if self.deadline_at is not None:
+            deadline = min(deadline, self.deadline_at)
+        return max(0.0, deadline - time.monotonic())
 
     def check(self, *, reserve_seconds: float = 0.0, stage: str = "pipeline") -> None:
-        if self.elapsed_seconds >= self.total_seconds or self.remaining_seconds < reserve_seconds:
+        if self.remaining_seconds <= 0.0 or self.remaining_seconds < reserve_seconds:
             raise BudgetExceeded(
                 f"{stage} time budget exhausted: remaining={self.remaining_seconds:.3f}s, reserve={reserve_seconds:.3f}s"
             )

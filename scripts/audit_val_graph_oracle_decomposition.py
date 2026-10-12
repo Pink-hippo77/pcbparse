@@ -330,6 +330,7 @@ def _strip_oracle_membership(ir: CircuitIR) -> CircuitIR:
     for segment in result.segments:
         segment.source_edge_id = None
         segment.source_polyline_id = None
+        segment.source_polyline_ids = []
         segment.evidence = []
     for pin in result.pins:
         pin.edge_ids = []

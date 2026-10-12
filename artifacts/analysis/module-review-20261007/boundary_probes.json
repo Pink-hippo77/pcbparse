@@ -1,0 +1,13 @@
+{
+  "synthetic_only": true,
+  "submission_files_written": false,
+  "designator_syntax_probe": {
+    "U5": true,
+    "LM334": true,
+    "PCF8563": true
+  },
+  "serializer_error_diagnostic_probe": {
+    "rejected": false,
+    "scope": "direct public serializer with contradictory VALIDATED state and ERROR diagnostic; not a production orchestrator bypass"
+  }
+}

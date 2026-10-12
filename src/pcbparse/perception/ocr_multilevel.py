@@ -97,16 +97,35 @@ def run_multilevel_ocr(
     settings = _coerce_config(config)
     levels = _build_schedule(global_views, component_views, settings)
     restored: list[_RestoredToken] = []
+    trace_collector: list[dict[str, Any]] = []
+    batch_counter = 0
     for scheduled, batch_size in levels:
         for batch in _batches(scheduled, batch_size):
             allowed = {item.view.view_id: item for item in batch}
             produced = provider.recognize([item.view for item in batch], ctx)
+            batch_trace = getattr(provider, "_last_detection_trace", None) or []
+            for entry in batch_trace:
+                scheduled_entry = allowed.get(str(entry.get("view_id")))
+                trace_collector.append(
+                    {
+                        **entry,
+                        "batch_id": batch_counter,
+                        "level": getattr(scheduled_entry, "level", None) if scheduled_entry else entry.get("level"),
+                        "side": getattr(scheduled_entry, "side", None) if scheduled_entry else entry.get("side"),
+                        "component_id": getattr(scheduled_entry, "component_id", None) if scheduled_entry else entry.get("component_id"),
+                    }
+                )
+            batch_counter += 1
             if not isinstance(produced, list):
                 raise TypeError("OCRProvider.recognize must return list[TextToken]")
             for token in produced:
                 if not isinstance(token, TextToken):
                     raise TypeError("OCRProvider.recognize returned a non-TextToken value")
                 restored.append(_restore_token(token, allowed))
+    if hasattr(provider, "_detection_trace_log"):
+        provider._detection_trace_log.extend(trace_collector)
+    else:
+        provider._detection_trace_log = trace_collector
 
     kept = _deduplicate(restored, settings)
     output = sorted((item.token for item in kept), key=_output_sort_key)
@@ -286,18 +305,19 @@ def _deduplicate(
     ranked = sorted(restored, key=_nms_rank_key)
     kept: list[_RestoredToken] = []
     for candidate in ranked:
-        normalized = _normalize_text(candidate.token.resolved_text or candidate.token.raw_text)
+        # match_key is an identity key only.  raw_text is never rewritten here.
+        match_key = _match_key(candidate.token.resolved_text or candidate.token.raw_text)
         duplicate = next(
             (
                 existing
                 for existing in kept
-                if normalized
+                if match_key
                 and (
                     (
-                        _normalize_text(
+                        _match_key(
                             existing.token.resolved_text or existing.token.raw_text
                         )
-                        == normalized
+                        == match_key
                         and (
                             _iou(existing.token.bbox, candidate.token.bbox)
                             >= config.nms_iou_threshold
@@ -310,10 +330,10 @@ def _deduplicate(
                     or (
                         config.merge_conflicting_text
                         and _same_ocr_context(existing, candidate)
-                        and _normalize_text(
+                        and _match_key(
                             existing.token.resolved_text or existing.token.raw_text
                         )
-                        != normalized
+                        != match_key
                         and _iou(existing.token.bbox, candidate.token.bbox)
                         >= config.conflicting_text_iou_threshold
                     )
@@ -325,7 +345,34 @@ def _deduplicate(
             kept.append(candidate)
             continue
         _merge_suppressed_duplicate(duplicate, candidate)
-    return kept
+    # Cross-level merge: same text at overlapping original-image bboxes from
+    # different levels (global/component/strip) is one physical glyph.
+    cross_kept: list[_RestoredToken] = []
+    for candidate in kept:
+        match_key = _match_key(candidate.token.resolved_text or candidate.token.raw_text)
+        cross_dup = next(
+            (
+                existing
+                for existing in cross_kept
+                if match_key
+                and _match_key(
+                    existing.token.resolved_text or existing.token.raw_text
+                )
+                == match_key
+                and (
+                    _iou(existing.token.bbox, candidate.token.bbox)
+                    >= config.nms_iou_threshold
+                    or _center_distance(existing.token.bbox, candidate.token.bbox)
+                    <= config.nms_center_distance_px
+                )
+            ),
+            None,
+        )
+        if cross_dup is None:
+            cross_kept.append(candidate)
+        else:
+            _merge_suppressed_duplicate(cross_dup, candidate)
+    return cross_kept
 
 
 def _same_ocr_context(left: _RestoredToken, right: _RestoredToken) -> bool:
@@ -339,14 +386,18 @@ def _same_ocr_context(left: _RestoredToken, right: _RestoredToken) -> bool:
 
 
 def _merge_suppressed_duplicate(winner: _RestoredToken, suppressed: _RestoredToken) -> None:
-    normalized_winner = _normalize_text(
+    winner_key = _match_key(
         winner.token.resolved_text or winner.token.raw_text
     )
-    normalized_suppressed = _normalize_text(
+    suppressed_key = _match_key(
         suppressed.token.resolved_text or suppressed.token.raw_text
     )
     variant_values = [*winner.token.candidates, *suppressed.token.candidates]
-    if normalized_winner and normalized_suppressed != normalized_winner:
+    # Conflicting readings (different match_key) are surfaced as candidates.
+    # Case/NFKC variants of the same glyph keep winner.raw_text as the output
+    # spelling and retain the alternative in suppressed_duplicates only —
+    # raw_text is never rewritten to the match_key form.
+    if suppressed.token.raw_text and suppressed_key != winner_key:
         variant_values.append(suppressed.token.raw_text)
     winner.token.candidates = _stable_unique(variant_values)
     record = {
@@ -357,6 +408,8 @@ def _merge_suppressed_duplicate(winner: _RestoredToken, suppressed: _RestoredTok
         "component_id": suppressed.component_id,
         "score": suppressed.token.score,
         "raw_text": suppressed.token.raw_text,
+        "resolved_text": suppressed.token.resolved_text,
+        "match_key": suppressed_key,
         "candidates": list(suppressed.token.candidates),
     }
     for evidence in winner.token.evidence:
@@ -400,12 +453,19 @@ def _merge_suppressed_duplicate(winner: _RestoredToken, suppressed: _RestoredTok
 
 
 def _stable_unique(values: Sequence[str]) -> list[str]:
-    return sorted(set(values), key=lambda value: (_normalize_text(value), value))
+    # Preserve each distinct original spelling; match_key is sort identity only.
+    return sorted(set(values), key=lambda value: (_match_key(value), value))
 
 
-def _normalize_text(value: str) -> str:
+def _match_key(value: str) -> str:
+    """Identity key for NMS/dedup only — never written back as raw_text."""
+
     normalized = unicodedata.normalize("NFKC", value).casefold()
     return " ".join(normalized.split())
+
+
+# Backwards-compatible alias; callers should prefer the explicit match_key name.
+_normalize_text = _match_key
 
 
 def _nms_rank_key(item: _RestoredToken) -> tuple[Any, ...]:
@@ -414,7 +474,7 @@ def _nms_rank_key(item: _RestoredToken) -> tuple[Any, ...]:
         -item.token.score,
         -_LEVEL_PRIORITY[item.level],
         bbox.width * bbox.height,
-        _normalize_text(item.token.resolved_text or item.token.raw_text),
+        _match_key(item.token.resolved_text or item.token.raw_text),
         bbox.y1,
         bbox.x1,
         bbox.y2,
@@ -430,7 +490,7 @@ def _output_sort_key(token: TextToken) -> tuple[Any, ...]:
         token.bbox.x1,
         token.bbox.y2,
         token.bbox.x2,
-        _normalize_text(token.resolved_text or token.raw_text),
+        _match_key(token.resolved_text or token.raw_text),
         token.raw_text,
         token.internal_id,
     )
@@ -448,4 +508,8 @@ def _center_distance(left: BBox, right: BBox) -> float:
     return math.hypot(left.center.x - right.center.x, left.center.y - right.center.y)
 
 
-__all__ = ["MultiLevelOCRConfig", "MultilevelOCRConfig", "run_multilevel_ocr"]
+__all__ = [
+    "MultiLevelOCRConfig",
+    "MultilevelOCRConfig",
+    "run_multilevel_ocr",
+]

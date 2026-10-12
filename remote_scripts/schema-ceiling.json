@@ -1,0 +1,328 @@
+{
+ "schema": "opt90-comp-schema-ceiling-v1",
+ "gt_access": "diagnostic_only",
+ "gt_total": 1112,
+ "power_with_designator": 0,
+ "power_without_designator": 342,
+ "nonpower_with_designator": 364,
+ "nonpower_without_designator": 406,
+ "representable_total": 706,
+ "schema_recall_ceiling": 0.6349,
+ "by_category": {
+  "AMP": {
+   "total": 3,
+   "unrepresentable": 3
+  },
+  "ANT": {
+   "total": 4,
+   "unrepresentable": 4
+  },
+  "BJT": {
+   "total": 15,
+   "unrepresentable": 2,
+   "representable": 13
+  },
+  "Battary": {
+   "total": 3,
+   "unrepresentable": 3
+  },
+  "Box": {
+   "total": 90,
+   "unrepresentable": 58,
+   "representable": 32
+  },
+  "Buzzer": {
+   "total": 9,
+   "unrepresentable": 9
+  },
+  "C": {
+   "total": 228,
+   "representable": 137,
+   "unrepresentable": 91
+  },
+  "Crystal": {
+   "total": 8,
+   "representable": 7,
+   "unrepresentable": 1
+  },
+  "D": {
+   "total": 17,
+   "representable": 16,
+   "unrepresentable": 1
+  },
+  "Dc": {
+   "total": 1,
+   "unrepresentable": 1
+  },
+  "Fuse": {
+   "total": 2,
+   "unrepresentable": 2
+  },
+  "Gnd": {
+   "total": 222,
+   "representable": 222
+  },
+  "Jumper": {
+   "total": 1,
+   "unrepresentable": 1
+  },
+  "L": {
+   "total": 21,
+   "representable": 7,
+   "unrepresentable": 14
+  },
+  "LED": {
+   "total": 18,
+   "unrepresentable": 18
+  },
+  "M": {
+   "total": 4,
+   "unrepresentable": 4
+  },
+  "MOSFET": {
+   "total": 8,
+   "unrepresentable": 3,
+   "representable": 5
+  },
+  "NET_input": {
+   "total": 58,
+   "unrepresentable": 58
+  },
+  "Net_bidirection": {
+   "total": 1,
+   "unrepresentable": 1
+  },
+  "Net_output": {
+   "total": 1,
+   "unrepresentable": 1
+  },
+  "Other": {
+   "total": 5,
+   "unrepresentable": 5
+  },
+  "PIN": {
+   "total": 21,
+   "unrepresentable": 18,
+   "representable": 3
+  },
+  "R": {
+   "total": 217,
+   "representable": 135,
+   "unrepresentable": 82
+  },
+  "Switch": {
+   "total": 35,
+   "unrepresentable": 26,
+   "representable": 9
+  },
+  "V": {
+   "total": 120,
+   "representable": 120
+  }
+ },
+ "per_case": [
+  {
+   "case": "0030",
+   "nodesig": 6,
+   "total": 13,
+   "desig": 6,
+   "power_nodesig": 1
+  },
+  {
+   "case": "0037",
+   "desig": 7,
+   "total": 13,
+   "nodesig": 5,
+   "power_nodesig": 1
+  },
+  {
+   "case": "0038",
+   "desig": 6,
+   "total": 15,
+   "nodesig": 4,
+   "power_nodesig": 5
+  },
+  {
+   "case": "0044",
+   "desig": 3,
+   "total": 12,
+   "nodesig": 3,
+   "power_nodesig": 6
+  },
+  {
+   "case": "0055",
+   "nodesig": 6,
+   "total": 10,
+   "desig": 2,
+   "power_nodesig": 2
+  },
+  {
+   "case": "0062",
+   "nodesig": 10,
+   "total": 14,
+   "desig": 2,
+   "power_nodesig": 2
+  },
+  {
+   "case": "0065",
+   "desig": 11,
+   "total": 17,
+   "nodesig": 3,
+   "power_nodesig": 3
+  },
+  {
+   "case": "0077",
+   "nodesig": 4,
+   "total": 57,
+   "desig": 34,
+   "power_nodesig": 19
+  },
+  {
+   "case": "0089",
+   "nodesig": 23,
+   "total": 26,
+   "power_nodesig": 3
+  },
+  {
+   "case": "0091",
+   "nodesig": 28,
+   "total": 32,
+   "power_nodesig": 4
+  },
+  {
+   "case": "0092",
+   "nodesig": 49,
+   "total": 50,
+   "power_nodesig": 1
+  },
+  {
+   "case": "0095",
+   "nodesig": 9,
+   "total": 38,
+   "desig": 15,
+   "power_nodesig": 14
+  },
+  {
+   "case": "0125",
+   "nodesig": 4,
+   "total": 22,
+   "desig": 5,
+   "power_nodesig": 13
+  },
+  {
+   "case": "0135",
+   "nodesig": 28,
+   "total": 43,
+   "desig": 6,
+   "power_nodesig": 9
+  },
+  {
+   "case": "0140",
+   "desig": 56,
+   "total": 74,
+   "power_nodesig": 14,
+   "nodesig": 4
+  },
+  {
+   "case": "0144",
+   "nodesig": 14,
+   "total": 36,
+   "desig": 9,
+   "power_nodesig": 13
+  },
+  {
+   "case": "0147",
+   "desig": 21,
+   "total": 60,
+   "nodesig": 13,
+   "power_nodesig": 26
+  },
+  {
+   "case": "0155",
+   "desig": 14,
+   "total": 20,
+   "nodesig": 2,
+   "power_nodesig": 4
+  },
+  {
+   "case": "0165",
+   "desig": 24,
+   "total": 45,
+   "power_nodesig": 11,
+   "nodesig": 10
+  },
+  {
+   "case": "0171",
+   "nodesig": 23,
+   "total": 115,
+   "power_nodesig": 44,
+   "desig": 48
+  },
+  {
+   "case": "0188",
+   "desig": 14,
+   "total": 26,
+   "power_nodesig": 12
+  },
+  {
+   "case": "0190",
+   "desig": 44,
+   "total": 95,
+   "nodesig": 6,
+   "power_nodesig": 45
+  },
+  {
+   "case": "0202",
+   "desig": 20,
+   "total": 78,
+   "nodesig": 14,
+   "power_nodesig": 44
+  },
+  {
+   "case": "0212",
+   "nodesig": 12,
+   "total": 16,
+   "desig": 3,
+   "power_nodesig": 1
+  },
+  {
+   "case": "0234",
+   "nodesig": 38,
+   "total": 47,
+   "power_nodesig": 9
+  },
+  {
+   "case": "0238",
+   "nodesig": 13,
+   "total": 36,
+   "power_nodesig": 17,
+   "desig": 6
+  },
+  {
+   "case": "0267",
+   "nodesig": 2,
+   "total": 8,
+   "desig": 2,
+   "power_nodesig": 4
+  },
+  {
+   "case": "0280",
+   "nodesig": 43,
+   "total": 51,
+   "power_nodesig": 8
+  },
+  {
+   "case": "0283",
+   "nodesig": 23,
+   "total": 26,
+   "power_nodesig": 3
+  },
+  {
+   "case": "0291",
+   "nodesig": 7,
+   "total": 17,
+   "desig": 6,
+   "power_nodesig": 4
+  }
+ ]
+}

@@ -35,7 +35,8 @@ class RunContext:
     trace: list[StageTrace] = field(default_factory=list)
 
     @classmethod
-    def start(cls, image_path: str | Path, config: dict[str, object]) -> "RunContext":
+    def start(cls, image_path: str | Path, config: dict[str, object], *,
+              deadline_at: float | None = None) -> "RunContext":
         path = Path(image_path)
         run_config = config.get("run", {}) if isinstance(config.get("run"), dict) else {}
         qwen_config = config.get("qwen", {}) if isinstance(config.get("qwen"), dict) else {}
@@ -43,7 +44,8 @@ class RunContext:
             run_id=uuid.uuid4().hex,
             image_id=path.stem,
             config_hash=config_hash(config),
-            time_budget=TimeBudget(float(run_config.get("max_image_seconds", 120.0))),
+            time_budget=TimeBudget(float(run_config.get("max_image_seconds", 120.0)),
+                                   deadline_at=deadline_at),
             token_budget=TokenBudget(
                 max_calls=int(qwen_config.get("max_calls_per_image", 0)),
                 max_input_tokens=int(qwen_config.get("max_input_tokens_per_image", 0)),
@@ -61,6 +63,7 @@ class RunContext:
         try:
             self.time_budget.check(stage=name)
             yield details
+            self.time_budget.check(stage=name)
         except Exception:
             status = "error"
             raise
@@ -76,10 +79,6 @@ class RunContext:
                     message=str(details["message"] or ""),
                 )
             )
-            if status == "ok" and self.time_budget.elapsed_seconds >= self.time_budget.total_seconds:
-                raise BudgetExceeded(
-                    f"{name} exceeded the image time budget of {self.time_budget.total_seconds:.3f}s"
-                )
 
     def manifest(self) -> dict[str, object]:
         return {

@@ -69,3 +69,18 @@ def warning(
         object_ids=list(object_ids),
         stage=stage,
     )
+
+
+def info(
+    code: str,
+    message: str,
+    *object_ids: str,
+    stage: str = "validation",
+) -> Diagnostic:
+    return Diagnostic(
+        severity="INFO",
+        code=code,
+        message=message,
+        object_ids=list(object_ids),
+        stage=stage,
+    )

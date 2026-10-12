@@ -43,6 +43,7 @@ _PRODUCTION_RUNTIME_SOURCE_DIRECTORIES = (
     "src/pcbparse/graph",
     "src/pcbparse/io",
     "src/pcbparse/ir",
+    "src/pcbparse/knowledge",
     "src/pcbparse/nets",
     "src/pcbparse/output",
     "src/pcbparse/perception",
@@ -202,6 +203,14 @@ def run_production_evaluation(
     required_model_tasks = sorted(
         _required_model_tasks_for_perception_config(perception_config)
     )
+    from pcbparse.association.ocr_common import OCRAssociationConfig
+    from pcbparse.knowledge.model_catalog import load_model_catalog
+    association_config = OCRAssociationConfig.coerce(effective_config)
+    static_catalog_inputs: list[Path] = []
+    if association_config.component_model_catalog_path is not None:
+        catalog_path = Path(association_config.component_model_catalog_path).resolve()
+        load_model_catalog(str(catalog_path), association_config.component_model_catalog_sha256)
+        static_catalog_inputs.append(catalog_path)
 
     checker = readiness_checker or readiness_report
     readiness = checker(
@@ -249,6 +258,7 @@ def run_production_evaluation(
             profile_path,
             lock_path,
             *model_paths,
+            *static_catalog_inputs,
             *([official_profile_input] if official_profile_input is not None else []),
         ]
     )
@@ -266,6 +276,25 @@ def run_production_evaluation(
     stop_after_time_limit = False
     for case in selected_cases:
         input_paths = _path_strings([case.image_path, *shared_inputs])
+        stage_evidence: dict[str, dict[str, Any]] = {}
+
+        def save_stage(stage: str, ir: Any) -> None:
+            # Serialize immediately: later association/pruning mutates the IR.
+            # Evidence is kept outside official outputs and never uses GT.
+            if stage not in {"perception", "association", "pre_prune", "final"}:
+                raise ProductionEvaluationError(f"unexpected evidence stage: {stage}")
+            payload = _canonical_json_bytes(ir.model_dump(mode="json"))
+            path = destination / "stage_evidence" / case.case_id / f"{stage}.circuit-ir.json"
+            _atomic_write(path, payload)
+            stage_evidence[stage] = {
+                "path": path.relative_to(destination).as_posix(),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "state": str(ir.state.value),
+                "counts": {
+                    name: len(getattr(ir, name))
+                    for name in ("components", "pins", "texts", "segments", "physical_nets", "electrical_nets")
+                },
+            }
         if stop_after_time_limit:
             rows.append(
                 _base_record(
@@ -341,6 +370,8 @@ def run_production_evaluation(
                 provider=provider,
                 config=effective_config,
                 official_profile=resolved_official_profile,
+                evidence_sink=save_stage,
+                deadline_at=run_started + max_total_seconds,
             )
             if result.context.config_hash != effective_config_hash:
                 raise ProductionEvaluationError(
@@ -392,6 +423,8 @@ def run_production_evaluation(
                     "official_sha256": _sha256_file(official_path),
                     "official_output_sha256": result.output_hash,
                     "runtime_evidence": _runtime_evidence(context_manifest),
+                    "quality": dict(result.quality),
+                    "stage_evidence": stage_evidence,
                 }
             )
         except Exception as exc:
@@ -433,6 +466,7 @@ def run_production_evaluation(
             if failure_ir_path is not None:
                 row["ir_path"] = failure_ir_path.relative_to(destination).as_posix()
                 row["ir_sha256"] = failure_ir_sha256
+            row["stage_evidence"] = stage_evidence
             rows.append(row)
             if fail_fast:
                 stop_after_error = True
@@ -486,6 +520,9 @@ def run_production_evaluation(
         "succeeded": succeeded,
         "failed": failed,
         "not_run": not_run,
+        "quality_status_counts": dict(sorted(Counter(
+            str(row.get("quality", {}).get("status", row["status"])) for row in rows
+        ).items())),
         "fail_fast": bool(fail_fast),
         "elapsed_seconds": total_elapsed_seconds,
         "timing": {

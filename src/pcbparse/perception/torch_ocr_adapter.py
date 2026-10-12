@@ -50,6 +50,7 @@ class _CropCandidate:
     crop_sha256: str = ""
     orientation_degrees: int = 0
     orientation_candidates_degrees: tuple[int, ...] = (0,)
+    np_crop: Any | None = None
 
 
 class TorchOCRAdapter:
@@ -69,6 +70,7 @@ class TorchOCRAdapter:
         max_recognition_width: int,
         recognition_candidate_count: int = 0,
         vertical_rotation_enabled: bool = False,
+        recognizer_backend: Any | None = None,
     ) -> None:
         self._bundle = bundle
         self._detector = bundle.detector
@@ -106,10 +108,22 @@ class TorchOCRAdapter:
         self._max_recognition_width = max_recognition_width
         self._recognition_candidate_count = recognition_candidate_count
         self._vertical_rotation_enabled = vertical_rotation_enabled
+        self._recognizer_backend = recognizer_backend
+        self._last_detection_trace: list[dict[str, Any]] = []
+        self._detection_trace_log: list[dict[str, Any]] = []
         self._lock = threading.RLock()
         self._detector.eval()
         self._recognizer.eval()
-        self.version = f"torch-ocr/{bundle.version}"
+        backend_tag = (
+            getattr(recognizer_backend, "version", "custom")
+            if recognizer_backend is not None
+            else None
+        )
+        self.version = (
+            f"torch-ocr/{bundle.version}+{backend_tag}"
+            if backend_tag
+            else f"torch-ocr/{bundle.version}"
+        )
 
     @property
     def checkpoint_sha256(self) -> str:
@@ -169,12 +183,14 @@ class TorchOCRAdapter:
             raise TorchOCRAdapterError(
                 "OCR input view_id values must be unique for unambiguous evidence"
             )
+        detection_trace: list[dict[str, Any]] = []
         _check_budget(ctx, "ocr_detector:before")
         torch = _require_torch()
         detector_height, detector_width = self._preprocess["detector_size"]
         candidates: list[_CropCandidate] = []
         with self._lock, torch.inference_mode():
             for batch_start in range(0, len(views), self._detector_batch_size):
+                _check_budget(ctx, "ocr_detector_batch:before")
                 batch_views = views[batch_start : batch_start + self._detector_batch_size]
                 images = torch.stack(
                     [
@@ -186,6 +202,7 @@ class TorchOCRAdapter:
                     dim=0,
                 ).to(self._device)
                 logits = _tensor_output(self._detector(images), torch)
+                _check_budget(ctx, "ocr_detector_batch:after")
                 if tuple(logits.shape) != (
                     len(batch_views), 1, detector_height, detector_width
                 ):
@@ -211,15 +228,37 @@ class TorchOCRAdapter:
                         y1 = max(0.0, min(float(view.height), detector_box.y1 * view.height / detector_height))
                         x2 = max(0.0, min(float(view.width), detector_box.x2 * view.width / detector_width))
                         y2 = max(0.0, min(float(view.height), detector_box.y2 * view.height / detector_height))
+                        trace_entry: dict[str, Any] = {
+                            "view_id": view.view_id,
+                            "view_width": view.width,
+                            "view_height": view.height,
+                            "detection_index": detection_index,
+                            "detector_bbox": [
+                                detector_box.x1, detector_box.y1,
+                                detector_box.x2, detector_box.y2,
+                            ],
+                            "detector_score": detector_box.score,
+                            "view_bbox": [x1, y1, x2, y2],
+                            "original_bbox": _view_bbox_to_original(x1, y1, x2, y2, view),
+                            "transform": view.transform.to_records(),
+                            "stage": "detected",
+                            "geometry_accepted": False,
+                            "recognition_attempted": False,
+                            "recognition_accepted": False,
+                            "outcome": "kept",
+                            "reason": None,
+                        }
                         if x2 <= x1 or y2 <= y1:
+                            trace_entry["outcome"] = "rejected"
+                            trace_entry["reason"] = "degenerate_box"
+                            detection_trace.append(trace_entry)
                             continue
-                        # Component and side-strip views can be much smaller
-                        # than the fixed detector canvas. A component mapping
-                        # to less than one source pixel is an upsampling
-                        # artefact, not a resolvable text crop. Reject it before
-                        # padding lets the recognizer hallucinate a character.
                         if not _box_has_source_pixel_support(x1, y1, x2, y2):
+                            trace_entry["outcome"] = "rejected"
+                            trace_entry["reason"] = "no_source_pixel_support"
+                            detection_trace.append(trace_entry)
                             continue
+                        trace_entry["geometry_accepted"] = True
                         padding = self._preprocess["crop_padding"]
                         crop_box = (
                             max(0, int(math.floor(x1)) - padding),
@@ -228,7 +267,11 @@ class TorchOCRAdapter:
                             min(view.height, int(math.ceil(y2)) + padding),
                         )
                         if crop_box[2] <= crop_box[0] or crop_box[3] <= crop_box[1]:
+                            trace_entry["outcome"] = "rejected"
+                            trace_entry["reason"] = "empty_crop"
+                            detection_trace.append(trace_entry)
                             continue
+                        trace_entry["crop_box"] = list(crop_box)
                         candidate = _CropCandidate(
                             view_index=view_index,
                             detection_index=detection_index,
@@ -242,9 +285,10 @@ class TorchOCRAdapter:
                             height=self._preprocess["recognition_height"],
                         )
                         is_vertical = _is_vertical_crop(crop_box)
+                        is_wide = _is_wide_crop(crop_box)
                         orientation_candidates = (
                             (0, 90)
-                            if self._vertical_rotation_enabled and is_vertical
+                            if self._vertical_rotation_enabled and (is_vertical or is_wide)
                             else (0,)
                         )
                         candidate.orientation_candidates_degrees = orientation_candidates
@@ -252,7 +296,18 @@ class TorchOCRAdapter:
                             candidate.tensor = tensor
                             candidate.width = width
                             candidate.crop_sha256 = crop_sha256
+                            if self._recognizer_backend is not None:
+                                candidate.np_crop = _crop_to_np(view, crop_box, rotation_degrees=0)
                             candidates.append(candidate)
+                            trace_entry["outcome"] = "kept"
+                            trace_entry["recognition_attempted"] = True
+                            trace_entry["recognition_width"] = width
+                            detection_trace.append(trace_entry)
+                        else:
+                            trace_entry["outcome"] = "rejected"
+                            trace_entry["reason"] = "over_max_recognition_width"
+                            trace_entry["recognition_width"] = width
+                            detection_trace.append(trace_entry)
                         if orientation_candidates == (0, 90):
                             rotated_tensor, rotated_width, rotated_sha256 = _recognition_tensor(
                                 view,
@@ -262,6 +317,11 @@ class TorchOCRAdapter:
                                 rotation_degrees=90,
                             )
                             if rotated_width <= self._max_recognition_width:
+                                rotated_np = (
+                                    _crop_to_np(view, crop_box, rotation_degrees=90)
+                                    if self._recognizer_backend is not None
+                                    else None
+                                )
                                 candidates.append(
                                     _CropCandidate(
                                         view_index=view_index,
@@ -275,9 +335,11 @@ class TorchOCRAdapter:
                                         crop_sha256=rotated_sha256,
                                         orientation_degrees=90,
                                         orientation_candidates_degrees=orientation_candidates,
+                                        np_crop=rotated_np,
                                     )
                                 )
         _check_budget(ctx, "ocr_detector:after")
+        self._last_detection_trace = detection_trace
         if not candidates:
             _record_version(ctx, self.version)
             return []
@@ -286,59 +348,88 @@ class TorchOCRAdapter:
         recognized: list[
             tuple[_CropCandidate, str, float, list[str], int, float]
         ] = []
-        with self._lock, torch.inference_mode():
-            for batch_index, batch in enumerate(
-                _recognition_batches(candidates, self._recognition_batch_size)
-            ):
-                maximum_width = max(candidate.width for candidate in batch)
-                padding_ratio = _padding_ratio(batch, maximum_width)
-                height = self._preprocess["recognition_height"]
-                padded = torch.full(
-                    (len(batch), 1, height, maximum_width),
-                    float(self._preprocess["recognition_pad_value"]),
-                    dtype=torch.float32,
-                )
-                widths = torch.tensor(
-                    [candidate.width for candidate in batch], dtype=torch.long
-                )
-                for index, candidate in enumerate(batch):
-                    if candidate.tensor is None:
-                        raise TorchOCRAdapterError("internal OCR crop tensor is missing")
-                    padded[index, :, :, : candidate.width] = candidate.tensor
-                raw_logits = self._recognizer(
-                    padded.to(self._device), widths.to(self._device)
-                )
-                logits = _tensor_output(raw_logits, torch)
-                input_lengths = recognition_output_lengths(widths)
-                texts, scores = greedy_ctc_decode(logits, input_lengths, self._charset)
-                candidate_lists = (
-                    ctc_beam_decode(
-                        logits,
-                        input_lengths,
-                        self._charset,
-                        candidate_count=self._recognition_candidate_count,
-                    )
-                    if self._recognition_candidate_count > 0
-                    else [[] for _ in batch]
-                )
-                for candidate, text, score, raw_candidates in zip(
-                    batch, texts, scores, candidate_lists, strict=True
+        if self._recognizer_backend is not None:
+            recognized = self._recognize_with_backend(
+                candidates, detection_trace, ctx=ctx,
+            )
+        else:
+            with self._lock, torch.inference_mode():
+                for batch_index, batch in enumerate(
+                    _recognition_batches(candidates, self._recognition_batch_size)
                 ):
-                    if not text or score < self._recognition_threshold:
-                        continue
-                    alternatives = [
-                        value for value in raw_candidates if value != text
-                    ][: self._recognition_candidate_count]
-                    recognized.append(
-                        (
-                            candidate,
-                            text,
-                            score,
-                            alternatives,
-                            batch_index,
-                            padding_ratio,
-                        )
+                    _check_budget(ctx, "ocr_recognition_batch:before")
+                    maximum_width = max(candidate.width for candidate in batch)
+                    padding_ratio = _padding_ratio(batch, maximum_width)
+                    height = self._preprocess["recognition_height"]
+                    padded = torch.full(
+                        (len(batch), 1, height, maximum_width),
+                        float(self._preprocess["recognition_pad_value"]),
+                        dtype=torch.float32,
                     )
+                    widths = torch.tensor(
+                        [candidate.width for candidate in batch], dtype=torch.long
+                    )
+                    for index, candidate in enumerate(batch):
+                        if candidate.tensor is None:
+                            raise TorchOCRAdapterError("internal OCR crop tensor is missing")
+                        padded[index, :, :, : candidate.width] = candidate.tensor
+                    raw_logits = self._recognizer(
+                        padded.to(self._device), widths.to(self._device)
+                    )
+                    logits = _tensor_output(raw_logits, torch)
+                    input_lengths = recognition_output_lengths(widths)
+                    texts, scores = greedy_ctc_decode(logits, input_lengths, self._charset)
+                    candidate_lists = (
+                        ctc_beam_decode(
+                            logits,
+                            input_lengths,
+                            self._charset,
+                            candidate_count=self._recognition_candidate_count,
+                        )
+                        if self._recognition_candidate_count > 0
+                        else [[] for _ in batch]
+                    )
+                    for candidate, text, score, raw_candidates in zip(
+                        batch, texts, scores, candidate_lists, strict=True
+                    ):
+                        if not text or score < self._recognition_threshold:
+                            for entry in detection_trace:
+                                if (
+                                    entry.get("view_id") == candidate.view.view_id
+                                    and entry.get("detection_index") == candidate.detection_index
+                                    and entry.get("recognition_attempted")
+                                ):
+                                    entry["recognition_accepted"] = False
+                                    entry["outcome"] = "rejected"
+                                    entry["reason"] = (
+                                        "empty_recognition" if not text else "below_recognition_threshold"
+                                    )
+                                    entry["rec_score"] = score
+                                    entry["raw_text"] = text or None
+                            continue
+                        alternatives = [
+                            value for value in raw_candidates if value != text
+                        ][: self._recognition_candidate_count]
+                        recognized.append(
+                            (
+                                candidate,
+                                text,
+                                score,
+                                alternatives,
+                                batch_index,
+                                padding_ratio,
+                            )
+                        )
+                        for entry in detection_trace:
+                            if (
+                                entry.get("view_id") == candidate.view.view_id
+                                and entry.get("detection_index") == candidate.detection_index
+                                and entry.get("recognition_attempted")
+                            ):
+                                entry["recognition_accepted"] = True
+                                entry["raw_text"] = text
+                                entry["rec_score"] = score
+                                entry["candidates"] = list(alternatives)
         _check_budget(ctx, "ocr_recognizer:after")
         recognized = _select_orientation_results(recognized)
 
@@ -363,7 +454,11 @@ class TorchOCRAdapter:
             recognition_padding_ratio,
         ) in recognized:
             detector_score = candidate.detector_box.score
-            score = math.sqrt(max(0.0, detector_score * recognition_score))
+            raw_score = math.sqrt(max(0.0, detector_score * recognition_score))
+            # Word-level calibration: correct length-dependent overconfidence.
+            from pcbparse.association.ocr_calibration import calibrate_score
+
+            score = calibrate_score(raw_score, text)
             image_identity = candidate.view.sha256 or hashlib.sha256(
                 candidate.view.image.convert("RGB").tobytes()
             ).hexdigest()
@@ -440,6 +535,57 @@ class TorchOCRAdapter:
         _record_version(ctx, self.version)
         return output
 
+    def _recognize_with_backend(
+        self,
+        candidates: list[_CropCandidate],
+        detection_trace: list[dict[str, Any]],
+        *, ctx: Any = None,
+    ) -> list[tuple[_CropCandidate, str, float, list[str], int, float]]:
+        """Recognize crops via an external ``RecognizerBackend``."""
+        backend = self._recognizer_backend
+        np_crops = [
+            c.np_crop if c.np_crop is not None else _crop_to_np(c.view, c.crop_box, rotation_degrees=c.orientation_degrees)
+            for c in candidates
+        ]
+        from pcbparse.perception.recognizer_backend import PaddleRecognizerBackend
+        if isinstance(backend, PaddleRecognizerBackend):
+            results = backend.recognize_crops(
+                np_crops, budget_check=lambda: _check_budget(ctx, "external_ocr_batch"),
+            )
+        else:
+            _check_budget(ctx, "external_ocr:before")
+            results = backend.recognize_crops(np_crops)
+            _check_budget(ctx, "external_ocr:after")
+        recognized: list[tuple[_CropCandidate, str, float, list[str], int, float]] = []
+        for candidate, (text, score) in zip(candidates, results, strict=True):
+            if not text or score < self._recognition_threshold:
+                for entry in detection_trace:
+                    if (
+                        entry.get("view_id") == candidate.view.view_id
+                        and entry.get("detection_index") == candidate.detection_index
+                        and entry.get("recognition_attempted")
+                    ):
+                        entry["recognition_accepted"] = False
+                        entry["outcome"] = "rejected"
+                        entry["reason"] = (
+                            "empty_recognition" if not text else "below_recognition_threshold"
+                        )
+                        entry["rec_score"] = score
+                        entry["raw_text"] = text or None
+                continue
+            recognized.append((candidate, text, score, [], 0, 0.0))
+            for entry in detection_trace:
+                if (
+                    entry.get("view_id") == candidate.view.view_id
+                    and entry.get("detection_index") == candidate.detection_index
+                    and entry.get("recognition_attempted")
+                ):
+                    entry["recognition_accepted"] = True
+                    entry["raw_text"] = text
+                    entry["rec_score"] = score
+                    entry["candidates"] = []
+        return recognized
+
 
 def factory(path: str | Path, entry: Mapping[str, Any]) -> TorchOCRAdapter:
     """Load a hash-bound unified bundle as an ``OCRProvider``."""
@@ -481,7 +627,7 @@ def factory(path: str | Path, entry: Mapping[str, Any]) -> TorchOCRAdapter:
             raise
         raise TorchOCRAdapterError(str(exc)) from exc
     preprocess = bundle.preprocess
-    return TorchOCRAdapter(
+    adapter = TorchOCRAdapter(
         bundle,
         device=str(resolved_device),
         detector_threshold=_entry_number(
@@ -509,6 +655,13 @@ def factory(path: str | Path, entry: Mapping[str, Any]) -> TorchOCRAdapter:
             entry, "recognition_candidate_count", default=0
         ),
     )
+    backend_spec = _entry_value(entry, "recognizer_backend", default=None)
+    if backend_spec is not None:
+        adapter._recognizer_backend = _load_recognizer_backend(backend_spec)
+        adapter.version = (
+            f"torch-ocr/{bundle.version}+{adapter._recognizer_backend.version}"
+        )
+    return adapter
 
 
 load = factory
@@ -567,26 +720,99 @@ def _is_vertical_crop(crop_box: tuple[int, int, int, int]) -> bool:
     return width > 0 and height >= width * 1.25
 
 
+def _is_wide_crop(crop_box: tuple[int, int, int, int]) -> bool:
+    width = crop_box[2] - crop_box[0]
+    height = crop_box[3] - crop_box[1]
+    return height > 0 and width >= height * 3.0
+
+
+def _crop_to_np(
+    view: ImageView,
+    crop_box: tuple[int, int, int, int],
+    *,
+    rotation_degrees: int = 0,
+) -> Any:
+    """Extract a crop as a grayscale numpy array for external recognizer backends."""
+    source_crop = view.image.crop(crop_box).convert("L")
+    crop = source_crop
+    if rotation_degrees == 90:
+        crop = source_crop.rotate(90, expand=True, resample=Image.Resampling.BILINEAR)
+    try:
+        return np.asarray(crop, dtype=np.uint8).copy()
+    finally:
+        crop.close()
+        if crop is not source_crop:
+            source_crop.close()
+
+
 def _select_orientation_results(
     recognized: Sequence[tuple[_CropCandidate, str, float, list[str], int, float]],
 ) -> list[tuple[_CropCandidate, str, float, list[str], int, float]]:
-    """Keep the highest-confidence orientation for each detector box."""
+    """Keep the best orientation for each detector box.
 
+    Uses calibrated confidence (recognition score + text quality signals)
+    rather than raw recognition score alone.  When scores are close, prefers
+    the text that matches a known grammar pattern (designator, pin number,
+    value) and prefers 0° over 90° as a deterministic tie-breaker.
+    """
     selected: dict[tuple[int, int], tuple[_CropCandidate, str, float, list[str], int, float]] = {}
     for item in recognized:
         candidate = item[0]
+        text = item[1]
+        score = item[2]
         key = (candidate.view_index, candidate.detection_index)
         current = selected.get(key)
         if current is None:
             selected[key] = item
             continue
+        current_text = current[1]
+        current_score = current[2]
         current_candidate = current[0]
-        if item[2] > current[2] + 1e-9 or (
-            abs(item[2] - current[2]) <= 1e-9
+        item_quality = _orientation_quality(text, score)
+        current_quality = _orientation_quality(current_text, current_score)
+        if item_quality > current_quality + 1e-9 or (
+            abs(item_quality - current_quality) <= 1e-9
             and candidate.orientation_degrees < current_candidate.orientation_degrees
         ):
             selected[key] = item
     return list(selected.values())
+
+
+def _orientation_quality(text: str, score: float) -> float:
+    """Combined quality score for orientation selection.
+
+    Weights: 70% recognition score + 20% structure validity + 10% charset.
+    """
+    base = max(0.0, min(1.0, float(score)))
+    structure = 1.0 if _text_has_structure(text) else 0.0
+    charset = 1.0 if _text_is_clean_charset(text) else 0.0
+    return 0.70 * base + 0.20 * structure + 0.10 * charset
+
+
+_TEXT_STRUCTURE_PATTERNS = (
+    __import__("re").compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$"),          # designator
+    __import__("re").compile(r"^[0-9]{1,3}$"),                       # pin number
+    __import__("re").compile(r"^(?:[A-Z]{1,2}[0-9]{1,2}|[0-9]{1,2}[A-Z]{1,2})$"),  # alnum pin
+    __import__("re").compile(r"^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*[kKmMuUnNpPFfHhVvAaWwRrΩµ%]*$"),  # value
+)
+
+
+def _text_has_structure(text: str) -> bool:
+    stripped = text.strip()
+    if any(p.fullmatch(stripped) for p in _TEXT_STRUCTURE_PATTERNS):
+        return True
+    # Known net/power names are structurally valid.
+    from pcbparse.association.ocr_dictionary import NET_DICTIONARY
+
+    return stripped.upper() in NET_DICTIONARY
+
+
+def _text_is_clean_charset(text: str) -> bool:
+    """Whether all chars are common ASCII alphanumeric/symbols (no noise)."""
+    stripped = text.strip()
+    return bool(stripped) and all(
+        ch.isalnum() or ch in "._+-/Ωµ%," for ch in stripped
+    )
 
 
 def _recognition_batches(
@@ -686,6 +912,26 @@ def _probability(value: Any, name: str) -> float:
     return number
 
 
+def _view_bbox_to_original(
+    x1: float, y1: float, x2: float, y2: float, view: Any
+) -> list[float]:
+    """Restore a view-local bbox to original-image coordinates via the transform."""
+    from pcbparse.ir.models import Point
+
+    corners = [
+        view.to_original(Point(x=x1, y=y1)),
+        view.to_original(Point(x=x2, y=y1)),
+        view.to_original(Point(x=x1, y=y2)),
+        view.to_original(Point(x=x2, y=y2)),
+    ]
+    return [
+        min(p.x for p in corners),
+        min(p.y for p in corners),
+        max(p.x for p in corners),
+        max(p.y for p in corners),
+    ]
+
+
 def _box_has_source_pixel_support(
     x1: float, y1: float, x2: float, y2: float
 ) -> bool:
@@ -723,6 +969,42 @@ def _require_torch() -> Any:
         raise TorchOCRAdapterError(
             "PyTorch is required for the OCR adapter; use the project .venv-train runtime"
         ) from exc
+
+
+def _load_recognizer_backend(spec: Any) -> Any:
+    """Instantiate a ``RecognizerBackend`` from a string or mapping spec.
+
+    A plain string is interpreted as a PaddleOCR model name (e.g.
+    ``"en_PP-OCRv5_mobile_rec"``).  A mapping with ``type``/``class`` keys
+    selects a fully-qualified adapter class.
+    """
+    if isinstance(spec, str):
+        from pcbparse.perception.recognizer_backend import PaddleRecognizerBackend
+
+        return PaddleRecognizerBackend(model_name=spec)
+    if isinstance(spec, Mapping):
+        class_path = spec.get("class") or spec.get("type")
+        if not isinstance(class_path, str) or not class_path:
+            raise TorchOCRAdapterError(
+                "recognizer_backend mapping requires a 'class' or 'type' key"
+            )
+        module_name, _, attr_name = class_path.rpartition(":")
+        if not module_name or not attr_name:
+            raise TorchOCRAdapterError(
+                f"recognizer_backend class must be 'module:attr', got {class_path!r}"
+            )
+        try:
+            module = importlib.import_module(module_name)
+            cls = getattr(module, attr_name)
+        except (ImportError, AttributeError) as exc:
+            raise TorchOCRAdapterError(
+                f"cannot import recognizer_backend class {class_path!r}"
+            ) from exc
+        kwargs = {k: v for k, v in spec.items() if k not in ("class", "type")}
+        return cls(**kwargs)
+    raise TorchOCRAdapterError(
+        f"recognizer_backend must be a string or mapping, got {type(spec).__name__}"
+    )
 
 
 __all__ = ["TorchOCRAdapter", "TorchOCRAdapterError", "factory", "load"]

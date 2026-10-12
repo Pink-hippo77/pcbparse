@@ -120,9 +120,16 @@ class WireSegment(StrictModel):
     score: float = Field(default=1.0, ge=0.0, le=1.0)
     source_edge_id: str | None = None
     source_polyline_id: str | None = None
+    # Exact duplicate observations may belong to several polylines. Preserve
+    # them after deduplication so observed turns remain verifiable.
+    source_polyline_ids: list[str] = Field(default_factory=list)
     synthetic: bool = False
     channel: str = "default"
     evidence: list[Evidence] = Field(default_factory=list)
+
+    @property
+    def observed_polyline_ids(self) -> tuple[str, ...]:
+        return tuple(sorted({value for value in (self.source_polyline_id, *self.source_polyline_ids) if value}))
 
 
 class Junction(StrictModel):

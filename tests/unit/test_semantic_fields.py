@@ -129,6 +129,51 @@ class SemanticFieldInferenceTests(unittest.TestCase):
         infer_semantic_fields(self.components, self.pins, [token], self.segments)
         self.assertEqual("pinnumber", token.details)
 
+    def test_micro_values_survive_nfkc_without_changing_raw_text(self) -> None:
+        for unit in ("µ", "μ"):
+            with self.subTest(unit=unit):
+                value = f"1 {unit}F"
+                token = _token("text:micro", value, BBox(x1=120, y1=135, x2=145, y2=142))
+                infer_semantic_fields(self.components, self.pins, [token], [])
+                self.assertEqual("value", token.details)
+                self.assertEqual(value, token.raw_text)
+
+    def test_catalog_model_inside_body_is_name_and_does_not_become_key(self) -> None:
+        from pcbparse.association.text_component import resolve_component_keys
+        component = _component("component:box", "Box", BBox(x1=100, y1=100, x2=300, y2=200))
+        for level in ("global", "component"):
+            with self.subTest(level=level):
+                token = _token("text:model", "LM385", BBox(x1=140, y1=130, x2=220, y2=150),
+                               level=level, component_id=component.internal_id if level == "component" else None)
+                infer_semantic_fields([component], [], [token], [], known_model_names={"LM385"})
+                self.assertEqual("searchname", token.details)
+                self.assertEqual({}, resolve_component_keys([component], [token]))
+                self.assertIsNone(component.key)
+                self.assertEqual("LM385", token.raw_text)
+
+    def test_catalog_requires_exact_name_and_actual_body_not_roi_halo(self) -> None:
+        component = _component("component:box", "Box", BBox(x1=100, y1=100, x2=300, y2=200))
+        for raw, box, category in (
+            ("LM385X", (140, 130, 220, 150), "Box"),
+            ("LM385", (140, 80, 220, 95), "Box"),
+            ("LM385", (140, 130, 220, 150), "Resistor"),
+            ("SW123", (140, 130, 220, 150), "Box"),
+        ):
+            with self.subTest(raw=raw, box=box, category=category):
+                component.category = category
+                token = _token("text:guard", raw, BBox(x1=box[0], y1=box[1], x2=box[2], y2=box[3]),
+                               level="component", component_id=component.internal_id)
+                infer_semantic_fields([component], [], [token], [], known_model_names={"LM385", "SW123"})
+                self.assertNotEqual("searchname", token.details)
+
+    def test_model_catalog_does_not_reclassify_side_pin_or_authoritative_token(self) -> None:
+        component = self.components[1]
+        for level, details in (("side_strip", ""), ("component", "pinname")):
+            token = _token("text:pin", "LM385", BBox(x1=310, y1=110, x2=350, y2=125),
+                           level=level, component_id=component.internal_id, details=details)
+            infer_semantic_fields([component], [], [token], [], known_model_names={"LM385"})
+            self.assertEqual("pinname", token.details)
+
     def test_box_global_title_is_search_name(self) -> None:
         component = _component(
             "component:box", "Box", BBox(x1=100, y1=100, x2=300, y2=300)
@@ -163,6 +208,27 @@ class SemanticFieldInferenceTests(unittest.TestCase):
         token = _token("text:t5", "+5V_OUT", BBox(x1=40, y1=44, x2=75, y2=52))
         infer_semantic_fields(self.components, self.pins, [token], self.segments)
         self.assertEqual("netlabel", token.details)
+
+    def test_unbound_numbers_near_wire_cannot_create_signal_identity(self) -> None:
+        for value in ("12", "19", "99", "123"):
+            with self.subTest(value=value):
+                token = _token("text:number", value, BBox(x1=52, y1=42, x2=65, y2=49))
+                infer_semantic_fields([], [], [token], self.segments)
+                self.assertEqual("", token.details)
+                self.assertIsNone(token.component_id)
+                self.assertIsNone(token.pin_id)
+                self.assertEqual(value, token.raw_text)
+
+    def test_numeric_net_identity_requires_typed_evidence(self) -> None:
+        token = _token("text:typed-number", "19", BBox(x1=52, y1=42, x2=65, y2=49),
+                       details="netlabel")
+        infer_semantic_fields([], [], [token], self.segments)
+        self.assertEqual("netlabel", token.details)
+
+    def test_number_near_pin_still_has_pin_semantics(self) -> None:
+        token = _token("text:pin-number", "19", BBox(x1=102, y1=96, x2=109, y2=103))
+        infer_semantic_fields(self.components, self.pins, [token], self.segments)
+        self.assertEqual("pinnumber", token.details)
 
     def test_single_character_garbage_not_classified(self) -> None:
         token = _token(

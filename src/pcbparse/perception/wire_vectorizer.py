@@ -15,10 +15,10 @@ simplification.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from math import hypot
-from typing import Iterable, Literal, Sequence
+from typing import Any, Iterable, Literal, Sequence
 
 import numpy as np
 
@@ -26,6 +26,13 @@ import numpy as np
 Coordinate = tuple[float, float]
 Pixel = tuple[int, int]
 JunctionKind = Literal["endpoint", "t_junction", "connected_cross", "ambiguous"]
+BreakCause = Literal[
+    "mask_gap",
+    "skeleton_gap",
+    "stitch_gap",
+    "junction_split",
+    "simplification",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +88,79 @@ class WireVectorizerConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualGapRepair:
+    """A mask-level gap bridge that is not visible solid wire.
+
+    ``*_pixel`` values are pre-mapping ``(row, column)`` mask pixels used to
+    associate the repair with skeleton polylines.  ``*_point`` values are the
+    mapped ``(x, y)`` coordinates of the same pixels, so callers can restore
+    them into the original-image frame.
+    """
+
+    repair_id: str
+    left_component_id: int
+    right_component_id: int
+    bridge_gap_px: float
+    closing_radius: int
+    virtual: bool = True
+    solid_wire: bool = False
+    left_pixel: Pixel | None = None
+    right_pixel: Pixel | None = None
+    bridge_pixel: Pixel | None = None
+    left_point: Coordinate | None = None
+    right_point: Coordinate | None = None
+    bridge_point: Coordinate | None = None
+    added_pixels: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        def _pair(value: Pixel | Coordinate | None) -> list[float] | None:
+            return None if value is None else [float(value[0]), float(value[1])]
+
+        return {
+            "repair_id": self.repair_id,
+            "left_component_id": self.left_component_id,
+            "right_component_id": self.right_component_id,
+            "bridge_gap_px": self.bridge_gap_px,
+            "closing_radius": self.closing_radius,
+            "virtual": self.virtual,
+            "solid_wire": self.solid_wire,
+            "left_pixel": _pair(self.left_pixel),
+            "right_pixel": _pair(self.right_pixel),
+            "bridge_pixel": _pair(self.bridge_pixel),
+            "left_point": _pair(self.left_point),
+            "right_point": _pair(self.right_point),
+            "bridge_point": _pair(self.bridge_point),
+            "added_pixels": self.added_pixels,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BreakLineageRecord:
+    """Why two nearby polyline ends remain split (or were virtually repaired)."""
+
+    break_id: str
+    left_polyline_id: str | None
+    right_polyline_id: str | None
+    gap_distance_px: float
+    cause: BreakCause
+    repaired: bool = False
+    virtual: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "break_id": self.break_id,
+            "left_polyline_id": self.left_polyline_id,
+            "right_polyline_id": self.right_polyline_id,
+            "gap_distance_px": self.gap_distance_px,
+            "cause": self.cause,
+            "repaired": self.repaired,
+            "virtual": self.virtual,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SkeletonPolyline:
     """One junction-to-junction (or endpoint-to-junction) skeleton path."""
 
@@ -88,6 +168,9 @@ class SkeletonPolyline:
     points: tuple[Coordinate, ...]
     pixel_count: int
     length: float
+    source_namespace: str = ""
+    source_tile: str = ""
+    virtual_repair_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if len(self.points) < 2:
@@ -114,6 +197,8 @@ class WireVectorizationResult:
     foreground_pixels: int
     skeleton_pixels: int
     thinning_iterations: int
+    breaks: tuple[BreakLineageRecord, ...] = ()
+    virtual_repairs: tuple[VirtualGapRepair, ...] = ()
 
 
 def vectorize_wire_mask(
@@ -141,8 +226,12 @@ def vectorize_wire_mask(
     if not id_namespace or any(char.isspace() for char in id_namespace):
         raise ValueError("id_namespace must be a non-empty token")
 
+    virtual_repairs: list[VirtualGapRepair] = []
     if options.gap_closing_radius:
-        binary = _binary_close(binary, options.gap_closing_radius)
+        binary, virtual_repairs = _binary_close_tracking_repairs(
+            binary, options.gap_closing_radius, id_namespace=id_namespace
+        )
+        virtual_repairs = _map_repair_points(virtual_repairs, ox, oy, sx, sy)
     if options.maximum_hole_area:
         binary = _fill_small_holes(binary, options.maximum_hole_area)
     if options.minimum_component_pixels > 1:
@@ -157,7 +246,15 @@ def vectorize_wire_mask(
             f"configured tile limit {options.maximum_foreground_pixels}; split it into tiles"
         )
     if foreground_pixels == 0:
-        return WireVectorizationResult((), (), 0, 0, 0)
+        return WireVectorizationResult(
+            (),
+            (),
+            0,
+            0,
+            0,
+            breaks=(),
+            virtual_repairs=tuple(virtual_repairs),
+        )
 
     skeleton, thinning_iterations = _zhang_suen(binary, options.maximum_thinning_iterations)
     nodes, adjacency = _build_pixel_graph(skeleton)
@@ -182,6 +279,13 @@ def vectorize_wire_mask(
             points=simplified,
             pixel_count=len(pixel_path),
             length=length,
+            source_namespace=id_namespace,
+            source_tile=f"{id_namespace}@{ox:.6g},{oy:.6g}",
+            virtual_repair_ids=_polyline_repair_ids(
+                pixel_path,
+                virtual_repairs,
+                reach=options.gap_closing_radius + 1.0,
+            ),
         )
         path_records.append((pixel_path[0], pixel_path[-1], polyline))
 
@@ -220,13 +324,338 @@ def vectorize_wire_mask(
         )
 
     junctions.sort(key=lambda item: (item.point[1], item.point[0], item.kind, item.internal_id))
+    polylines = tuple(item[2] for item in path_records)
+    breaks = classify_break_lineage(
+        polylines,
+        junctions,
+        max_gap_px=float(max(2 * options.gap_closing_radius, options.rdp_epsilon * 4.0, 8.0)),
+        gap_closing_radius=options.gap_closing_radius,
+        rdp_epsilon=options.rdp_epsilon,
+        virtual_repairs=virtual_repairs,
+    )
     return WireVectorizationResult(
-        polylines=tuple(item[2] for item in path_records),
+        polylines=polylines,
         junctions=tuple(junctions),
         foreground_pixels=foreground_pixels,
         skeleton_pixels=len(nodes),
         thinning_iterations=thinning_iterations,
+        breaks=breaks,
+        virtual_repairs=tuple(virtual_repairs),
     )
+
+
+def classify_break_lineage(
+    polylines: Sequence[SkeletonPolyline],
+    junctions: Sequence[WireJunctionCandidate],
+    *,
+    max_gap_px: float = 8.0,
+    gap_closing_radius: int = 0,
+    rdp_epsilon: float = 0.75,
+    virtual_repairs: Sequence[VirtualGapRepair] = (),
+) -> tuple[BreakLineageRecord, ...]:
+    """Decompose residual polyline splits into mask/skeleton/stitch causes.
+
+    ``junction_split`` pairs are intentional (shared junction) and are recorded
+    only as lineage context.  Virtual gap repairs stay marked ``virtual=True``
+    and are never treated as solid visible wire.
+    """
+
+    if max_gap_px < 0.0:
+        raise ValueError("max_gap_px must be non-negative")
+    items = list(polylines)
+    junction_polylines: dict[str, set[str]] = {}
+    for junction in junctions:
+        junction_polylines[junction.internal_id] = set(junction.polyline_ids)
+
+    free_ends: list[tuple[str, Coordinate, str]] = []
+    for polyline in items:
+        free_ends.append((polyline.internal_id, polyline.points[0], polyline.source_namespace))
+        free_ends.append((polyline.internal_id, polyline.points[-1], polyline.source_namespace))
+
+    shared_junction_pairs: set[tuple[str, str]] = set()
+    for members in junction_polylines.values():
+        ordered = sorted(members)
+        for index, left in enumerate(ordered):
+            for right in ordered[index + 1 :]:
+                shared_junction_pairs.add((left, right))
+
+    records: list[BreakLineageRecord] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for left_index, (left_id, left_point, left_ns) in enumerate(free_ends):
+        for right_id, right_point, right_ns in free_ends[left_index + 1 :]:
+            if left_id == right_id:
+                continue
+            pair = tuple(sorted((left_id, right_id)))
+            if pair in seen_pairs:
+                continue
+            gap = hypot(left_point[0] - right_point[0], left_point[1] - right_point[1])
+            if gap > max_gap_px:
+                continue
+            seen_pairs.add(pair)
+            if pair in shared_junction_pairs:
+                cause: BreakCause = "junction_split"
+                repaired = True
+                virtual = False
+            elif left_ns and right_ns and left_ns != right_ns:
+                cause = "stitch_gap"
+                repaired = False
+                virtual = False
+            elif gap_closing_radius > 0 and gap <= 2.0 * gap_closing_radius:
+                # Closing can bridge this gap only as a virtual repair.  A
+                # residual split is therefore not solid visible wire.
+                matched_repair = any(
+                    item.bridge_gap_px + 1.0 >= gap for item in virtual_repairs
+                )
+                cause = "mask_gap"
+                repaired = matched_repair
+                virtual = matched_repair
+            elif gap <= max(rdp_epsilon, 1.0):
+                cause = "skeleton_gap"
+                repaired = False
+                virtual = False
+            elif gap_closing_radius == 0 and gap <= max(2.0, 2.0 * rdp_epsilon):
+                cause = "simplification"
+                repaired = False
+                virtual = False
+            else:
+                cause = "mask_gap"
+                repaired = False
+                virtual = False
+            records.append(
+                BreakLineageRecord(
+                    break_id=f"break:{pair[0]}:{pair[1]}",
+                    left_polyline_id=pair[0],
+                    right_polyline_id=pair[1],
+                    gap_distance_px=gap,
+                    cause=cause,
+                    repaired=repaired,
+                    virtual=virtual,
+                    metadata={
+                        "gap_closing_radius": gap_closing_radius,
+                        "rdp_epsilon": rdp_epsilon,
+                        "left_namespace": left_ns,
+                        "right_namespace": right_ns,
+                        "left_point": [float(left_point[0]), float(left_point[1])],
+                        "right_point": [float(right_point[0]), float(right_point[1])],
+                    },
+                )
+            )
+
+    records.sort(key=lambda item: (item.cause, item.gap_distance_px, item.break_id))
+    return tuple(records)
+
+
+def _polyline_repair_ids(
+    pixel_path: Sequence[Pixel],
+    repairs: Sequence[VirtualGapRepair],
+    *,
+    reach: float,
+) -> tuple[str, ...]:
+    """Repair ids whose synthetic bridge pixels this skeleton path traverses."""
+
+    if not repairs:
+        return ()
+    hits: set[str] = set()
+    for repair in repairs:
+        bridge = repair.bridge_pixel
+        if bridge is None:
+            continue
+        for row, column in pixel_path:
+            if hypot(row - bridge[0], column - bridge[1]) <= reach:
+                hits.add(repair.repair_id)
+                break
+    return tuple(sorted(hits))
+
+
+def _map_repair_points(
+    repairs: Sequence[VirtualGapRepair],
+    ox: float,
+    oy: float,
+    sx: float,
+    sy: float,
+) -> list[VirtualGapRepair]:
+    """Restore repair pixels into the mapped polyline coordinate frame."""
+
+    def map_pixel(pixel: Pixel | None) -> Coordinate | None:
+        if pixel is None:
+            return None
+        row, column = pixel
+        return (ox + column * sx, oy + row * sy)
+
+    return [
+        replace(
+            repair,
+            left_point=map_pixel(repair.left_pixel),
+            right_point=map_pixel(repair.right_pixel),
+            bridge_point=map_pixel(repair.bridge_pixel),
+        )
+        for repair in repairs
+    ]
+
+
+def _binary_close_tracking_repairs(
+    mask: np.ndarray,
+    radius: int,
+    *,
+    id_namespace: str = "",
+) -> tuple[np.ndarray, list[VirtualGapRepair]]:
+    """Close small mask gaps and record each bridge as a virtual repair."""
+
+    labels_before = _label_components(mask)
+    closed = _binary_close(mask, radius)
+    repairs: list[VirtualGapRepair] = []
+    if radius <= 0:
+        return closed, repairs
+    labels_after = _label_components(closed)
+    added = np.asarray(closed, dtype=bool) & ~np.asarray(mask, dtype=bool)
+    merged: dict[int, set[int]] = {}
+    for row, column in np.argwhere(mask):
+        before = int(labels_before[row, column])
+        after = int(labels_after[row, column])
+        if before <= 0 or after <= 0:
+            continue
+        merged.setdefault(after, set()).add(before)
+    for after_id, before_ids in sorted(merged.items()):
+        ordered = sorted(before_ids)
+        if len(ordered) < 2:
+            continue
+        for index, left_id in enumerate(ordered):
+            for right_id in ordered[index + 1 :]:
+                gap, left_pixel, right_pixel = _closest_component_pair(
+                    labels_before, left_id, right_id, radius
+                )
+                bridge_pixel = (
+                    (
+                        (left_pixel[0] + right_pixel[0]) // 2,
+                        (left_pixel[1] + right_pixel[1]) // 2,
+                    )
+                    if left_pixel is not None and right_pixel is not None
+                    else None
+                )
+                added_count = 0
+                if bridge_pixel is not None:
+                    reach = float(radius) + 1.0
+                    for row, column in np.argwhere(added):
+                        if (
+                            hypot(
+                                int(row) - bridge_pixel[0],
+                                int(column) - bridge_pixel[1],
+                            )
+                            <= reach
+                        ):
+                            added_count += 1
+                namespace_prefix = f"{id_namespace}:" if id_namespace else ""
+                repairs.append(
+                    VirtualGapRepair(
+                        repair_id=(
+                            f"{namespace_prefix}virtual-gap:{left_id}:{right_id}:r{radius}"
+                        ),
+                        left_component_id=left_id,
+                        right_component_id=right_id,
+                        bridge_gap_px=gap,
+                        closing_radius=radius,
+                        virtual=True,
+                        solid_wire=False,
+                        left_pixel=left_pixel,
+                        right_pixel=right_pixel,
+                        bridge_pixel=bridge_pixel,
+                        added_pixels=added_count,
+                    )
+                )
+    return closed, repairs
+
+
+def _label_components(mask: np.ndarray) -> np.ndarray:
+    labels = np.zeros(mask.shape, dtype=np.int32)
+    current = 0
+    height, width = mask.shape
+    for raw_row, raw_column in np.argwhere(mask):
+        start = (int(raw_row), int(raw_column))
+        if labels[start]:
+            continue
+        current += 1
+        queue: deque[Pixel] = deque((start,))
+        labels[start] = current
+        while queue:
+            row, column = queue.popleft()
+            for row_delta in (-1, 0, 1):
+                for column_delta in (-1, 0, 1):
+                    if not (row_delta or column_delta):
+                        continue
+                    next_row = row + row_delta
+                    next_column = column + column_delta
+                    if (
+                        0 <= next_row < height
+                        and 0 <= next_column < width
+                        and mask[next_row, next_column]
+                        and not labels[next_row, next_column]
+                    ):
+                        labels[next_row, next_column] = current
+                        queue.append((next_row, next_column))
+    return labels
+
+
+def _closest_component_pair(
+    labels: np.ndarray,
+    left_id: int,
+    right_id: int,
+    radius: int,
+) -> tuple[float, Pixel | None, Pixel | None]:
+    """Closest pixel pair between two mask components, bounded by the radius."""
+
+    left_pixels = np.argwhere(labels == left_id)
+    right_pixels = np.argwhere(labels == right_id)
+    if left_pixels.size == 0 or right_pixels.size == 0:
+        return float(2 * radius), None, None
+    # Bound the search by the closing reach so gap estimates stay local; a
+    # square closing of radius r can bridge empty runs up to 2*r pixels, i.e.
+    # closest-pixel distances up to 2*r + 1.
+    reach = float(2 * radius + 1)
+    best = reach
+    best_pair: tuple[Pixel, Pixel] | None = None
+    offsets: list[tuple[int, int, float]] | None = None
+    right_index: set[Pixel] | None = None
+    if np.isfinite(reach) and 0 <= reach <= 31:
+        bound = int(reach)
+        local_offsets = [
+            (dy, dx, hypot(dy, dx))
+            for dy in range(-bound, bound + 1)
+            for dx in range(-bound, bound + 1)
+            if hypot(dy, dx) <= reach
+        ]
+        # Small components cost less to scan directly. For large components,
+        # only integer pixels within the original closing reach can qualify.
+        if len(right_pixels) > len(local_offsets):
+            offsets = local_offsets
+            right_index = {(int(row), int(column)) for row, column in right_pixels}
+    for left_row, left_column in left_pixels:
+        left = (int(left_row), int(left_column))
+        if offsets is not None:
+            # Preserve row-major right-pixel ordering so equal-distance pairs
+            # choose exactly the same endpoints as the full Cartesian scan.
+            for dy, dx, gap in offsets:
+                right = (left[0] + dy, left[1] + dx)
+                if right in right_index and (best_pair is None or gap < best):
+                    best, best_pair = gap, (left, right)
+        else:
+            for right_row, right_column in right_pixels:
+                right = (int(right_row), int(right_column))
+                gap = float(hypot(left[0] - right[0], left[1] - right[1]))
+                if gap <= reach and (best_pair is None or gap < best):
+                    best, best_pair = gap, (left, right)
+    if best_pair is None:
+        return float(2 * radius), None, None
+    return max(0.0, best - 1.0), best_pair[0], best_pair[1]
+
+
+def _estimate_component_gap(
+    labels: np.ndarray,
+    left_id: int,
+    right_id: int,
+    radius: int,
+) -> float:
+    gap, _left, _right = _closest_component_pair(labels, left_id, right_id, radius)
+    return gap
 
 
 def thin_binary_mask(
@@ -729,10 +1158,14 @@ def _squared_distance(left: Coordinate, right: Coordinate) -> float:
 
 
 __all__ = [
+    "BreakCause",
+    "BreakLineageRecord",
     "SkeletonPolyline",
+    "VirtualGapRepair",
     "WireJunctionCandidate",
     "WireVectorizationResult",
     "WireVectorizerConfig",
+    "classify_break_lineage",
     "deduplicate_polylines",
     "thin_binary_mask",
     "vectorize_wire_mask",

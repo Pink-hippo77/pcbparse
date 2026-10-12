@@ -82,10 +82,18 @@ def validate_schema(ir: CircuitIR) -> list[Diagnostic]:
 
     pin_numbers: dict[tuple[str, str], list[str]] = defaultdict(list)
     for pin in ir.pins:
-        # Empty/placeholder pin numbers are representable: the official guide
-        # requires stable automatic pin_1, pin_2, ... numbering at conversion.
         if pin.component_id:
-            for number in split_official_pin_numbers(pin.number):
+            numbers = split_official_pin_numbers(pin.number)
+            if not numbers:
+                issues.append(
+                    error(
+                        "PIN.MISSING_NUMBER",
+                        "pin number is empty/placeholder and cannot be represented officially",
+                        pin.internal_id,
+                        stage="schema",
+                    )
+                )
+            for number in numbers:
                 pin_numbers[(pin.component_id, number)].append(pin.internal_id)
     for (component_id, number), pin_ids in sorted(pin_numbers.items()):
         if len(pin_ids) > 1:

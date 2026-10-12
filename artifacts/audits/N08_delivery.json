@@ -1,0 +1,117 @@
+{
+  "task_id": "N08",
+  "status": "validated",
+  "scope": "validation pruning, official serialization, and batch failure traceability",
+  "source_commit": "3510d644122510b11775f4c834e738faaca30287",
+  "dirty_source_manifest_path": "artifacts/audits/source_manifest.json",
+  "dirty_source_manifest_sha256": null,
+  "dirty_source_manifest_note": "The pre-existing snapshot predates this additive change; no stale hash is presented as current.",
+  "dirty_source_files": [
+    {
+      "path": "src/pcbparse/pipeline/orchestrator.py",
+      "sha256": "266aa9b74832feff9842e809d64d86f5cc0e1bb9088f8d7666c5cdac6821a15bc"
+    },
+    {
+      "path": "tests/integration/test_orchestrator.py",
+      "sha256": "09e08fcdcbe85caa9da40c7db9645e98ad1bf2761708b5578672d7c18fb5111d"
+    }
+  ],
+  "model_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "config_sha256": "4b3cb2e945611556c02163c3e0e93c0184aac75c35b36ddaf43a78c8e4b41675",
+  "input_hashes": [
+    {
+      "name": "synthetic_white_16x16_png",
+      "sha256": "e56d54b889f8dae0b9bacf8e3cb38cbaa134cc92c7176b70c405fc4c10aed5ad",
+      "usage": "orchestrator regression fixtures"
+    },
+    {
+      "name": "external_image_corpus",
+      "sha256": null,
+      "usage": "not used; no external image corpus consumed"
+    }
+  ],
+  "model_hashes": [
+    {
+      "path": "models/models.lock.json",
+      "sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+      "usage": "read-only production lock binding"
+    },
+    {
+      "path": "runtime_weights",
+      "sha256": null,
+      "usage": "not loaded in this CPU regression run"
+    }
+  ],
+  "evaluator_id": "unittest-orchestrator-plus-validation-serializer",
+  "split_role": "development_regression",
+  "sidecar_access": false,
+  "oracle_usage": "none",
+  "device_and_runtime": "CPU .venv-test; no model inference or oracle data used",
+  "changes": [
+    "src/pcbparse/pipeline/orchestrator.py: reject case-insensitive output stem collisions",
+    "src/pcbparse/pipeline/orchestrator.py: atomically write enriched error_manifest records",
+    "src/pcbparse/pipeline/orchestrator.py: bind failed image/config/stage evidence and tolerate malformed diagnostics",
+    "tests/integration/test_orchestrator.py: collision and error-manifest regression fixtures"
+  ],
+  "commands": [
+    {
+      "command": "$env:PYTHONPATH=(Resolve-Path '.\\src').Path; & .\\.venv-test\\Scripts\\python.exe -m unittest tests.integration.test_orchestrator -v",
+      "exit_code": 0,
+      "tests": 10,
+      "skipped": 0
+    },
+    {
+      "command": "$env:PYTHONPATH=(Resolve-Path '.\\src').Path; & .\\.venv-test\\Scripts\\python.exe -m unittest discover -s tests -p 'test_*.py' -v",
+      "exit_code": 0,
+      "tests": 760,
+      "skipped": 71
+    }
+  ],
+  "metrics": [
+    {
+      "name": "case_insensitive_collision_cases",
+      "numerator": 1,
+      "denominator": 1,
+      "scope": "Board.png and board.png from separate input directories",
+      "baseline": "accepted by case-sensitive stem check",
+      "candidate": "rejected before any JSON output",
+      "delta": "one overwrite path closed",
+      "eligible": 1,
+      "masked": 0
+    },
+    {
+      "name": "error_manifest_required_bindings",
+      "numerator": 5,
+      "denominator": 5,
+      "scope": "error_id, input_sha256, config_hash, failed_stage, diagnostics",
+      "baseline": "input/output/error text only",
+      "candidate": "all five fields persisted atomically",
+      "delta": "failure replay evidence is bound to image and configuration",
+      "eligible": 5,
+      "masked": 0
+    },
+    {
+      "name": "official_output_top_level_fields",
+      "numerator": 3,
+      "denominator": 3,
+      "scope": "components, pins, nets",
+      "baseline": "unchanged",
+      "candidate": "unchanged and covered by the full suite",
+      "delta": "no diagnostic leakage into official JSON",
+      "eligible": 3,
+      "masked": 0
+    }
+  ],
+  "failure_cases": [
+    {
+      "case": "duplicate output stem differing only by case",
+      "result": "rejected before serialization"
+    },
+    {
+      "case": "provider exception with string diagnostics",
+      "result": "error_manifest remains writable and preserves the original failure"
+    }
+  ],
+  "regressions": [],
+  "rollback": "Remove the additive collision/error-manifest helpers and the two orchestrator fixtures; models/models.lock.json and official output schema are unchanged."
+}

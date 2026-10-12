@@ -1,0 +1,11 @@
+{
+  "task_id": "A08",
+  "status": "validated",
+  "evaluator_id": "pin_geometry_unit_a08",
+  "sidecar_access": false,
+  "changes": ["tests/unit/test_pin_geometry_a08.py"],
+  "metrics": [{"name": "pin_geometry_tests", "numerator": 7, "denominator": 7}],
+  "known_limitations": ["4px/5px PinF1 GPU replay not run this cycle", "pipeline pin.max_detections_per_component=12 may truncate dense ICs at assignment layer"],
+  "models_lock_sha256": "af35e1299b755d03ff37889f9bb26e33601373f0f7f19db3a84468e896461413",
+  "rollback": "delete tests/unit/test_pin_geometry_a08.py"
+}

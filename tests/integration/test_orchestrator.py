@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -173,6 +174,62 @@ class OrchestratorTests(unittest.TestCase):
                 )
             self.assertFalse(list(output.glob("*.json")))
 
+    def test_batch_rejects_case_insensitive_duplicate_stems_before_writing(self) -> None:
+        """Output names must be unique on both Windows and POSIX filesystems."""
+        config = load_config("configs/pipeline.yaml")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            upper = root / "upper"
+            lower = root / "lower"
+            upper.mkdir()
+            lower.mkdir()
+            Image.new("RGB", (16, 16), "white").save(upper / "Board.png")
+            Image.new("RGB", (16, 16), "white").save(lower / "board.png")
+            output = root / "output"
+            with self.assertRaisesRegex(ValueError, "duplicate stems"):
+                infer_batch(
+                    [upper / "Board.png", lower / "board.png"],
+                    output,
+                    provider=EmptyImageProvider(),
+                    config=config,
+                    official_profile="configs/official_schema.yaml",
+                )
+            self.assertFalse(list(output.glob("*.json")))
+
+    def test_error_manifest_binds_input_config_and_failed_stage(self) -> None:
+        config = load_config("configs/pipeline.yaml")
+
+        class FailingProvider(EmptyImageProvider):
+            def build_ir(self, input_path, ctx=None):
+                error = RuntimeError("fixture failure")
+                error.diagnostics = ["diagnostic text"]
+                raise error
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image_path = root / "fixture.png"
+            Image.new("RGB", (16, 16), "white").save(image_path)
+            output = root / "output"
+            results, errors = infer_batch(
+                [image_path],
+                output,
+                provider=FailingProvider(),
+                config=config,
+                official_profile="configs/official_schema.yaml",
+            )
+
+            self.assertEqual([], results)
+            self.assertEqual(1, len(errors))
+            manifest = json.loads((output / "error_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(1, len(manifest))
+            row = manifest[0]
+            self.assertRegex(row["error_id"], r"^[0-9a-f]{64}$")
+            self.assertEqual(row["input_sha256"], errors[0]["input_sha256"])
+            self.assertEqual(row["config_hash"], errors[0]["config_hash"])
+            self.assertEqual("perception", row["failed_stage"])
+            self.assertEqual("fixture failure", row["message"])
+            self.assertEqual([{"message": "diagnostic text"}], row["diagnostics"])
+
     def test_provider_model_versions_reach_run_manifest(self) -> None:
         config = load_config("configs/pipeline.yaml")
         with tempfile.TemporaryDirectory() as directory:
@@ -260,7 +317,7 @@ class OrchestratorTests(unittest.TestCase):
                 "PIN.UNKNOWN_COMPONENT", {item.code for item in result.diagnostics}
             )
 
-    def test_degraded_projection_retains_and_auto_numbers_owned_empty_pin(self) -> None:
+    def test_degraded_projection_drops_unrepresentable_missing_number_pin(self) -> None:
         config = load_config("configs/pipeline.yaml")
         config["run"]["submission_mode"] = "degraded"
         with tempfile.TemporaryDirectory() as directory:
@@ -270,22 +327,30 @@ class OrchestratorTests(unittest.TestCase):
 
             result = infer_one(
                 image_path,
-                root / "degraded-auto-pin.json",
+                root / "degraded-missing-number.json",
                 provider=MissingNumberPinProvider(),
                 config=config,
                 official_profile="configs/official_schema.yaml",
             )
 
             self.assertEqual(
-                0,
+                1,
                 result.ir.metadata["degraded_submission_prune"]["pins_dropped"],
             )
-            self.assertEqual(["pin_1"], list(result.output["pins"]["RUN"]))
-            self.assertEqual("vbus_in", result.output["components"]["RUN"]["type"])
             self.assertEqual(
-                {"x": 8.0, "y": 8.0},
-                result.output["pins"]["RUN"]["pin_1"]["point"],
+                1,
+                result.ir.metadata["degraded_submission_prune"][
+                    "pins_dropped_missing_number"
+                ],
             )
+            self.assertEqual(
+                ["pin:run"],
+                result.ir.metadata["degraded_submission_prune"][
+                    "pin_ids_dropped_missing_number"
+                ],
+            )
+            self.assertEqual({}, result.output["pins"].get("RUN", {}))
+            self.assertEqual("vbus_in", result.output["components"]["RUN"]["type"])
 
     def test_selective_reasoning_stage_is_wired_before_validation(self) -> None:
         config = load_config("configs/pipeline.yaml")
@@ -313,6 +378,27 @@ class OrchestratorTests(unittest.TestCase):
                 )
             diagnostics = getattr(captured.exception, "diagnostics", [])
             self.assertIn("REASONING.APPLIED", {item.code for item in diagnostics})
+
+    def test_degraded_production_cannot_downgrade_strict_graph_errors(self) -> None:
+        from pcbparse.validation.common import error
+
+        config = load_config("configs/pipeline.yaml")
+        config["run"].update(profile="competition", submission_mode="degraded")
+        config["qwen"]["enabled"] = False
+        for code in ("NET.DISCONNECTED_SEGMENTS", "JUNCTION.INSUFFICIENT_BRANCHES"):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                image_path = root / "fixture.png"
+                Image.new("RGB", (32, 24), "white").save(image_path)
+                issue = error(code, "fixture strict graph failure", "net:fixture", stage="graph")
+                with mock.patch("pcbparse.pipeline.orchestrator.GraphValidator.validate", return_value=[issue]), mock.patch("pcbparse.pipeline.orchestrator.serialize_official_with_quality") as serializer:
+                    with self.assertRaises(Exception) as captured:
+                        infer_one(image_path, root / "blocked.json", provider=VersionedEmptyProvider(), config=config)
+                    serializer.assert_not_called()
+                self.assertFalse((root / "blocked.json").exists())
+                diagnostics = getattr(captured.exception, "diagnostics", [])
+                self.assertIn(code, {d.code for d in diagnostics if d.severity == "ERROR"})
+                self.assertEqual("ERROR", issue.severity)
 
     def test_junction_reasoning_precedes_graphs_and_changes_final_connectivity(self) -> None:
         config = load_config("configs/pipeline.yaml")

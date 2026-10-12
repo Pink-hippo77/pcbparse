@@ -324,23 +324,52 @@ def _pin_metrics(
 
 def _wire_metrics(ir: CircuitIR, gt: RawGroundTruth, *, tolerance: int) -> dict[str, Any]:
     expected = [item for item in gt.wires if item.mask.eligible]
-    expected_image = Image.new("L", (gt.width, gt.height), 0)
-    expected_draw = ImageDraw.Draw(expected_image)
-    for wire in expected:
-        for path in wire.paths:
-            integer_path = [(round(x), round(y)) for x, y in path]
-            if len(integer_path) == 1:
-                expected_draw.point(integer_path[0], fill=255)
-            elif len(integer_path) >= 2:
-                expected_draw.line(integer_path, fill=255, width=1)
+    expected_paths = [path for wire in expected for path in wire.paths]
+    predicted_segments = [
+        (
+            (segment.start.x, segment.start.y),
+            (segment.end.x, segment.end.y),
+        )
+        for segment in ir.segments
+    ]
+    return {
+        "eligible_raw_wires": len(expected),
+        "predicted_segments": len(ir.segments),
+        **raster_centerline_coverage(
+            expected_paths,
+            predicted_segments,
+            width=gt.width,
+            height=gt.height,
+            tolerance=tolerance,
+        ),
+        "tolerance_distance": "Chebyshev (square dilation)",
+    }
 
-    predicted_image = Image.new("L", (gt.width, gt.height), 0)
+
+def raster_centerline_coverage(
+    expected_paths: Sequence[Sequence[tuple[float, float]]],
+    predicted_segments: Sequence[tuple[tuple[float, float], tuple[float, float]]],
+    *,
+    width: int,
+    height: int,
+    tolerance: int,
+) -> dict[str, Any]:
+    expected_image = Image.new("L", (width, height), 0)
+    expected_draw = ImageDraw.Draw(expected_image)
+    for path in expected_paths:
+        integer_path = [(round(x), round(y)) for x, y in path]
+        if len(integer_path) == 1:
+            expected_draw.point(integer_path[0], fill=255)
+        elif len(integer_path) >= 2:
+            expected_draw.line(integer_path, fill=255, width=1)
+
+    predicted_image = Image.new("L", (width, height), 0)
     predicted_draw = ImageDraw.Draw(predicted_image)
-    for segment in ir.segments:
+    for (start, end) in predicted_segments:
         predicted_draw.line(
             [
-                (round(segment.start.x), round(segment.start.y)),
-                (round(segment.end.x), round(segment.end.y)),
+                (round(start[0]), round(start[1])),
+                (round(end[0]), round(end[1])),
             ],
             fill=255,
             width=1,
@@ -369,8 +398,6 @@ def _wire_metrics(ir: CircuitIR, gt: RawGroundTruth, *, tolerance: int) -> dict[
         empty=1.0 if predicted_pixels == 0 else 0.0,
     )
     return {
-        "eligible_raw_wires": len(expected),
-        "predicted_segments": len(ir.segments),
         "predicted_pixels": predicted_pixels,
         "expected_pixels": expected_pixels,
         "predicted_hit_pixels": predicted_hits,
@@ -378,7 +405,6 @@ def _wire_metrics(ir: CircuitIR, gt: RawGroundTruth, *, tolerance: int) -> dict[
         "precision": precision,
         "recall": recall,
         "f1": _f1(precision, recall),
-        "tolerance_distance": "Chebyshev (square dilation)",
     }
 
 
@@ -657,4 +683,5 @@ __all__ = [
     "aggregate_masked_reports",
     "bbox_iou",
     "evaluate_masked_case",
+    "raster_centerline_coverage",
 ]

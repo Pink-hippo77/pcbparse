@@ -16,6 +16,7 @@ from pcbparse.association.ocr_common import (
     lexical_candidates,
     make_rule_evidence,
     preferred_text,
+    resolved_text,
     upsert_evidence,
 )
 from pcbparse.ir.models import Component, Diagnostic, TextToken
@@ -78,6 +79,7 @@ def resolve_component_keys(
 
     component_index = {component.internal_id: component for component in components}
     candidates: list[tuple[TextToken, str, str | None]] = []
+    rewrite_by_token: dict[str, dict[str, Any]] = {}
     for text in texts:
         value = preferred_text(text)
         if value and canonical_details(text.details) == "designator":
@@ -88,9 +90,12 @@ def resolve_component_keys(
                 category = component_index[owner].category if owner and owner in component_index else ""
                 if _is_valid_designator(value, category):
                     candidates.append((text, value, owner))
+                    _, rewrite = _canonical_designator(value, category)
+                    if rewrite is not None:
+                        rewrite_by_token[text.internal_id] = rewrite
     # Explicit component-owned OCR is stronger than a duplicate global token with the same spelling.
     explicit_values = {
-        _canonical_designator(value, component_index[owner].category).casefold()
+        _canonical_designator(value, component_index[owner].category)[0].casefold()
         for _, value, owner in candidates
         if owner is not None and owner in component_index
     }
@@ -107,7 +112,9 @@ def resolve_component_keys(
         for token, value, owner in candidates:
             if owner is not None and owner != component.internal_id:
                 continue
-            canonical_value = _canonical_designator(value, component.category)
+            canonical_value, rewrite = _canonical_designator(value, component.category)
+            if rewrite is not None:
+                rewrite_by_token.setdefault(token.internal_id, rewrite)
             if owner is None and canonical_value.casefold() in explicit_values:
                 continue
             distance = bbox_gap_distance(component.bbox, token.bbox)
@@ -219,6 +226,29 @@ def resolve_component_keys(
         assigned_components.add(component_id)
         used_keys.add(key)
         newly_used_keys.add(key)
+        # Record designator rewrite evidence while keeping raw token text.
+        for token, value, owner in candidates:
+            if owner is not None and owner != component_id:
+                continue
+            canonical_value, rewrite = _canonical_designator(value, component.category)
+            if canonical_value != key:
+                continue
+            if rewrite is not None:
+                make = make_rule_evidence(
+                    evidence_id=f"association:designator-rewrite:{token.internal_id}",
+                    score=score,
+                    payload_ref=token.internal_id,
+                    metadata={
+                        "kind": "designator-rewrite",
+                        "component_id": component_id,
+                        "assigned_key": key,
+                        "token_raw_text": token.raw_text,
+                        **rewrite,
+                    },
+                )
+                upsert_evidence(token.evidence, make)
+                rewrite_by_token[token.internal_id] = rewrite
+            break
         if (component_id, key) in explicit_owner_edges:
             explicitly_assigned_keys.add(key)
     return assignments
@@ -227,12 +257,37 @@ def resolve_component_keys(
 def _prefix_compatible(category: str, prefix: str) -> bool:
     normalized = category.upper()
     aliases = {
+        "BOX": "*",
         "RESISTOR": "R",
         "CAPACITOR": "C",
         "INDUCTOR": "L",
         "DIODE": "D",
+        "LED": "D",
         "IC": "U",
-        "BOX": "*",
+        "CONNECTOR": "J",
+        "CON": "J",
+        "JACK": "J",
+        "PLUG": "J",
+        "SOCKET": "J",
+        "PORT": "J",
+        "HEADER": "J",
+        "TERMINAL": "J",
+        "SWITCH": "SW",
+        "RELAY": "K",
+        "TRANSISTOR": "Q",
+        "MOSFET": "Q",
+        "BJT": "Q",
+        "NPN": "Q",
+        "PNP": "Q",
+        "CRYSTAL": "Y",
+        "XTAL": "Y",
+        "FUSE": "F",
+        "TESTPOINT": "TP",
+        "VOLTAGE": "U",
+        "REGULATOR": "U",
+        "POWER": "P",
+        "BATTERY": "B",
+        "MOTOR": "M",
     }
     expected = aliases.get(normalized, normalized[:1])
     if expected == "*":
@@ -240,23 +295,72 @@ def _prefix_compatible(category: str, prefix: str) -> bool:
     return prefix.startswith(expected)
 
 
-def _canonical_designator(value: str, category: str) -> str:
-    """Correct only the observed doubled-prefix OCR failure mode.
+def _canonical_designator(value: str, category: str) -> tuple[str, dict[str, Any] | None]:
+    """Correct observed OCR failure modes using component category as constraint.
 
-    The recognizer frequently emits ``CC13``/``RR8`` for capacitor/resistor
-    references. Collapse the repeated first letter only when the component
-    category independently supports that prefix; all other OCR strings remain
-    unchanged. This avoids inventing identifiers for generic Box detections.
+    Handles two correction strategies (PCBnet component-aware pairing):
+    1. **Doubled-prefix collapse** — ``CC13``→``C13``, ``RR8``→``R8`` when the
+       component category supports that prefix.
+    2. **Confusion-pair prefix correction** — when the prefix is incompatible
+       with the component category, try confusion-pair substitution (``0``→``O``,
+       ``1``→``I``, ``8``→``B``, etc.) to find a compatible prefix.
+
+    Returns ``(canonical, rewrite_record)``.  When a rewrite is applied the
+    record captures the raw input so the original spelling stays recoverable;
+    ``TextToken.raw_text`` is never modified by this helper.
     """
 
-    normalized = value.strip().upper()
-    match = re.fullmatch(r"([A-Z])\1([0-9]+[A-Z]?)", normalized)
-    if match is None:
-        return value
-    prefix = match.group(1)
-    if not _prefix_compatible(category, prefix):
-        return value
-    return f"{prefix}{match.group(2)}"
+    stripped = value.strip()
+    uppered = stripped.upper()
+    # Strategy 1: doubled-prefix collapse.
+    match = re.fullmatch(r"([A-Z])\1([0-9]+[A-Z]?)", uppered)
+    if match is not None:
+        prefix = match.group(1)
+        if _prefix_compatible(category, prefix):
+            canonical = f"{prefix}{match.group(2)}"
+            if canonical != value:
+                return canonical, {
+                    "raw_value": value,
+                    "canonical_value": canonical,
+                    "rule": "doubled_prefix_collapse",
+                    "strip_applied": stripped != value,
+                    "upper_applied": uppered != stripped,
+                }
+            return canonical, None
+    # Strategy 2: component-aware confusion-pair prefix correction.
+    match2 = re.fullmatch(r"([A-Za-z])([0-9]+[A-Z]?)", uppered)
+    if match2 is not None:
+        prefix = match2.group(1)
+        suffix = match2.group(2)
+        if not _prefix_compatible(category, prefix):
+            from pcbparse.association.ocr_postprocess import _CONFUSION_TO_LETTER
+
+            corrected_prefix = _CONFUSION_TO_LETTER.get(prefix)
+            if (
+                corrected_prefix
+                and corrected_prefix != prefix
+                and _prefix_compatible(category, corrected_prefix)
+            ):
+                canonical = f"{corrected_prefix}{suffix}"
+                return canonical, {
+                    "raw_value": value,
+                    "canonical_value": canonical,
+                    "rule": "component_aware_confusion_correction",
+                    "confused_char": prefix,
+                    "corrected_char": corrected_prefix,
+                    "category": category,
+                    "strip_applied": stripped != value,
+                    "upper_applied": uppered != stripped,
+                }
+    if stripped != value:
+        return stripped, {
+            "raw_value": value,
+            "canonical_value": stripped,
+            "rule": "outer_strip_only",
+            "strip_applied": True,
+            "upper_applied": False,
+        }
+    return value, None
 
 
 _COMPONENT_TEXT_FIELDS = {
@@ -287,10 +391,12 @@ def associate_component_texts(
     relevant_tokens = 0
     accepted_targets = 0
     ambiguous_targets = 0
+    rewrite_records: list[dict[str, Any]] = []
 
     for token in sorted(texts, key=lambda item: item.internal_id):
         field = _COMPONENT_TEXT_FIELDS.get(canonical_details(token.details))
         value = preferred_text(token)
+        resolved = resolved_text(token)
         if field is None or value is None:
             continue
         relevant_tokens += 1
@@ -302,13 +408,23 @@ def associate_component_texts(
         )
         candidates: list[RankedAssociationCandidate] = []
         candidate_values: dict[str, str] = {}
+        candidate_rewrites: dict[str, dict[str, Any] | None] = {}
         for component in pool:
-            candidate_value = (
-                _canonical_designator(value, component.category)
-                if field == "designator"
-                else value
-            )
+            if field == "designator":
+                candidate_value, rewrite = _canonical_designator(value, component.category)
+                if rewrite is not None:
+                    rewrite_records.append(
+                        {
+                            "text_id": token.internal_id,
+                            "component_id": component.internal_id,
+                            "field": field,
+                            **rewrite,
+                        }
+                    )
+            else:
+                candidate_value, rewrite = value, None
             candidate_values[component.internal_id] = candidate_value
+            candidate_rewrites[component.internal_id] = rewrite
             scale = max(component.bbox.width, component.bbox.height, 1.0)
             gap = bbox_gap_distance(token.bbox, component.bbox)
             normalized_distance = gap / scale
@@ -374,6 +490,14 @@ def associate_component_texts(
             )
 
         candidate_records = [item.to_dict() for item in candidates]
+        token_rewrite = next(
+            (
+                rewrite
+                for rewrite in rewrite_records
+                if rewrite.get("text_id") == token.internal_id
+            ),
+            None,
+        )
         token_evidence = make_rule_evidence(
             evidence_id=f"association:component-target:{token.internal_id}",
             score=best.score if best is not None else token.score,
@@ -381,8 +505,12 @@ def associate_component_texts(
             metadata={
                 "kind": "text-to-component",
                 "field": field,
+                # Bind both spellings; output-facing "value" stays the raw form.
                 "value": value,
+                "raw_text": token.raw_text,
+                "resolved_value": resolved,
                 "lexical_candidates": lexical_candidates(token),
+                "rewrite": token_rewrite,
                 "decision": status,
                 "accepted_target_id": best.target_id if status == "accepted" and best else None,
                 "target_margin": margin,
@@ -401,7 +529,11 @@ def associate_component_texts(
                 {
                     "text_id": token.internal_id,
                     "source_object_id": token.source_object_id,
+                    "raw_text": token.raw_text,
                     "value": candidate_values.get(candidate.target_id, value),
+                    "raw_value": value,
+                    "resolved_value": resolved,
+                    "rewrite": candidate_rewrites.get(candidate.target_id),
                     "lexical_candidates": lexical_candidates(token),
                     "score": candidate.score,
                     "distance": candidate.distance,
@@ -572,6 +704,7 @@ def associate_component_texts(
         "ambiguous_targets": ambiguous_targets,
         "assigned_fields": sum(len(value) for value in assignments.values()),
         "ambiguous_fields": ambiguous_fields,
+        "designator_rewrites": rewrite_records,
         "assignments": {key: dict(value) for key, value in sorted(assignments.items())},
     }
 

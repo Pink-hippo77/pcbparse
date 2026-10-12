@@ -14,6 +14,7 @@ from pcbparse.association.ocr_common import (
     make_rule_evidence,
     point_bbox_distance,
     preferred_text,
+    resolved_text,
     upsert_evidence,
 )
 from pcbparse.association.pin_assignment import (
@@ -28,7 +29,11 @@ _PIN_TEXT_FIELDS = {
     "pindesignator": "number",
     "pinname": "name",
 }
+# Pure-digit pin numbers stay on the conservative path.  Alphanumeric pin
+# labels (A5, B12, USB_D-) use this separate lexeme and are only accepted
+# through pin-context matching, never by loosening _PIN_NUMBER alone.
 _NUMBER_LEXEME = re.compile(r"^[^\s,()]+$")
+_ALNUM_PIN_NUMBER = re.compile(r"^(?:[A-Z]{1,2}[0-9]{1,3}|[0-9]{1,3}[A-Z]{1,2})$")
 _SIDES = {"L", "R", "T", "B"}
 
 
@@ -60,8 +65,11 @@ def associate_pin_texts(
     for token in sorted(texts, key=lambda item: item.internal_id):
         field = _PIN_TEXT_FIELDS.get(canonical_details(token.details))
         value = preferred_text(token)
+        resolved = resolved_text(token)
         if field is None or value is None:
             continue
+        # Bind raw and resolved spellings for matching; output keeps raw.
+        bound_values = lexical_candidates(token)
         relevant_tokens += 1
         explicit = token.pin_id in pin_index
         if explicit:
@@ -83,6 +91,7 @@ def associate_pin_texts(
                     pin,
                     field=field,
                     value=value,
+                    bound_values=bound_values,
                     explicit=explicit,
                     config=config,
                 )
@@ -94,6 +103,9 @@ def associate_pin_texts(
             "token": token,
             "field": field,
             "value": value,
+            "raw_text": token.raw_text,
+            "resolved_value": resolved,
+            "bound_values": bound_values,
             "explicit": explicit,
             "candidates": candidates,
             "status": "unmatched",
@@ -231,6 +243,8 @@ def associate_pin_texts(
                 "kind": "text-to-pin-global",
                 "field": field,
                 "value": value,
+                "raw_text": context["raw_text"],
+                "resolved_value": context["resolved_value"],
                 "lexical_candidates": lexical_candidates(token),
                 "decision": status,
                 "accepted_target_id": (
@@ -256,7 +270,9 @@ def associate_pin_texts(
                 {
                     "text_id": token_id,
                     "source_object_id": token.source_object_id,
+                    "raw_text": context["raw_text"],
                     "value": value,
+                    "resolved_value": context["resolved_value"],
                     "lexical_candidates": lexical_candidates(token),
                     "score": record["score"],
                     "distance": record["distance"],
@@ -392,6 +408,7 @@ def _score_candidate(
     *,
     field: str,
     value: str,
+    bound_values: list[str],
     explicit: bool,
     config: OCRAssociationConfig,
 ) -> PinAssignmentCandidate | None:
@@ -406,7 +423,11 @@ def _score_candidate(
     proximity = max(0.0, 1.0 - distance / config.pin_max_distance_px)
     side_score = _side_compatibility(pin, token, side, config.pin_max_distance_px)
     details_score = 1.0 if _PIN_TEXT_FIELDS.get(canonical_details(token.details)) == field else 0.0
-    lexical_score = _lexical_compatibility(field, value)
+    # Score against every bound spelling (raw_text + resolved_text + candidates).
+    lexical_score = max(
+        (_lexical_compatibility(field, candidate) for candidate in bound_values),
+        default=0.0,
+    )
     if explicit:
         score = 0.90 * float(token.score) + 0.05 * details_score + 0.05 * lexical_score
     else:
@@ -419,6 +440,25 @@ def _score_candidate(
     center = token.bbox.center
     token_axis = center.y if side in {"L", "R", "UNKNOWN"} else center.x
     pin_axis = pin.point.y if side in {"L", "R", "UNKNOWN"} else pin.point.x
+    score_components = {
+        "ocr": float(token.score),
+        "proximity": proximity,
+        "side_orientation": side_score,
+        "details": details_score,
+        "lexical": lexical_score,
+    }
+    # Long function labels can be closer to a neighbouring pin in Euclidean
+    # distance. Use their row as additional ranking evidence. Number matching
+    # and explicit targets retain their existing paths.
+    row_penalty = float(config.pin_name_row_penalty)
+    if field == "name" and not explicit and side != "UNKNOWN" and row_penalty > 0:
+        low, high = ((token.bbox.y1, token.bbox.y2) if side in {"L", "R"}
+                     else (token.bbox.x1, token.bbox.x2))
+        gap = max(low - pin_axis, pin_axis - high, 0.0)
+        scale = max(2.0, min(token.bbox.width, token.bbox.height) * 0.5)
+        alignment = max(0.0, 1.0 - gap / scale)
+        score = max(0.0, score - row_penalty * (1.0 - alignment))
+        score_components["row_alignment"] = alignment
     return PinAssignmentCandidate(
         token_id=token.internal_id,
         pin_id=pin.internal_id,
@@ -429,13 +469,7 @@ def _score_candidate(
         token_axis=token_axis,
         pin_axis=pin_axis,
         explicit=explicit,
-        score_components={
-            "ocr": float(token.score),
-            "proximity": proximity,
-            "side_orientation": side_score,
-            "details": details_score,
-            "lexical": lexical_score,
-        },
+        score_components=score_components,
     )
 
 
@@ -480,7 +514,11 @@ def _lexical_compatibility(field: str, value: str) -> float:
     if not normalized:
         return 0.0
     if field == "number":
-        return 1.0 if _NUMBER_LEXEME.fullmatch(normalized) else 0.25
+        if _NUMBER_LEXEME.fullmatch(normalized):
+            # Pure digits and alphanumeric pin labels (A5, USB_D-) are both
+            # valid numbers; the latter use the separate _ALNUM_PIN_NUMBER path.
+            return 1.0
+        return 0.25
     printable = sum(not character.isspace() for character in normalized)
     return 1.0 if printable else 0.0
 

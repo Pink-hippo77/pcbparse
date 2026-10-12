@@ -528,6 +528,9 @@ def _parse_pin_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]
         "nms_kernel",
         "nms_radius_heatmap",
         "base_length_pixels",
+        "pin_budget_mode",
+        "pin_budget_floor",
+        "pin_budget_pitch_px",
     }
     unknown = sorted(set(section) - allowed)
     if unknown:
@@ -544,6 +547,28 @@ def _parse_pin_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]
                 "pipeline pin.max_detections_per_component must be a positive integer"
             )
         result["max_detections_per_component"] = value
+    if "pin_budget_mode" in section:
+        value = section["pin_budget_mode"]
+        if not isinstance(value, str) or value not in {"fixed", "edge_length_v1"}:
+            raise ValueError(
+                "pipeline pin.pin_budget_mode must be fixed or edge_length_v1"
+            )
+        result["pin_budget_mode"] = value
+    if "pin_budget_floor" in section:
+        value = section["pin_budget_floor"]
+        if type(value) is not int or value <= 0:
+            raise ValueError(
+                "pipeline pin.pin_budget_floor must be a positive integer"
+            )
+        result["pin_budget_floor"] = value
+    if "pin_budget_pitch_px" in section:
+        result["pin_budget_pitch_px"] = _strict_nonnegative_number(
+            section, "pin_budget_pitch_px", 0.0
+        )
+        if float(result["pin_budget_pitch_px"]) <= 0:
+            raise ValueError(
+                "pipeline pin.pin_budget_pitch_px must be strictly positive"
+            )
     if "box_margin_px" in section:
         result["box_margin_px"] = _strict_nonnegative_number(
             section, "box_margin_px", 0.0
@@ -597,6 +622,7 @@ def _parse_ocr_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]
         "component_batch_size",
         "strip_batch_size",
         "vertical_rotation_enabled",
+        "recognizer_backend",
     }
     unknown = sorted(set(section) - allowed)
     if unknown:
@@ -627,6 +653,13 @@ def _parse_ocr_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]
                 "pipeline ocr.vertical_rotation_enabled must be a boolean"
             )
         result["vertical_rotation_enabled"] = value
+    if "recognizer_backend" in section:
+        value = section["recognizer_backend"]
+        if not isinstance(value, (str, Mapping)):
+            raise ValueError(
+                "pipeline ocr.recognizer_backend must be a string or object"
+            )
+        result["recognizer_backend"] = value
     return result
 
 
@@ -661,6 +694,12 @@ def _apply_ocr_inference_overrides(provider: Any, overrides: Mapping[str, Any]) 
         raise ProductionProviderError(
             "pipeline OCR vertical rotation requires a rotation-capable OCR adapter"
         )
+    if "recognizer_backend" in overrides and not hasattr(
+        provider, "_recognizer_backend"
+    ):
+        raise ProductionProviderError(
+            "pipeline OCR recognizer_backend requires a backend-capable OCR adapter"
+        )
     try:
         if "detector_threshold" in overrides:
             provider.detector_threshold = float(overrides["detector_threshold"])
@@ -673,6 +712,16 @@ def _apply_ocr_inference_overrides(provider: Any, overrides: Mapping[str, Any]) 
         if "vertical_rotation_enabled" in overrides:
             provider.vertical_rotation_enabled = bool(
                 overrides["vertical_rotation_enabled"]
+            )
+        if "recognizer_backend" in overrides:
+            from pcbparse.perception.torch_ocr_adapter import _load_recognizer_backend
+
+            provider._recognizer_backend = _load_recognizer_backend(
+                overrides["recognizer_backend"]
+            )
+            base_version = provider.version.split("+")[0]
+            provider.version = (
+                f"{base_version}+{provider._recognizer_backend.version}"
             )
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise ProductionProviderError(

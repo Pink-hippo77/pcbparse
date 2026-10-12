@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-import math
 from collections import Counter, defaultdict
 
-from pcbparse.graph.physical import segments_have_collinear_overlap
-from pcbparse.ir.models import CircuitIR, Diagnostic, WireSegment
-from pcbparse.validation.common import error, stable_diagnostics, warning
+from pcbparse.graph.physical import (
+    HARD_MAX_GAP_REPAIR_PX,
+    ConnectionEvidence,
+    collect_segment_connections,
+    evidence_adjacency,
+)
+from pcbparse.ir.models import CircuitIR, Diagnostic, ElectricalNet, WireSegment
+from pcbparse.validation.common import error, info, stable_diagnostics, warning
 
 
 def _point_key(x: float, y: float) -> tuple[float, float]:
@@ -19,6 +23,16 @@ def _segment_key(segment: WireSegment) -> tuple[object, ...]:
     return (segment.channel, endpoints[0], endpoints[1])
 
 
+def is_signal_flywire_electrical(net: ElectricalNet) -> bool:
+    """True when SIGNAL label merge legally joins physically separate nets.
+
+    A SIGNAL flywire is an electrical connection, not a solid wire.  Physical
+    disconnect checks must not treat it as a broken PhysicalNet.
+    """
+
+    return net.net_type in {"SIGNAL", "UNKNOWN"} and len(net.physical_net_ids) > 1
+
+
 def _has_disconnected_segments(
     segment_ids: list[str],
     index: dict[str, WireSegment],
@@ -27,97 +41,43 @@ def _has_disconnected_segments(
     endpoint_tolerance_px: float = 3.0,
     collinear_merge_tolerance_px: float = 0.0,
     collinear_gap_merge_tolerance_px: float = 0.0,
+    gap_repair_max_px: float | None = None,
+    connection_evidence: list[ConnectionEvidence] | None = None,
 ) -> bool:
     available = [index[segment_id] for segment_id in dict.fromkeys(segment_ids) if segment_id in index]
     if len(available) < 2:
         return False
-    endpoint_to_segments: dict[tuple[str, float, float], list[int]] = defaultdict(list)
-    segment_positions: dict[str, int] = {}
-    for idx, segment in enumerate(available):
-        segment_positions[segment.internal_id] = idx
-        endpoint_to_segments[
-            (segment.channel, segment.start.x, segment.start.y)
-        ].append(idx)
-        endpoint_to_segments[
-            (segment.channel, segment.end.x, segment.end.y)
-        ].append(idx)
-    adjacency: list[set[int]] = [set() for _ in available]
-    for members in endpoint_to_segments.values():
-        for source in members:
-            adjacency[source].update(members)
-    for group in connected_junction_groups:
-        members = [segment_positions[item] for item in group if item in segment_positions]
-        for source in members:
-            adjacency[source].update(members)
-    # Vectorization intentionally canonicalizes endpoints within a small local
-    # tolerance; validator connectivity must use the same geometric contract.
-    endpoints: list[tuple[int, str, float, float]] = []
-    for idx, segment in enumerate(available):
-        endpoints.extend(
-            (
-                (idx, segment.channel, segment.start.x, segment.start.y),
-                (idx, segment.channel, segment.end.x, segment.end.y),
-            )
+
+    # Shared evidence contract: the validator must use the same connectivity
+    # decisions and parameters as the builder.  Duplicated adjacency logic is
+    # how builder-connected nets used to be reported as disconnected.
+    if connection_evidence is None:
+        connection_evidence = collect_segment_connections(
+            available,
+            endpoint_tolerance_px=endpoint_tolerance_px,
+            collinear_merge_tolerance_px=collinear_merge_tolerance_px,
+            collinear_gap_merge_tolerance_px=collinear_gap_merge_tolerance_px,
+            gap_repair_max_px=(
+                gap_repair_max_px if gap_repair_max_px is not None else HARD_MAX_GAP_REPAIR_PX
+            ),
         )
-    cell_size = max(endpoint_tolerance_px, 1e-9)
-    cells: dict[tuple[int, int, str], list[tuple[int, float, float]]] = defaultdict(list)
-    for idx, channel, x, y in endpoints:
-        cx = math.floor(x / cell_size)
-        cy = math.floor(y / cell_size)
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                for other_idx, other_x, other_y in cells.get((cx + dx, cy + dy, channel), []):
-                    if math.hypot(x - other_x, y - other_y) <= endpoint_tolerance_px:
-                        adjacency[idx].add(other_idx)
-                        adjacency[other_idx].add(idx)
-        cells[(cx, cy, channel)].append((idx, x, y))
-
-    # Source IDs are provenance, not proof that distant geometry is one wire.
-    # The builder uses endpoint geometry for ordinary source IDs, so the
-    # endpoint checks above are the only connectivity evidence for learned or
-    # heuristic segments. Dataset/golden source edges are the explicit oracle
-    # exception and may remain connected when their geometry is sparse.
-    dataset_source_edges: dict[str, list[int]] = defaultdict(list)
-    for idx, segment in enumerate(available):
-        if segment.source_edge_id and any(
-            item.source == "dataset" for item in segment.evidence
-        ):
-            dataset_source_edges[segment.source_edge_id].append(idx)
-    for members in dataset_source_edges.values():
-        if len(members) < 2:
-            continue
+    available_ids = [segment.internal_id for segment in available]
+    adjacency = evidence_adjacency(available_ids, connection_evidence)
+    for group in connected_junction_groups:
+        members = [item for item in group if item in adjacency]
         for source in members:
-            adjacency[source].update(members)
+            for other in members:
+                if source != other:
+                    adjacency[source].add(other)
 
-    # Match the builder's collinear connectivity: segments whose interiors
-    # overlap (or whose gap is within tolerance) on the same channel are
-    # connected even without touching endpoints.
-    if collinear_merge_tolerance_px > 0 or collinear_gap_merge_tolerance_px > 0:
-        for i in range(len(available)):
-            for j in range(i + 1, len(available)):
-                left = available[i]
-                right = available[j]
-                if left.channel != right.channel:
-                    continue
-                if collinear_merge_tolerance_px > 0 and segments_have_collinear_overlap(
-                    left, right, collinear_merge_tolerance_px, allow_gap=False,
-                ):
-                    adjacency[i].add(j)
-                    adjacency[j].add(i)
-                elif collinear_gap_merge_tolerance_px > 0 and segments_have_collinear_overlap(
-                    left, right, collinear_gap_merge_tolerance_px, allow_gap=True,
-                ):
-                    adjacency[i].add(j)
-                    adjacency[j].add(i)
-
-    visited = {0}
-    stack = [0]
+    visited = {available_ids[0]}
+    stack = [available_ids[0]]
     while stack:
         current = stack.pop()
         for neighbor in adjacency[current] - visited:
             visited.add(neighbor)
             stack.append(neighbor)
-    return len(visited) != len(available)
+    return len(visited) != len(available_ids)
 
 
 def _duplicates(values: list[str]) -> list[str]:
@@ -130,6 +90,7 @@ def validate_graph(
     endpoint_tolerance_px: float = 3.0,
     collinear_merge_tolerance_px: float = 0.0,
     collinear_gap_merge_tolerance_px: float = 0.0,
+    gap_repair_max_px: float | None = None,
 ) -> list[Diagnostic]:
     issues: list[Diagnostic] = []
     segment_index = ir.segment_index()
@@ -140,6 +101,16 @@ def validate_graph(
     ]
     connected_junction_groups.extend(
         set(pin.edge_ids) for pin in ir.pins if len(set(pin.edge_ids)) > 1
+    )
+
+    shared_evidence = collect_segment_connections(
+        ir.segments,
+        endpoint_tolerance_px=endpoint_tolerance_px,
+        collinear_merge_tolerance_px=collinear_merge_tolerance_px,
+        collinear_gap_merge_tolerance_px=collinear_gap_merge_tolerance_px,
+        gap_repair_max_px=(
+            gap_repair_max_px if gap_repair_max_px is not None else HARD_MAX_GAP_REPAIR_PX
+        ),
     )
 
     segment_keys: dict[tuple[object, ...], list[str]] = defaultdict(list)
@@ -186,12 +157,28 @@ def validate_graph(
             endpoint_tolerance_px=endpoint_tolerance_px,
             collinear_merge_tolerance_px=collinear_merge_tolerance_px,
             collinear_gap_merge_tolerance_px=collinear_gap_merge_tolerance_px,
+            gap_repair_max_px=gap_repair_max_px,
+            connection_evidence=shared_evidence,
         ):
             issues.append(
                 error(
                     "NET.DISCONNECTED_SEGMENTS",
                     "physical net contains more than one disconnected segment component",
                     net.internal_id,
+                    stage="graph",
+                )
+            )
+
+    # Electrical nets may legally join physically separate PhysicalNets through
+    # SIGNAL flywires.  Physical disconnect checks stay on PhysicalNet only.
+    for net in ir.electrical_nets:
+        if is_signal_flywire_electrical(net):
+            issues.append(
+                info(
+                    "NET.SIGNAL_FLYWIRE",
+                    "electrical net joins physically separate nets via SIGNAL labels",
+                    net.internal_id,
+                    *sorted(net.physical_net_ids),
                     stage="graph",
                 )
             )
@@ -244,12 +231,14 @@ class GraphValidator:
         endpoint_tolerance_px: float = 3.0,
         collinear_merge_tolerance_px: float = 0.0,
         collinear_gap_merge_tolerance_px: float = 0.0,
+        gap_repair_max_px: float | None = None,
     ) -> None:
         if endpoint_tolerance_px < 0:
             raise ValueError("endpoint_tolerance_px cannot be negative")
         self.endpoint_tolerance_px = endpoint_tolerance_px
         self.collinear_merge_tolerance_px = collinear_merge_tolerance_px
         self.collinear_gap_merge_tolerance_px = collinear_gap_merge_tolerance_px
+        self.gap_repair_max_px = gap_repair_max_px
 
     def validate(self, ir: CircuitIR, ctx: object | None = None) -> list[Diagnostic]:
         del ctx
@@ -258,4 +247,5 @@ class GraphValidator:
             endpoint_tolerance_px=self.endpoint_tolerance_px,
             collinear_merge_tolerance_px=self.collinear_merge_tolerance_px,
             collinear_gap_merge_tolerance_px=self.collinear_gap_merge_tolerance_px,
+            gap_repair_max_px=self.gap_repair_max_px,
         )

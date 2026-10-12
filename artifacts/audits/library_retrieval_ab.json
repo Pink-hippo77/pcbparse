@@ -1,0 +1,245 @@
+{
+  "cases": [
+    {
+      "case_id": "known_ch340c",
+      "decision": "MATCHED",
+      "expected_decision": "MATCHED",
+      "expected_key": "CH340C",
+      "hard_invariants_pass": true,
+      "kind": "known",
+      "matched_library_key": "CH340C",
+      "notes": [
+        "unique_exact_key"
+      ],
+      "ocr_model_text": "CH340C",
+      "pass": true,
+      "pin_name_candidates": {
+        "1": [
+          "GND"
+        ],
+        "2": [
+          "TXD"
+        ],
+        "3": [
+          "RXD"
+        ],
+        "4": [
+          "VCC"
+        ],
+        "5": [
+          "D+"
+        ],
+        "6": [
+          "D-"
+        ]
+      },
+      "top_candidates": [
+        {
+          "library_key": "CH340C",
+          "name_score": 1.0,
+          "pin_evidence_score": 1.0,
+          "score": 1.0
+        }
+      ],
+      "visible_pin_count": 6
+    },
+    {
+      "case_id": "ambiguous_ams1117",
+      "decision": "UNKNOWN",
+      "expected_decision": "UNKNOWN",
+      "expected_key": null,
+      "hard_invariants_pass": true,
+      "kind": "ambiguous",
+      "matched_library_key": null,
+      "notes": [
+        "ambiguous_gap=0.0000<0.08"
+      ],
+      "ocr_model_text": "AMS1117",
+      "pass": true,
+      "pin_name_candidates": {},
+      "top_candidates": [
+        {
+          "library_key": "AMS1117-3.3",
+          "name_score": 0.7,
+          "pin_evidence_score": 1.0,
+          "score": 0.835
+        },
+        {
+          "library_key": "AMS1117-3.3_C6186",
+          "name_score": 0.7,
+          "pin_evidence_score": 1.0,
+          "score": 0.835
+        }
+      ],
+      "visible_pin_count": 3
+    },
+    {
+      "case_id": "ambiguous_exact_key_supported",
+      "decision": "MATCHED",
+      "expected_decision": "MATCHED",
+      "expected_key": "AMS1117-3.3",
+      "hard_invariants_pass": true,
+      "kind": "ambiguous_exact",
+      "matched_library_key": "AMS1117-3.3",
+      "notes": [
+        "unique_exact_key"
+      ],
+      "ocr_model_text": "AMS1117-3.3",
+      "pass": true,
+      "pin_name_candidates": {
+        "1": [
+          "GND"
+        ],
+        "2": [
+          "VOUT"
+        ],
+        "3": [
+          "VIN"
+        ]
+      },
+      "top_candidates": [
+        {
+          "library_key": "AMS1117-3.3",
+          "name_score": 1.0,
+          "pin_evidence_score": 1.0,
+          "score": 1.0
+        },
+        {
+          "library_key": "AMS1117-3.3_C6186",
+          "name_score": 0.92,
+          "pin_evidence_score": 1.0,
+          "score": 0.956
+        }
+      ],
+      "visible_pin_count": 3
+    },
+    {
+      "case_id": "absent_xyz1234",
+      "decision": "NO_CANDIDATE",
+      "expected_decision": "NO_CANDIDATE",
+      "expected_key": null,
+      "hard_invariants_pass": true,
+      "kind": "absent",
+      "matched_library_key": null,
+      "notes": [
+        "no_library_candidate"
+      ],
+      "ocr_model_text": "XYZ1234_NOT_IN_LIBRARY",
+      "pass": true,
+      "pin_name_candidates": {},
+      "top_candidates": [],
+      "visible_pin_count": 2
+    },
+    {
+      "case_id": "duplicate_pin_data",
+      "decision": "MATCHED",
+      "expected_decision": "MATCHED",
+      "expected_key": "DUP-PIN-1",
+      "hard_invariants_pass": true,
+      "kind": "duplicate_pins",
+      "matched_library_key": "DUP-PIN-1",
+      "notes": [
+        "unique_exact_key"
+      ],
+      "ocr_model_text": "DUP-PIN-1",
+      "pass": true,
+      "pin_name_candidates": {
+        "1": [
+          "1"
+        ],
+        "2": [
+          "2"
+        ]
+      },
+      "top_candidates": [
+        {
+          "library_key": "DUP-PIN-1",
+          "name_score": 1.0,
+          "pin_evidence_score": 1.0,
+          "score": 1.0
+        }
+      ],
+      "visible_pin_count": 2
+    },
+    {
+      "case_id": "no_visual_evidence_fuzzy",
+      "decision": "UNKNOWN",
+      "expected_decision": "UNKNOWN",
+      "expected_key": null,
+      "hard_invariants_pass": true,
+      "kind": "no_visual_evidence",
+      "matched_library_key": null,
+      "notes": [
+        "ambiguous_gap=0.0000<0.08"
+      ],
+      "ocr_model_text": "AMS1117",
+      "pass": true,
+      "pin_name_candidates": {},
+      "top_candidates": [
+        {
+          "library_key": "AMS1117-3.3",
+          "name_score": 0.7,
+          "pin_evidence_score": 0.0,
+          "score": 0.595
+        },
+        {
+          "library_key": "AMS1117-3.3_C6186",
+          "name_score": 0.7,
+          "pin_evidence_score": 0.0,
+          "score": 0.595
+        }
+      ],
+      "visible_pin_count": 0
+    },
+    {
+      "case_id": "no_visual_evidence_exact_key",
+      "decision": "MATCHED",
+      "expected_decision": "MATCHED",
+      "expected_key": "AMS1117-3.3",
+      "hard_invariants_pass": true,
+      "kind": "no_visual_evidence_exact",
+      "matched_library_key": "AMS1117-3.3",
+      "notes": [
+        "unique_exact_key"
+      ],
+      "ocr_model_text": "AMS1117-3.3",
+      "pass": true,
+      "pin_name_candidates": {},
+      "top_candidates": [
+        {
+          "library_key": "AMS1117-3.3",
+          "name_score": 1.0,
+          "pin_evidence_score": 0.0,
+          "score": 0.85
+        },
+        {
+          "library_key": "AMS1117-3.3_C6186",
+          "name_score": 0.92,
+          "pin_evidence_score": 0.0,
+          "score": 0.782
+        }
+      ],
+      "visible_pin_count": 0
+    }
+  ],
+  "fixture_library_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "invariants": {
+    "library_version_hashed": true,
+    "no_fabricated_coordinates": true,
+    "pin_rows_not_physical_count": true,
+    "unknown_on_ambiguity": true
+  },
+  "library_sha256": "9c2bec334d41119f29a62cd6ff3fb36ae28fa28cbb7aeb3155875a355b38d322",
+  "metrics": {
+    "candidate_recall_at_5": 1.0,
+    "cases_pass": 7,
+    "cases_total": 7,
+    "coordinates_emitted": false,
+    "duplicate_pin_rows_ne_physical": true,
+    "forced_pin_writes_without_visual_evidence": 0,
+    "hard_invariants_pass": 7,
+    "invisible_pins_emitted": false,
+    "wrong_completion_rate": 0.0
+  },
+  "schema_version": "library_retrieval_ab.v1"
+}

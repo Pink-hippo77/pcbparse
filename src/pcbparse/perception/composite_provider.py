@@ -15,7 +15,7 @@ from pcbparse.io import (
     make_component_view,
     tile_image_view,
 )
-from pcbparse.ir.models import BBox, CircuitIR, Component, Evidence, IRState, Junction, Pin, Point, TextToken, WireSegment
+from pcbparse.ir.models import BBox, CircuitIR, Component, Evidence, IRState, Junction, Pin, Point, RepairRecord, TextToken, WireSegment
 from pcbparse.perception.protocols import ComponentProvider, JunctionProvider, OCRProvider, PinProvider, WireMask, WireProvider
 from pcbparse.perception.coordinate_binding import (
     bind_bbox_evidence,
@@ -321,6 +321,9 @@ class CompositeProviderConfig:
             "nms_kernel",
             "nms_radius_heatmap",
             "base_length_pixels",
+            "pin_budget_mode",
+            "pin_budget_floor",
+            "pin_budget_pitch_px",
         }
         unknown_pin_keys = sorted(set(self.pin_inference_overrides) - allowed_pin_keys)
         if unknown_pin_keys:
@@ -350,6 +353,7 @@ class CompositeProviderConfig:
                 "detector_min_area",
                 "recognition_candidate_count",
                 "vertical_rotation_enabled",
+                "recognizer_backend",
             }
         )
         if unknown_ocr_keys:
@@ -378,6 +382,12 @@ class CompositeProviderConfig:
         if "vertical_rotation_enabled" in self.ocr_inference_overrides:
             if type(self.ocr_inference_overrides["vertical_rotation_enabled"]) is not bool:
                 raise ValueError("ocr vertical_rotation_enabled must be a boolean")
+        if "recognizer_backend" in self.ocr_inference_overrides:
+            backend_value = self.ocr_inference_overrides["recognizer_backend"]
+            if not isinstance(backend_value, (str, dict)):
+                raise ValueError(
+                    "ocr recognizer_backend must be a string or object"
+                )
         self.ocr_inference_overrides = dict(self.ocr_inference_overrides)
 
     def to_dict(self) -> dict[str, Any]:
@@ -783,7 +793,7 @@ class CompositePerceptionProvider:
         # --- Phase: Wire Segmentation ---
         _t_wire = time.monotonic()
         wire_masks = self.wire_provider.segment(wire_views, ctx)
-        segments, vectorized_junctions = _vectorize_masks(
+        segments, vectorized_junctions, wire_lineage = _vectorize_masks(
             wire_masks,
             wire_view_index,
             self.config,
@@ -820,6 +830,7 @@ class CompositePerceptionProvider:
             texts=texts,
             segments=segments,
             junctions=junctions,
+            repairs=wire_lineage["repairs"],
             metadata={
                 "provider": {"name": type(self).__name__, "version": self.version},
                 "perception_config": self.config.to_dict(),
@@ -849,6 +860,7 @@ class CompositePerceptionProvider:
                 "views": [view.view_id for view in wire_views],
                 "component_views": [view.view_id for view in component_tiles],
                 "wire_views": [view.view_id for view in wire_views],
+                "wire_breaks": wire_lineage["breaks"],
                 "ocr_component_views": [
                     view.full_roi.view_id for view in ocr_component_views
                 ],
@@ -1118,13 +1130,24 @@ def _predict_component_views(
         return [], 0
     predict_many = getattr(provider, "predict_many", None)
     if not callable(predict_many) or batch_size == 1:
-        return [provider.predict(view, ctx) for view in views], len(views)
+        output = []
+        for view in views:
+            if ctx is not None:
+                ctx.time_budget.check(stage="component_view")
+            output.append(provider.predict(view, ctx))
+            if ctx is not None:
+                ctx.time_budget.check(stage="component_view")
+        return output, len(views)
 
     output: list[list[Component]] = []
     call_count = 0
     for start in range(0, len(views), batch_size):
+        if ctx is not None:
+            ctx.time_budget.check(stage="component_batch")
         batch = list(views[start : start + batch_size])
         predicted = predict_many(batch, ctx)
+        if ctx is not None:
+            ctx.time_budget.check(stage="component_batch")
         call_count += 1
         if not isinstance(predicted, (list, tuple)) or len(predicted) != len(batch):
             raise RuntimeError(
@@ -1485,7 +1508,7 @@ def _vectorize_masks(
     masks: list[WireMask],
     views: dict[str, ImageView],
     config: CompositeProviderConfig,
-) -> tuple[list[WireSegment], list[Junction]]:
+) -> tuple[list[WireSegment], list[Junction], dict[str, Any]]:
     polylines: list[SkeletonPolyline] = []
     junction_candidates: list[tuple[WireJunctionCandidate, str, list[Evidence], float]] = []
     vectorizer_config = WireVectorizerConfig(
@@ -1499,6 +1522,8 @@ def _vectorize_masks(
     polyline_metadata: dict[
         str, tuple[float, list[Evidence], str, tuple[tuple[float, float], ...]]
     ] = {}
+    virtual_repairs: list[tuple[Any, str, float]] = []
+    vectorizer_breaks: list[tuple[Any, str]] = []
     for mask_index, wire_mask in enumerate(sorted(masks, key=lambda item: item.view_id)):
         view = views.get(wire_mask.view_id)
         if view is None:
@@ -1506,13 +1531,17 @@ def _vectorize_masks(
         array = np.asarray(wire_mask.mask)
         if array.shape != (view.height, view.width):
             raise ValueError(
-                f"wire mask shape {array.shape} does not match view {view.view_id} {(view.height, view.width)}"
+                f"wire mask shape {array.shape} does not match view {wire_mask.view_id} {(view.height, view.width)}"
             )
         result = vectorize_wire_mask(
             array,
             config=vectorizer_config,
             id_namespace=f"mask-{mask_index:04d}-{wire_mask.view_id}",
         )
+        for repair in result.virtual_repairs:
+            virtual_repairs.append((repair, wire_mask.view_id, wire_mask.score))
+        for record in result.breaks:
+            vectorizer_breaks.append((record, wire_mask.view_id))
         local_to_global: dict[str, str] = {}
         for polyline in result.polylines:
             points = tuple(
@@ -1529,6 +1558,7 @@ def _vectorize_masks(
                     ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
                     for (x1, y1), (x2, y2) in zip(points, points[1:])
                 ),
+                virtual_repair_ids=polyline.virtual_repair_ids,
             )
             polylines.append(global_polyline)
             local_to_global[polyline.internal_id] = global_polyline.internal_id
@@ -1586,23 +1616,40 @@ def _vectorize_masks(
                 else "diagonal_negative"
             )
             segment = WireSegment(
-                    internal_id=segment_id,
-                    start=Point(x=start[0], y=start[1]),
-                    end=Point(x=end[0], y=end[1]),
-                    score=score,
-                    source_polyline_id=polyline.internal_id,
-                    channel=channel,
-                    evidence=[
-                        *evidence,
+                internal_id=segment_id,
+                start=Point(x=start[0], y=start[1]),
+                end=Point(x=end[0], y=end[1]),
+                score=score,
+                source_polyline_id=polyline.internal_id,
+                synthetic=bool(polyline.virtual_repair_ids),
+                channel=channel,
+                evidence=[
+                    *evidence,
+                    Evidence(
+                        evidence_id=f"wire-vectorizer:{segment_id}",
+                        source="geometry",
+                        view_id=source_view,
+                        score=score,
+                        metadata={"vectorizer": "skeleton-pixel-graph-rdp-v1"},
+                    ),
+                    *(
                         Evidence(
-                            evidence_id=f"wire-vectorizer:{segment_id}",
-                            source="geometry",
+                            evidence_id=f"wire-virtual-repair:{segment_id}:{repair_id}",
+                            source="repair",
                             view_id=source_view,
                             score=score,
-                            metadata={"vectorizer": "skeleton-pixel-graph-rdp-v1"},
-                        ),
-                    ],
-                )
+                            payload_ref=repair_id,
+                            metadata={
+                                "rule": "mask_closing_virtual_gap",
+                                "virtual": True,
+                                "solid_wire": False,
+                                "segment_id": segment_id,
+                            },
+                        )
+                        for repair_id in polyline.virtual_repair_ids
+                    ),
+                ],
+            )
             bind_segment_evidence(
                 segment.evidence,
                 view=source_image_view,
@@ -1613,6 +1660,72 @@ def _vectorize_masks(
             )
             segments.append(segment)
         polyline_to_segments[polyline.internal_id] = segment_ids
+
+    segment_to_polyline = {
+        segment_id: polyline_id
+        for polyline_id, segment_ids in polyline_to_segments.items()
+        for segment_id in segment_ids
+    }
+    kept_by_id = {item.internal_id: item for item in kept}
+
+    def restore(point: Any, view_id: str) -> list[float] | None:
+        if point is None:
+            return None
+        restored = views[view_id].to_original(Point(x=float(point[0]), y=float(point[1])))
+        return [float(restored.x), float(restored.y)]
+
+    lineage_breaks = [
+        {
+            **record.as_dict(),
+            "view_id": view_id,
+            "left_point": restore(record.metadata.get("left_point"), view_id),
+            "right_point": restore(record.metadata.get("right_point"), view_id),
+            "segment_ids": sorted(
+                {
+                    segment_id
+                    for polyline_id in (record.left_polyline_id, record.right_polyline_id)
+                    for segment_id in polyline_to_segments.get(polyline_id, [])
+                }
+            ),
+        }
+        for record, view_id in vectorizer_breaks
+    ]
+    lineage_repairs: list[RepairRecord] = []
+    for repair, view_id, score in virtual_repairs:
+        affected_segment_ids = sorted(
+            {
+                segment_id
+                for segment_id, polyline_id in segment_to_polyline.items()
+                if repair.repair_id in kept_by_id[polyline_id].virtual_repair_ids
+            }
+        )
+        lineage_repairs.append(
+            RepairRecord(
+                repair_id=repair.repair_id,
+                rule_id="mask_closing_virtual_gap",
+                object_ids=affected_segment_ids,
+                before={
+                    "left_point": restore(repair.left_point, view_id),
+                    "right_point": restore(repair.right_point, view_id),
+                    "bridge_gap_px": float(repair.bridge_gap_px),
+                },
+                after={
+                    "bridge_point": restore(repair.bridge_point, view_id),
+                    "added_pixels": int(repair.added_pixels),
+                    "closing_radius": int(repair.closing_radius),
+                },
+                evidence_ids=[
+                    f"wire-virtual-repair:{segment_id}:{repair.repair_id}"
+                    for segment_id in affected_segment_ids
+                ],
+                confidence=score,
+            )
+        )
+    lineage = {
+        "repairs": lineage_repairs,
+        "breaks": lineage_breaks,
+        "segment_to_polyline": segment_to_polyline,
+    }
 
     junctions: list[Junction] = []
     kept_polyline_ids = set(polyline_to_segments)
@@ -1642,22 +1755,22 @@ def _vectorize_masks(
         # geometry but require the learned junction provider to decide.
         kind = "ambiguous" if candidate.kind == "connected_cross" else candidate.kind
         junction = Junction(
-                internal_id=candidate.internal_id,
-                point=restored,
-                kind=kind,
-                segment_ids=segment_ids,
-                score=score,
-                evidence=[
-                    *evidence,
-                    Evidence(
-                        evidence_id=f"wire-vectorizer:{candidate.internal_id}",
-                        source="geometry",
-                        view_id=view_id,
-                        score=score,
-                        metadata={"vectorizer": "skeleton-pixel-graph-rdp-v1"},
-                    ),
-                ],
-            )
+            internal_id=candidate.internal_id,
+            point=restored,
+            kind=kind,
+            segment_ids=segment_ids,
+            score=score,
+            evidence=[
+                *evidence,
+                Evidence(
+                    evidence_id=f"wire-vectorizer:{candidate.internal_id}",
+                    source="geometry",
+                    view_id=view_id,
+                    score=score,
+                    metadata={"vectorizer": "skeleton-pixel-graph-rdp-v1"},
+                ),
+            ],
+        )
         bind_point_evidence(
             junction.evidence,
             view=view,
@@ -1666,7 +1779,7 @@ def _vectorize_masks(
             object_kind="junction",
         )
         junctions.append(junction)
-    return segments, _merge_junctions([], junctions, tolerance=config.wire_tile_dedup_tolerance_px)
+    return segments, _merge_junctions([], junctions, tolerance=config.wire_tile_dedup_tolerance_px), lineage
 
 
 def _segment_touches_point(segment: WireSegment, point: Point, *, tolerance: float) -> bool:

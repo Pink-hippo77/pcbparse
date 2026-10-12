@@ -8,7 +8,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,7 +19,21 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ENTRYPOINT = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$"
 )
+_SOURCE_REPOSITORY_COMMIT = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*@[0-9a-f]{40}$"
+)
 _SUPPORTED_PRECISIONS = frozenset({"fp16", "fp32", "bf16", "int8", "uint8", "mixed"})
+_PLACEHOLDER_TEXT = frozenset(
+    {"", "dev", "none", "null", "tbd", "todo", "unknown", "unlicensed", "unversioned"}
+)
+# Two-stage detector/recognizer export backends.  ``torchscript-two-stage`` is
+# the trained-family precedent; the ONNX family names below describe the same
+# two-stage export-consistency semantics for descriptor bundles.
+_TWO_STAGE_TORCH_BACKENDS = frozenset({"torchscript-two-stage"})
+_TWO_STAGE_ONNX_BACKENDS = frozenset({"onnx-two-stage", "onnxruntime-two-stage"})
+
+LineageMode = Literal["dataset300-trained", "pretrained_external"]
+_LINEAGE_MODES = frozenset({"dataset300-trained", "pretrained_external"})
 
 
 class CandidateBundleError(RuntimeError):
@@ -28,6 +42,105 @@ class CandidateBundleError(RuntimeError):
 
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+def validate_source_repository_commit(value: str) -> str:
+    """Return a pinned ``owner/repository@<40-hex commit>`` source declaration.
+
+    ``pretrained_external`` candidates replace the dataset300 training lineage
+    triple with source pinning, so the commit declaration must be complete:
+    a short, branch, tag, or placeholder reference is rejected.
+    """
+
+    if not isinstance(value, str) or not _SOURCE_REPOSITORY_COMMIT.fullmatch(value):
+        raise ValueError(
+            "source_repository_commit must pin owner/repository@<40-hex commit>"
+        )
+    return value
+
+
+def is_onnx_two_stage_backend(export_backend: str) -> bool:
+    """True when an export backend declares two-stage ONNX det/rec semantics."""
+
+    return export_backend in _TWO_STAGE_ONNX_BACKENDS
+
+
+def is_torchscript_two_stage_backend(export_backend: str) -> bool:
+    """True when an export backend declares two-stage TorchScript semantics."""
+
+    return export_backend in _TWO_STAGE_TORCH_BACKENDS
+
+
+def _require_declared_text(value: Any, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be non-placeholder declared text")
+    normalized = value.strip()
+    if not normalized or normalized.casefold() in _PLACEHOLDER_TEXT:
+        raise ValueError(f"{field_name} must be non-placeholder declared text")
+    return value
+
+
+def _validate_asset_sha256(values: tuple[str, ...], field_name: str) -> None:
+    seen: set[str] = set()
+    for digest in values:
+        if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+            raise ValueError(f"{field_name} must contain lowercase SHA-256 digests")
+        if digest in seen:
+            raise ValueError(f"{field_name} must not repeat a digest")
+        seen.add(digest)
+
+
+def _validate_lineage_declaration(
+    lineage_mode: str,
+    training_config_sha256: str | None,
+    source_repository_commit: str | None,
+    source_asset_sha256: tuple[str, ...],
+    source_license: str | None,
+) -> None:
+    """Enforce the mode contract for training lineage versus source pinning.
+
+    ``dataset300-trained`` keeps the historical single-file contract: a real
+    training-config digest is mandatory and no external source pinning may be
+    declared.  ``pretrained_external`` forbids any fabricated dataset300
+    training digest and instead requires the pinned source commit, asset
+    hashes, and license.
+    """
+
+    if lineage_mode not in _LINEAGE_MODES:
+        raise ValueError(f"unsupported lineage_mode {lineage_mode!r}")
+    if lineage_mode == "dataset300-trained":
+        if not isinstance(training_config_sha256, str) or not _SHA256.fullmatch(
+            training_config_sha256
+        ):
+            raise ValueError("training_config_sha256 must be a lowercase SHA-256 digest")
+        if (
+            source_repository_commit is not None
+            or source_license is not None
+            or source_asset_sha256
+        ):
+            raise ValueError(
+                "dataset300-trained candidates cannot declare pretrained-external "
+                "source pinning"
+            )
+        return
+    if training_config_sha256 is not None:
+        raise ValueError(
+            "pretrained_external candidates cannot claim a dataset300 training "
+            "config hash"
+        )
+    if source_repository_commit is None:
+        raise ValueError(
+            "pretrained_external candidates require source_repository_commit"
+        )
+    validate_source_repository_commit(source_repository_commit)
+    if source_license is None:
+        raise ValueError("pretrained_external candidates require source_license")
+    _require_declared_text(source_license, "source_license")
+    if not source_asset_sha256:
+        raise ValueError(
+            "pretrained_external candidates require pinned source asset hashes"
+        )
+    _validate_asset_sha256(source_asset_sha256, "source_asset_sha256")
 
 
 class MetricGateResult(_StrictModel):
@@ -173,16 +286,20 @@ class GatePolicy(_StrictModel):
 class ModelCard(_StrictModel):
     schema_version: Literal[1]
     task: ModelTask
+    lineage_mode: LineageMode = "dataset300-trained"
     version: str = Field(min_length=1)
     license: str = Field(min_length=1)
     created_at_utc: str = Field(min_length=1)
     intended_use: str = Field(min_length=1)
     out_of_scope_use: tuple[str, ...] = Field(min_length=1)
     limitations: tuple[str, ...] = Field(min_length=1)
-    training_config_sha256: str
+    training_config_sha256: str | None = None
     dataset_config_hash: str
     source_manifest_sha256: str
     split_manifest_sha256: str
+    source_repository_commit: str | None = None
+    source_asset_sha256: tuple[str, ...] = ()
+    source_license: str | None = None
     artifact_sha256: str
     artifact_bytes: int = Field(gt=0)
     evaluation_predictions_path: str | None = None
@@ -195,7 +312,6 @@ class ModelCard(_StrictModel):
     @model_validator(mode="after")
     def validate_hashes(self) -> "ModelCard":
         for field_name in (
-            "training_config_sha256",
             "dataset_config_hash",
             "source_manifest_sha256",
             "split_manifest_sha256",
@@ -203,6 +319,13 @@ class ModelCard(_StrictModel):
         ):
             if not _SHA256.fullmatch(getattr(self, field_name)):
                 raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
+        _validate_lineage_declaration(
+            self.lineage_mode,
+            self.training_config_sha256,
+            self.source_repository_commit,
+            self.source_asset_sha256,
+            self.source_license,
+        )
         _validate_attachment_uniqueness(self.evidence_attachments)
         return self
 
@@ -212,6 +335,7 @@ class CandidateBundleManifest(_StrictModel):
     status: Literal["candidate"]
     blessed: Literal[False]
     task: ModelTask
+    lineage_mode: LineageMode = "dataset300-trained"
     version: str = Field(min_length=1)
     license: str = Field(min_length=1)
     precision: str = Field(min_length=1)
@@ -221,10 +345,13 @@ class CandidateBundleManifest(_StrictModel):
     artifact_bytes: int = Field(gt=0)
     model_card_path: str = Field(min_length=1)
     model_card_sha256: str
-    training_config_sha256: str
+    training_config_sha256: str | None = None
     dataset_config_hash: str
     source_manifest_sha256: str
     split_manifest_sha256: str
+    source_repository_commit: str | None = None
+    source_asset_sha256: tuple[str, ...] = ()
+    source_license: str | None = None
     evaluation_predictions_path: str | None = None
     inference: dict[str, Any] | None = None
     evidence_attachments: tuple[EvidenceAttachment, ...] = ()
@@ -238,19 +365,44 @@ class CandidateBundleManifest(_StrictModel):
         for field_name in (
             "artifact_sha256",
             "model_card_sha256",
-            "training_config_sha256",
             "dataset_config_hash",
             "source_manifest_sha256",
             "split_manifest_sha256",
         ):
             if not _SHA256.fullmatch(getattr(self, field_name)):
                 raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
+        _validate_lineage_declaration(
+            self.lineage_mode,
+            self.training_config_sha256,
+            self.source_repository_commit,
+            self.source_asset_sha256,
+            self.source_license,
+        )
         if self.precision not in _SUPPORTED_PRECISIONS:
             raise ValueError(f"unsupported candidate precision {self.precision!r}")
+        # In both modes the dataset/split digests name the dataset300-v2
+        # evaluation lineage: dataset300 training data for trained candidates,
+        # the evaluation set for pretrained-external candidates.  The field
+        # names are unchanged so downstream consumers keep working.
         if self.evaluation.dataset_config_hash != self.dataset_config_hash:
             raise ValueError("evaluation dataset_config_hash differs from bundle lineage")
         if self.evaluation.split_manifest_sha256 != self.split_manifest_sha256:
             raise ValueError("evaluation split hash differs from bundle lineage")
+        if self.lineage_mode == "pretrained_external":
+            if not is_onnx_two_stage_backend(self.export_consistency.export_backend):
+                raise ValueError(
+                    "pretrained_external export_consistency must declare "
+                    "onnx-two-stage export semantics"
+                )
+            _require_declared_text(
+                self.export_consistency.reference_backend,
+                "export consistency reference_backend",
+            )
+            if self.gate_policy.task_manifest_sha256 != self.artifact_sha256:
+                raise ValueError(
+                    "pretrained_external gate policy must bind the descriptor "
+                    "artifact digest as its task manifest"
+                )
         _validate_gate_evidence(
             self.gate_policy, self.export_consistency, self.evaluation
         )
@@ -269,7 +421,7 @@ def finalize_candidate_bundle(
     precision: str,
     adapter_entrypoint: str,
     inference: dict[str, Any],
-    training_config_sha256: str,
+    training_config_sha256: str | None,
     dataset_config_hash: str,
     source_manifest_sha256: str,
     split_manifest_sha256: str,
@@ -283,16 +435,39 @@ def finalize_candidate_bundle(
     out_of_scope_use: tuple[str, ...] | list[str] = (
         "production deployment before five-task system validation",
     ),
+    lineage_mode: LineageMode = "dataset300-trained",
+    source_repository_commit: str | None = None,
+    source_asset_sha256: Sequence[str] = (),
+    source_license: str | None = None,
 ) -> Path:
     """Write a cryptographically bound *candidate* bundle, never a blessed lock.
 
     The model artifact must already exist inside ``bundle_directory``.  Metric
     gates and export consistency are validated numerically, and the adapter is
     imported in the current environment before any candidate metadata is made.
+
+    ``dataset300-trained`` bundles carry a single-file artifact plus the
+    dataset300 training lineage triple.  ``pretrained_external`` bundles carry
+    a descriptor artifact whose detector/recognizer assets are pinned by
+    ``source_repository_commit``/``source_asset_sha256``/``source_license`` and
+    hash-bound evidence attachments; the dataset/split digests then name the
+    dataset300-v2 *evaluation* lineage and no training-config digest may be
+    claimed.
     """
 
     if task not in MODEL_TASKS:
         raise CandidateBundleError(f"unsupported task {task!r}")
+    pinned_assets = tuple(source_asset_sha256)
+    try:
+        _validate_lineage_declaration(
+            lineage_mode,
+            training_config_sha256,
+            source_repository_commit,
+            pinned_assets,
+            source_license,
+        )
+    except ValueError as exc:
+        raise CandidateBundleError(str(exc)) from exc
     bundle_root = Path(bundle_directory).expanduser().resolve(strict=False)
     bundle_root.mkdir(parents=True, exist_ok=True)
     artifact = Path(artifact_path).expanduser()
@@ -337,7 +512,9 @@ def finalize_candidate_bundle(
             "evaluation predictions SHA-256 differs from evaluation evidence"
         )
     smoke = _adapter_import_smoke(adapter_entrypoint)
-    runtime_inference = validate_inference_contract(task, inference)
+    runtime_inference = validate_inference_contract(
+        task, inference, lineage_mode=lineage_mode
+    )
     attachments = tuple(
         EvidenceAttachment.model_validate(item) for item in evidence_attachments
     )
@@ -359,10 +536,19 @@ def finalize_candidate_bundle(
             None,
             f"evidence attachment {attachment.kind!r}",
         )
+    if lineage_mode == "pretrained_external":
+        _verify_descriptor_asset_binding(
+            artifact,
+            bundle_root=bundle_root,
+            attachments=attachments,
+            source_asset_sha256=pinned_assets,
+            source_license=source_license,
+        )
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     card = ModelCard(
         schema_version=1,
         task=task,
+        lineage_mode=lineage_mode,
         version=version,
         license=license_name,
         created_at_utc=now,
@@ -373,6 +559,9 @@ def finalize_candidate_bundle(
         dataset_config_hash=dataset_config_hash,
         source_manifest_sha256=source_manifest_sha256,
         split_manifest_sha256=split_manifest_sha256,
+        source_repository_commit=source_repository_commit,
+        source_asset_sha256=pinned_assets,
+        source_license=source_license,
         artifact_sha256=artifact_digest,
         artifact_bytes=artifact.stat().st_size,
         evaluation_predictions_path=predictions_relative.as_posix(),
@@ -390,6 +579,7 @@ def finalize_candidate_bundle(
         status="candidate",
         blessed=False,
         task=task,
+        lineage_mode=lineage_mode,
         version=version,
         license=license_name,
         precision=precision,
@@ -403,6 +593,9 @@ def finalize_candidate_bundle(
         dataset_config_hash=dataset_config_hash,
         source_manifest_sha256=source_manifest_sha256,
         split_manifest_sha256=split_manifest_sha256,
+        source_repository_commit=source_repository_commit,
+        source_asset_sha256=pinned_assets,
+        source_license=source_license,
         evaluation_predictions_path=predictions_relative.as_posix(),
         inference=runtime_inference,
         evidence_attachments=attachments,
@@ -479,6 +672,14 @@ def build_candidate_lock_entry(
             None,
             f"evidence attachment {attachment.kind!r}",
         )
+    if bundle.lineage_mode == "pretrained_external":
+        _verify_descriptor_asset_binding(
+            artifact,
+            bundle_root=bundle_root,
+            attachments=bundle.evidence_attachments,
+            source_asset_sha256=bundle.source_asset_sha256,
+            source_license=bundle.source_license,
+        )
     try:
         card = ModelCard.model_validate(
             json.loads(
@@ -491,6 +692,7 @@ def build_candidate_lock_entry(
         raise CandidateBundleError(f"model card is invalid: {exc}") from exc
     if (
         card.task != bundle.task
+        or card.lineage_mode != bundle.lineage_mode
         or card.version != bundle.version
         or card.license != bundle.license
         or card.created_at_utc != bundle.created_at_utc
@@ -500,6 +702,9 @@ def build_candidate_lock_entry(
         or card.dataset_config_hash != bundle.dataset_config_hash
         or card.source_manifest_sha256 != bundle.source_manifest_sha256
         or card.split_manifest_sha256 != bundle.split_manifest_sha256
+        or card.source_repository_commit != bundle.source_repository_commit
+        or card.source_asset_sha256 != bundle.source_asset_sha256
+        or card.source_license != bundle.source_license
         or card.evaluation_predictions_path
         != bundle.evaluation_predictions_path
         or card.inference != bundle.inference
@@ -516,7 +721,9 @@ def build_candidate_lock_entry(
         raise CandidateBundleError(
             "candidate bundle lacks a hash-bound runtime inference contract"
         )
-    runtime_inference = validate_inference_contract(bundle.task, bundle.inference)
+    runtime_inference = validate_inference_contract(
+        bundle.task, bundle.inference, lineage_mode=bundle.lineage_mode
+    )
 
     if lock_directory is None:
         lock_path_value = str(artifact)
@@ -535,6 +742,10 @@ def build_candidate_lock_entry(
         "version": bundle.version,
         "license": bundle.license,
         "precision": bundle.precision,
+        "lineage_mode": bundle.lineage_mode,
+        "source_repository_commit": bundle.source_repository_commit,
+        "source_asset_sha256": list(bundle.source_asset_sha256),
+        "source_license": bundle.source_license,
         "adapter": bundle.adapter_smoke.entrypoint,
         "inference": runtime_inference,
         "bundle_manifest_sha256": _sha256_file(manifest_path),
@@ -586,6 +797,25 @@ _INFERENCE_KEYS: dict[ModelTask, frozenset[str]] = {
             "segment_touch_tolerance_px",
             "maximum_candidates",
             "batch_size",
+        }
+    ),
+}
+
+# ``pretrained_external`` descriptor adapters bind a different, adapter-specific
+# set of outcome-affecting runtime options than the trained single-file
+# adapters.  The ONNX DB/CTC two-stage adapter accepts exactly these keys, so a
+# descriptor bundle must pin all of them; anything else stays fail-closed.
+_DESCRIPTOR_INFERENCE_KEYS: dict[ModelTask, frozenset[str]] = {
+    "ocr": frozenset(
+        {
+            "device",
+            "cpu_threads",
+            "detector_threshold",
+            "box_threshold",
+            "unclip_ratio",
+            "recognition_threshold",
+            "recognition_batch_size",
+            "max_candidates",
         }
     ),
 }
@@ -675,14 +905,84 @@ def build_inference_contract(task: ModelTask, task_config: Any) -> dict[str, Any
     return validate_inference_contract(task, raw)
 
 
+def _validate_descriptor_inference_values(
+    task: ModelTask, canonical: dict[str, Any]
+) -> None:
+    """Mirror the ONNX DB/CTC two-stage adapter's own value constraints."""
+
+    if task != "ocr":  # pragma: no cover - key table owns the supported tasks.
+        raise CandidateBundleError(
+            f"pretrained_external inference values are not defined for task {task!r}"
+        )
+    if canonical["device"] not in {"cpu", "auto", "cuda", "gpu"}:
+        raise CandidateBundleError("runtime inference OCR device is invalid")
+    for name in ("box_threshold", "recognition_threshold"):
+        value = canonical[name]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or not 0.0 <= float(value) <= 1.0
+        ):
+            raise CandidateBundleError(f"runtime inference OCR {name} must be in [0,1]")
+    detector_threshold = canonical["detector_threshold"]
+    if (
+        isinstance(detector_threshold, bool)
+        or not isinstance(detector_threshold, (int, float))
+        or not math.isfinite(float(detector_threshold))
+        or not 0.0 < float(detector_threshold) < 1.0
+    ):
+        raise CandidateBundleError(
+            "runtime inference OCR detector_threshold must be in (0,1)"
+        )
+    unclip_ratio = canonical["unclip_ratio"]
+    if (
+        isinstance(unclip_ratio, bool)
+        or not isinstance(unclip_ratio, (int, float))
+        or not math.isfinite(float(unclip_ratio))
+        or not 0.0 < float(unclip_ratio) <= 4.0
+    ):
+        raise CandidateBundleError(
+            "runtime inference OCR unclip_ratio must be in (0,4]"
+        )
+    for name, maximum in (
+        ("cpu_threads", 16),
+        ("recognition_batch_size", 64),
+        ("max_candidates", 2000),
+    ):
+        value = canonical[name]
+        if type(value) is not int or not 1 <= value <= maximum:
+            raise CandidateBundleError(
+                f"runtime inference OCR {name} must be an integer in [1,{maximum}]"
+            )
+
+
 def validate_inference_contract(
-    task: ModelTask, raw: dict[str, Any]
+    task: ModelTask,
+    raw: dict[str, Any],
+    *,
+    lineage_mode: LineageMode = "dataset300-trained",
 ) -> dict[str, Any]:
-    """Validate and canonicalize one task's hash-bound runtime options."""
+    """Validate and canonicalize one task's hash-bound runtime options.
+
+    ``dataset300-trained`` bundles use the trained single-file adapter
+    contract.  ``pretrained_external`` descriptor bundles use the descriptor
+    adapter contract for the same task; the two key sets are disjoint, so an
+    exact match to the declared lineage is always required.
+    """
 
     if not isinstance(raw, dict) or not raw:
         raise CandidateBundleError("runtime inference contract must be a non-empty object")
-    expected = _INFERENCE_KEYS[task]
+    if lineage_mode not in _LINEAGE_MODES:
+        raise CandidateBundleError(f"unsupported lineage_mode {lineage_mode!r}")
+    if lineage_mode == "pretrained_external":
+        expected = _DESCRIPTOR_INFERENCE_KEYS.get(task)
+        if expected is None:
+            raise CandidateBundleError(
+                f"pretrained_external inference contract is not defined for task {task!r}"
+            )
+    else:
+        expected = _INFERENCE_KEYS[task]
     actual = set(raw)
     if actual != expected:
         raise CandidateBundleError(
@@ -705,6 +1005,10 @@ def validate_inference_contract(
         ) from exc
     if not isinstance(canonical.get("device"), str) or not canonical["device"].strip():
         raise CandidateBundleError("runtime inference device must be non-empty text")
+
+    if lineage_mode == "pretrained_external":
+        _validate_descriptor_inference_values(task, canonical)
+        return canonical
 
     probability_fields = {
         "component": ("score_threshold",),
@@ -875,6 +1179,116 @@ def _validate_attachment_uniqueness(
         raise ValueError("evidence attachment paths must be unique")
 
 
+def _verify_descriptor_asset_binding(
+    artifact: Path,
+    *,
+    bundle_root: Path,
+    attachments: Sequence[EvidenceAttachment],
+    source_asset_sha256: Sequence[str],
+    source_license: str | None,
+) -> None:
+    """Re-verify a ``pretrained_external`` descriptor's self-bound asset hashes.
+
+    The descriptor is the only artifact of a two-stage ONNX bundle: it must
+    bind its detector/recognizer bytes by SHA-256, those bytes must exist
+    inside the bundle with exactly those digests, every pinned source asset
+    must also be carried as a hash-verified evidence attachment, and the
+    declared source license must match the descriptor's own provenance rows.
+    """
+
+    try:
+        descriptor = json.loads(
+            artifact.read_text(encoding="utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_constant,
+        )
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise CandidateBundleError(
+            f"pretrained descriptor is invalid JSON: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not isinstance(descriptor, dict):
+        raise CandidateBundleError("pretrained descriptor must be a JSON object")
+    if descriptor.get("schema_version") != 1:
+        raise CandidateBundleError("pretrained descriptor schema_version must be 1")
+    if descriptor.get("architecture") != "db_ctc_onnx":
+        raise CandidateBundleError(
+            "pretrained descriptor architecture must be 'db_ctc_onnx'"
+        )
+    provenance = descriptor.get("provenance")
+    if not isinstance(provenance, dict):
+        raise CandidateBundleError("pretrained descriptor must declare provenance")
+    if provenance.get("dataset300_v2_trained") is not False:
+        raise CandidateBundleError(
+            "pretrained descriptor provenance must declare dataset300_v2_trained=false"
+        )
+    bound: dict[str, str] = {}
+    for stage in ("detector", "recognizer"):
+        binding = descriptor.get(stage)
+        if not isinstance(binding, dict) or set(binding) != {"path", "sha256"}:
+            raise CandidateBundleError(
+                f"pretrained descriptor {stage} binding must contain exactly path and sha256"
+            )
+        raw_path = binding["path"]
+        if (
+            not isinstance(raw_path, str)
+            or not raw_path.strip()
+            or Path(raw_path).is_absolute()
+            or ".." in Path(raw_path).parts
+        ):
+            raise CandidateBundleError(
+                f"pretrained descriptor {stage} path must be descriptor-relative"
+            )
+        digest = binding["sha256"]
+        if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+            raise CandidateBundleError(
+                f"pretrained descriptor {stage} sha256 must be a lowercase SHA-256 digest"
+            )
+        asset_path = (artifact.parent / raw_path).resolve(strict=False)
+        try:
+            asset_path.relative_to(bundle_root)
+        except ValueError as exc:
+            raise CandidateBundleError(
+                f"pretrained descriptor {stage} asset escapes the bundle directory"
+            ) from exc
+        _verify_bound_file(asset_path, digest, None, f"pretrained descriptor {stage} asset")
+        bound[stage] = digest
+    pinned = tuple(source_asset_sha256)
+    if len(pinned) != 2 or set(pinned) != set(bound.values()):
+        raise CandidateBundleError(
+            "source_asset_sha256 must pin exactly the descriptor detector and "
+            "recognizer asset digests"
+        )
+    attachment_hashes = {attachment.sha256 for attachment in attachments}
+    missing = [digest for digest in pinned if digest not in attachment_hashes]
+    if missing:
+        raise CandidateBundleError(
+            "pretrained descriptor assets must also be hash-bound evidence "
+            f"attachments: missing {missing}"
+        )
+    rows = provenance.get("source_repositories")
+    if not isinstance(rows, list):
+        raise CandidateBundleError(
+            "pretrained descriptor provenance must list source_repositories"
+        )
+    pinned_set = set(pinned)
+    licenses: set[Any] = set()
+    covered: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("sha256") in pinned_set:
+            covered.add(row["sha256"])
+            licenses.add(row.get("license"))
+    if covered != pinned_set:
+        raise CandidateBundleError(
+            "pretrained descriptor provenance does not cover every pinned source asset"
+        )
+    if licenses != {source_license}:
+        raise CandidateBundleError(
+            "source_license differs from the descriptor provenance licenses"
+        )
+
+
 def _verify_bound_file(
     path: Path, expected_sha256: str, expected_bytes: int | None, label: str
 ) -> None:
@@ -948,11 +1362,15 @@ __all__ = [
     "EvidenceAttachment",
     "ExportConsistency",
     "GatePolicy",
+    "LineageMode",
     "MetricGateResult",
     "ModelCard",
     "build_candidate_lock_entry",
     "build_inference_contract",
     "finalize_candidate_bundle",
+    "is_onnx_two_stage_backend",
+    "is_torchscript_two_stage_backend",
     "load_candidate_bundle",
     "validate_inference_contract",
+    "validate_source_repository_commit",
 ]

@@ -185,6 +185,14 @@ def _repair_segments(ir: CircuitIR, log: _RepairLog) -> None:
             continue
         # Prefer the strongest observed edge; the ID tie-break keeps the choice stable.
         canonical = min(segments, key=lambda item: (-item.score, item.internal_id))
+        # Deduplication must not erase an observed corner: an identical segment
+        # can carry one polyline's vertical turn and another polyline's path.
+        # The group key already requires exact endpoints and the same channel.
+        canonical.source_polyline_ids = sorted({
+            polyline_id
+            for segment in segments
+            for polyline_id in segment.observed_polyline_ids
+        })
         for duplicate in sorted(segments, key=lambda item: item.internal_id):
             if duplicate.internal_id == canonical.internal_id:
                 continue

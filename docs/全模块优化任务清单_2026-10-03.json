@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-03",
+  "timezone": "Asia/Shanghai",
+  "status": "proposed",
+  "scope": "分析和执行方案；本次未启动实施",
+  "evidence_policy": {
+    "local_code": "verified_read_only_this_turn",
+    "server_cycle74_79": "local_report_only_not_remote_reverified",
+    "official_evaluator": "unavailable_per_project_reports",
+    "metrics": "raw-v1 diagnostic; guide-v1 local regression; targets proposed not predicted"
+  },
+  "constraints": [
+    "Circuit-IR唯一内部表示",
+    "只使用dataset300-v2训练且遵守grouped划分",
+    "推理不读取GT/sidecar",
+    "训练单GPU串行",
+    "严格Validator 0 ERROR",
+    "不造key/number",
+    "不手改blessed/status",
+    "单图600s，整批按有效配置更严格预算",
+    "不自动执行远程调用、下载或训练"
+  ],
+  "optional_followup": {
+    "id": "T15",
+    "priority": "P2",
+    "title": "长字符串OCR专门识别器对照",
+    "trigger": "T03/T04证明正确crop下仍存在系统性识别瓶颈",
+    "method": "PARSeq等专门识别器仅做受控裁剪对照",
+    "status": "deferred"
+  },
+  "tasks": [
+    {
+      "id": "T00",
+      "status": "proposed",
+      "priority": "P0",
+      "module": "全链路",
+      "title": "冻结生产与开发候选双基线",
+      "depends_on": [],
+      "resources": "CPU；完整复现才使用串行 GPU 队列",
+      "action": "核验 cycle79 服务器原始证据和本地生产差异；固定输入、代码含 dirty 文件、模型、配置、库、evaluator 哈希。",
+      "acceptance": "双基线可重放，冻结结果与 fresh 结果分别标记，不把历史报告当本次实测。",
+      "paths": [
+        "models/models.lock.json",
+        "configs/pipeline.edarace.yaml",
+        "scripts/run_raw_candidate_batch.py"
+      ],
+      "estimated_effort": "0.5–1 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t00"
+    },
+    {
+      "id": "T01",
+      "status": "proposed",
+      "priority": "P0",
+      "module": "数据与评估",
+      "title": "阶段留存账本及困难区域审查",
+      "depends_on": [
+        "T00"
+      ],
+      "resources": "CPU",
+      "action": "按 internal_id 和互斥删除主因闭合阶段统计；重算真实连接对两端留存比例与条件连接召回；训练内部 grouped 校准。",
+      "acceptance": "计数闭合；指标有分母和 eligible/masked；GT 仅离线；样本分组和暴露记录完整。",
+      "paths": [
+        "src/pcbparse/pipeline/orchestrator.py",
+        "src/pcbparse/evaluation/raw_cli.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t01"
+    },
+    {
+      "id": "T02",
+      "status": "proposed",
+      "priority": "P0",
+      "module": "association",
+      "title": "跨角色竞争与观测去重",
+      "depends_on": [
+        "T01"
+      ],
+      "resources": "CPU",
+      "action": "复核 R3/LM334、U5/PCF8563；引入 observation-role-owner 约束与 unknown，复用现有匹配和顺序约束。",
+      "acceptance": "正确 key 不低于 Bdev；建议缺 key 裁剪减少20%；错误字段不以非空数掩盖。",
+      "paths": [
+        "src/pcbparse/association/text_component.py",
+        "src/pcbparse/association/semantic_fields.py",
+        "src/pcbparse/association/pin_assignment.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t02"
+    },
+    {
+      "id": "T03",
+      "status": "proposed",
+      "priority": "P0",
+      "module": "OCR",
+      "title": "缺字段与冲突驱动的局部重识别",
+      "depends_on": [
+        "T01",
+        "T02"
+      ],
+      "resources": "单 GPU 串行推理",
+      "action": "在位号邻域、pin 条带、完整文字行上提 crop；保留原文和坐标；不直接拼字；限制重复识别。",
+      "acceptance": "五类字段逐项报告；位号不退化；两张重复 JSON 字节一致；增加时延仍在有效预算内。",
+      "paths": [
+        "src/pcbparse/perception/ocr_multilevel.py",
+        "src/pcbparse/perception/onnx_ocr_adapter.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t03"
+    },
+    {
+      "id": "T04",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "association训练",
+      "title": "分离识别角色归属置信并校准",
+      "depends_on": [
+        "T01",
+        "T02"
+      ],
+      "resources": "CPU；确有必要时串行训练",
+      "action": "真实候选池与预测 ROI；重复观测权重；模糊对应 masked；训练内部 grouped 拟合校准。",
+      "acceptance": "同 coverage 错误率不升；precision-coverage 报告；校准不冒充角色识别能力提升。",
+      "paths": [
+        "src/pcbparse/association/ocr_calibration.py",
+        "src/pcbparse/association/semantic_fields.py"
+      ],
+      "estimated_effort": "0.5–1.5 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t04"
+    },
+    {
+      "id": "T05",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "component",
+      "title": "小目标与切片边缘定向优化",
+      "depends_on": [
+        "T01"
+      ],
+      "resources": "串行 GPU 队列",
+      "action": "先冻结权重，定位 tile 截断/NMS/阈值；比较有界小片补看；有数据依据才重训。",
+      "acceptance": "建议目标小目标 recall +3pp，总 precision 不低于基线1pp以上；最终正确身份不下降。",
+      "paths": [
+        "src/pcbparse/perception/production_provider.py",
+        "configs/pipeline.edarace.yaml"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t05"
+    },
+    {
+      "id": "T06",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "pin训练",
+      "title": "真实预测ROI与困难引脚训练",
+      "depends_on": [
+        "T01"
+      ],
+      "resources": "串行 GPU 训练，先 smoke",
+      "action": "审计并复用 Pin32 已有数据；仅一种采样或框扰动变量；保持坐标与损失合同。",
+      "acceptance": "建议预测ROI 5px recall +5pp；最终正确 pin 和网络不下降；不改原晋级门槛。",
+      "paths": [
+        "src/pcbparse/training/torch_pin_model.py",
+        "src/pcbparse/perception/torch_pin_adapter.py"
+      ],
+      "estimated_effort": "1–2 天及训练排队",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t06"
+    },
+    {
+      "id": "T07",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "pin几何",
+      "title": "热图与图像骨架端点候选融合",
+      "depends_on": [
+        "T01"
+      ],
+      "resources": "CPU；验证阶段串行 GPU",
+      "action": "线端点/器件边界交会、方向和原图像素支持；保留文字掩膜前后分支，不造编号。",
+      "acceptance": "分别报告密集IC、两脚器件、连接器；新增 pin 有原图依据且最终可用 pin 净增加。",
+      "paths": [
+        "src/pcbparse/perception/torch_pin_adapter.py",
+        "src/pcbparse/perception/wire_vectorizer.py",
+        "src/pcbparse/association/pin_wire.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t07"
+    },
+    {
+      "id": "T08",
+      "status": "proposed",
+      "priority": "P0",
+      "module": "wire评估",
+      "title": "掩膜到最终线段四层误差溯源",
+      "depends_on": [
+        "T01"
+      ],
+      "resources": "CPU",
+      "action": "统一变换线宽容差；分解原始mask、后处理、折线、最终net线段的FP/FN。",
+      "acceptance": "错误源可定位；约94% centerline与约50% raw像素不得直接比较；若评估修订需版本化并重跑两组。",
+      "paths": [
+        "src/pcbparse/perception/wire_vectorizer.py",
+        "src/pcbparse/evaluation/raw_cli.py",
+        "src/pcbparse/training/torch_wire_model.py"
+      ],
+      "estimated_effort": "0.5–1 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t08"
+    },
+    {
+      "id": "T09",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "wire训练",
+      "title": "困难负例与现有损失消融",
+      "depends_on": [
+        "T08"
+      ],
+      "resources": "串行 GPU 训练，先 smoke",
+      "action": "仅当 T08 确认原始mask瓶颈；复用现有BCE/Dice/clDice；文字/边框/平行线困难采样。",
+      "acceptance": "建议统一口径 precision +5pp、recall下降≤1pp；错并和断网不增加。",
+      "paths": [
+        "src/pcbparse/training/torch_wire_model.py"
+      ],
+      "estimated_effort": "1–2 天及训练排队",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t09"
+    },
+    {
+      "id": "T10",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "Physical Graph",
+      "title": "交叉通道、pin snap与虚拟修补约束",
+      "depends_on": [
+        "T01",
+        "T08"
+      ],
+      "resources": "CPU",
+      "action": "按证据类型定位 false union；方向转移通道；带点连接支持；竞争线及像素证据约束snap/repair。",
+      "acceptance": "共享建图/验证证据定义；方向和来源回归通过；固定可用pin拓扑提升，误并不增加。",
+      "paths": [
+        "src/pcbparse/graph/physical.py",
+        "src/pcbparse/association/pin_wire.py",
+        "src/pcbparse/validation/graph.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t10"
+    },
+    {
+      "id": "T11",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "Electrical Net与线段",
+      "title": "条件拓扑及匹配网络内端点评估",
+      "depends_on": [
+        "T10"
+      ],
+      "resources": "CPU",
+      "action": "拆分全量与固定可用pin指标；审计label作用域、pin set和线段归属；相关修改后重建图。",
+      "acceptance": "建议条件连接precision +5pp、recall不降；匹配网内5px端点指标不降；全量指南回归同时报告。",
+      "paths": [
+        "src/pcbparse/nets/hypergraph.py",
+        "src/pcbparse/pipeline/orchestrator.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t11"
+    },
+    {
+      "id": "T12",
+      "status": "proposed",
+      "priority": "P0",
+      "module": "validation/output",
+      "title": "合法性完整性双报告和增量合同测试",
+      "depends_on": [
+        "T00"
+      ],
+      "resources": "CPU；最终组合依赖所有入选任务",
+      "action": "保持0 ERROR、禁止补号和占位；诊断不进官方JSON；unit先integration后；记录skip原因。",
+      "acceptance": "严格门禁、错误manifest、确定性、lineage及阶段账本闭合；完整性单列。",
+      "paths": [
+        "src/pcbparse/output/official_serializer.py",
+        "src/pcbparse/validation",
+        "tests/unit",
+        "tests/integration"
+      ],
+      "estimated_effort": "贯穿全程，集中0.5–1天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t12"
+    },
+    {
+      "id": "T13",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "runtime",
+      "title": "已验证CTC和缓存移植及GPU复制画像",
+      "depends_on": [
+        "T00"
+      ],
+      "resources": "CPU等价验证；串行GPU性能测量",
+      "action": "先移植已有候选，后 profiling；必要时输出缩减与IO Binding；分桶后才考虑CUDA Graph。",
+      "acceptance": "同输入输出字节一致，保留全量数值合同；建议5轮配对中位全批耗时下降10%，报告负载与不确定性。",
+      "paths": [
+        "src/pcbparse/perception/onnx_ocr_processing.py",
+        "src/pcbparse/perception/onnx_ocr_adapter.py",
+        "src/pcbparse/perception/wire_vectorizer.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t13"
+    },
+    {
+      "id": "T14",
+      "status": "proposed",
+      "priority": "P1",
+      "module": "集成晋级",
+      "title": "组合消融、fresh推理与候选bundle审查",
+      "depends_on": [
+        "T02",
+        "T03",
+        "T05",
+        "T06",
+        "T07",
+        "T09",
+        "T11",
+        "T12",
+        "T13"
+      ],
+      "resources": "串行 GPU 验证，离线 CPU 评估",
+      "action": "依赖任务允许以 rejected 有证据结案，只有 validated 分支入选；最终 fresh 全链路；追踪新增关联模型资产。",
+      "acceptance": "完整bundle/lineage/导出一致性/质量/时间门禁；model_promotion唯一晋级；官方评测缺失明确标记。",
+      "paths": [
+        "data_tools/model_promotion.py",
+        "scripts/audit_release_hard_gates.py",
+        "scripts/run_raw_candidate_batch.py"
+      ],
+      "estimated_effort": "1–2 天",
+      "common_rollback": "独立候选配置/feature flag；保留Bdev与生产锁；失败记录不覆盖",
+      "output_directory": "work/full-module-20261003/t14"
+    }
+  ]
+}
