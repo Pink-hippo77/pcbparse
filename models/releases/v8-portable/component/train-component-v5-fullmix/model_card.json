@@ -1,0 +1,75 @@
+{
+  "artifact_bytes": 76705707,
+  "artifact_sha256": "34d79a6dfa4340e64dc96de4945bcfea6e376d9a6f4949876b58d7e719697af5",
+  "created_at_utc": "2026-08-24T05:05:18.967513Z",
+  "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+  "evaluation": {
+    "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+    "evaluator": "pcbparse.torch.component",
+    "evaluator_version": "1",
+    "gates": [
+      {
+        "metric": "bbox_map50",
+        "operator": "gte",
+        "passed": true,
+        "threshold": 0.25,
+        "value": 0.25008817278820666
+      }
+    ],
+    "metrics": {
+      "bbox_map50": 0.25008817278820666,
+      "precision50": 0.03929009934144436,
+      "recall50": 0.31654676258992803
+    },
+    "predictions_sha256": "153883e3834809539b7fb3ddc309bc1a480cf25bbc1b5f199fa689e429108f92",
+    "split": "val",
+    "split_manifest_sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
+  },
+  "evaluation_predictions_path": "predictions.jsonl",
+  "export_consistency": {
+    "export_backend": "torchscript",
+    "input_manifest_sha256": "fe379b30be21bb63c90709841700689bcd793ba907f1b40d81a3e8b38cad52fe",
+    "max_abs_error": 0.0,
+    "minimum_samples": 16,
+    "passed": true,
+    "reference_backend": "torch-2.12.1+cu126",
+    "sample_count": 16,
+    "tolerance": 0.001
+  },
+  "gate_policy": {
+    "evaluation_gates": [
+      {
+        "metric": "bbox_map50",
+        "operator": "gte",
+        "threshold": 0.25
+      }
+    ],
+    "export_max_abs_error": 0.001,
+    "export_min_samples": 16,
+    "task_manifest_sha256": "fe379b30be21bb63c90709841700689bcd793ba907f1b40d81a3e8b38cad52fe"
+  },
+  "inference": {
+    "device": "auto",
+    "max_detections": 300,
+    "score_threshold": 0.0
+  },
+  "intended_use": "PCB schematic component inference in the verified PCBParse pipeline",
+  "license": "Official Dataset300 competition terms; redistribution not granted",
+  "limitations": [
+    "The runtime artifact is the reconstructable FP32 checkpoint; model.onnx is the verified deployment companion.",
+    "Component initialization used a workspace-local pretrained artifact bound to SHA-256 bfc8b2b269ea2c7ff4e6431f5cbb884085d53cd02b1cb9671103ba17c8ab3ea6 (workspace formal component-v4 best-epoch gate-failed candidate; license: Dataset300 competition terms; torchvision BSD-3-Clause initialization lineage retained).",
+    "Component training used deterministic capped class-balanced sampling (power=0.25, validation remained sequential and unweighted).",
+    "Validation is limited to the frozen Dataset300 validation split.",
+    "Candidate status does not authorize models.lock blessing.",
+    "The repository does not contain the official Dataset300 training-data license; verify the competition terms before publishing or redistributing the trained artifact."
+  ],
+  "out_of_scope_use": [
+    "production deployment before five-task system validation"
+  ],
+  "schema_version": 1,
+  "source_manifest_sha256": "1282c9c6f7ae5df9647e5e49180cd98b16eeb781880193f386d44ce30eecd5b8",
+  "split_manifest_sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1",
+  "task": "component",
+  "training_config_sha256": "093b0b500a1fc6f8c6efcabb6e4d49d88b4dcceaad00b1604e1ab1047f7f30d2",
+  "version": "component-34d79a6dfa4340e6"
+}

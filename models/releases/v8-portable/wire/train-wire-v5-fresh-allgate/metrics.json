@@ -1,0 +1,19 @@
+{
+  "best_epoch": 11,
+  "completed_epochs": 20,
+  "early_stopped": false,
+  "formal_evidence": true,
+  "metrics": {
+    "centerline_f1": 0.940180988382391,
+    "centerline_precision": 0.9087486495629494,
+    "centerline_recall": 0.9738656321266612,
+    "component_count_error": 12.811688311688311,
+    "connectivity_score": 0.578880309046471,
+    "skeleton_f1": 0.940180988382391,
+    "validation_loss": 0.39330447145870756
+  },
+  "planned_epochs": 20,
+  "schema_version": 1,
+  "smoke": false,
+  "split": "val"
+}

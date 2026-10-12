@@ -1,0 +1,294 @@
+{
+  "architecture": "fasterrcnn_mobilenet_v3_large_320_fpn",
+  "artifact_bytes": 77144365,
+  "artifact_sha256": "ce59315fd0cbc7a081a3a90fb760117b97f8d2435a18e754e7669cd37a896c37",
+  "category_table": [
+    {
+      "id": 1,
+      "model_label": 1,
+      "name": "V",
+      "official_id": 0,
+      "source_category_id": "0",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 2,
+      "model_label": 2,
+      "name": "Box",
+      "official_id": 1,
+      "source_category_id": "1",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 3,
+      "model_label": 3,
+      "name": "Gnd",
+      "official_id": 2,
+      "source_category_id": "2",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 4,
+      "model_label": 4,
+      "name": "R",
+      "official_id": 3,
+      "source_category_id": "3",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 5,
+      "model_label": 5,
+      "name": "C",
+      "official_id": 4,
+      "source_category_id": "4",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 6,
+      "model_label": 6,
+      "name": "D",
+      "official_id": 5,
+      "source_category_id": "5",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 7,
+      "model_label": 7,
+      "name": "L",
+      "official_id": 6,
+      "source_category_id": "6",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 8,
+      "model_label": 8,
+      "name": "Fuse",
+      "official_id": 7,
+      "source_category_id": "7",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 9,
+      "model_label": 9,
+      "name": "MOSFET",
+      "official_id": 8,
+      "source_category_id": "8",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 10,
+      "model_label": 10,
+      "name": "Opt",
+      "official_id": 9,
+      "source_category_id": "9",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 11,
+      "model_label": 11,
+      "name": "BJT",
+      "official_id": 10,
+      "source_category_id": "10",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 12,
+      "model_label": 12,
+      "name": "Buzzer",
+      "official_id": 11,
+      "source_category_id": "11",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 13,
+      "model_label": 13,
+      "name": "Crystal",
+      "official_id": 13,
+      "source_category_id": "13",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 14,
+      "model_label": 14,
+      "name": "Dc",
+      "official_id": 14,
+      "source_category_id": "14",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 15,
+      "model_label": 15,
+      "name": "M",
+      "official_id": 16,
+      "source_category_id": "16",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 16,
+      "model_label": 16,
+      "name": "Other",
+      "official_id": 17,
+      "source_category_id": "17",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 17,
+      "model_label": 17,
+      "name": "ESD",
+      "official_id": 18,
+      "source_category_id": "18",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 18,
+      "model_label": 18,
+      "name": "Battary",
+      "official_id": 19,
+      "source_category_id": "19",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 19,
+      "model_label": 19,
+      "name": "Switch",
+      "official_id": 20,
+      "source_category_id": "20",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 20,
+      "model_label": 20,
+      "name": "Transfomer",
+      "official_id": 21,
+      "source_category_id": "21",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 21,
+      "model_label": 21,
+      "name": "LED",
+      "official_id": 22,
+      "source_category_id": "22",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 22,
+      "model_label": 22,
+      "name": "AMP",
+      "official_id": 23,
+      "source_category_id": "23",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 23,
+      "model_label": 23,
+      "name": "NET_input",
+      "official_id": 24,
+      "source_category_id": "24",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 24,
+      "model_label": 24,
+      "name": "Block",
+      "official_id": 25,
+      "source_category_id": "25",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 25,
+      "model_label": 25,
+      "name": "ANT",
+      "official_id": 26,
+      "source_category_id": "26",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 26,
+      "model_label": 26,
+      "name": "Net_short",
+      "official_id": 27,
+      "source_category_id": "27",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 27,
+      "model_label": 27,
+      "name": "Net_output",
+      "official_id": 28,
+      "source_category_id": "28",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 28,
+      "model_label": 28,
+      "name": "Net_bidirection",
+      "official_id": 29,
+      "source_category_id": "29",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 29,
+      "model_label": 29,
+      "name": "SEG",
+      "official_id": 30,
+      "source_category_id": "30",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 30,
+      "model_label": 30,
+      "name": "CIRCLE_HEADER",
+      "official_id": 31,
+      "source_category_id": "31",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 31,
+      "model_label": 31,
+      "name": "PIN",
+      "official_id": 32,
+      "source_category_id": "32",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 32,
+      "model_label": 32,
+      "name": "Testpoint",
+      "official_id": 33,
+      "source_category_id": "33",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 33,
+      "model_label": 33,
+      "name": "Jumper",
+      "official_id": 34,
+      "source_category_id": "34",
+      "supercategory": "pcb_component"
+    },
+    {
+      "id": 34,
+      "model_label": 34,
+      "name": "Motor",
+      "official_id": 35,
+      "source_category_id": "35",
+      "supercategory": "pcb_component"
+    }
+  ],
+  "export_type": "torchscript",
+  "format": "pcbparse-torch-component-export-v2",
+  "input_contract": "float32 RGB NCHW [0,1], batch=1, fixed exported height/width",
+  "input_shape": [
+    1,
+    3,
+    512,
+    512
+  ],
+  "label_contract": "background=0; model_label=1..N; official_id is metadata",
+  "outputs": [
+    "boxes_xyxy",
+    "scores",
+    "labels"
+  ]
+}

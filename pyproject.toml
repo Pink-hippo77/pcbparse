@@ -6,7 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "pcb-schematic-parser"
 version = "0.1.0"
 description = "Deterministic PCB schematic parsing baseline built around Circuit-IR"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "numpy==2.3.5",

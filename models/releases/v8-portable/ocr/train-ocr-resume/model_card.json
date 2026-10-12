@@ -1,0 +1,101 @@
+{
+    "artifact_bytes":  936936,
+    "artifact_sha256":  "e4212287d6ac31d2b45e20bb0c6f273bf6328299fb7746ea75a01e2bf180fe78",
+    "created_at_utc":  "2026-08-19T11:49:08.401395Z",
+    "dataset_config_hash":  "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+    "evaluation":  {
+                       "dataset_config_hash":  "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
+                       "evaluator":  "pcbparse.torch.ocr",
+                       "evaluator_version":  "1",
+                       "gates":  [
+                                     {
+                                         "metric":  "normalized_exact_match",
+                                         "operator":  "gte",
+                                         "passed":  true,
+                                         "threshold":  0.5,
+                                         "value":  0.530745849894786
+                                     }
+                                 ],
+                       "metrics":  {
+                                       "charset_coverage_record_rate":  0.9960252513444002,
+                                       "charset_oov_record_count":  17.0,
+                                       "charset_oov_unique_codepoints":  23.0,
+                                       "charset_train_codepoints":  825.0,
+                                       "detector_false_negatives":  5884.0,
+                                       "detector_false_positives":  1727.0,
+                                       "detector_hmean":  0.3668579985026204,
+                                       "detector_ignored_predictions":  135.0,
+                                       "detector_mean_matched_iou":  0.7537751554800625,
+                                       "detector_precision":  0.5607833163784334,
+                                       "detector_recall":  0.2725924094449252,
+                                       "detector_true_positives":  2205.0,
+                                       "detector_validation_loss":  0.3180133736715084,
+                                       "normalized_exact_match":  0.530745849894786,
+                                       "recognition_cer":  0.300583829686855,
+                                       "recognition_encodable_exact_match":  0.5328638497652582,
+                                       "recognition_encodable_records_evaluated":  4260.0,
+                                       "recognition_evaluated_records":  4277.0,
+                                       "recognition_excluded_policy_records":  3.0,
+                                       "recognition_oov_exact_match":  0.0,
+                                       "recognition_oov_records_evaluated":  17.0,
+                                       "recognition_raw_exact_match":  0.530745849894786,
+                                       "recognition_total_included_records":  4277.0,
+                                       "recognition_validation_loss_encodable":  1.0907754349886842
+                                   },
+                       "predictions_sha256":  "ae70844f45ebb439115ebc15467ea79bd4ef661ca108b36f5c4588fdff11a079",
+                       "split":  "val",
+                       "split_manifest_sha256":  "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
+                   },
+    "export_consistency":  {
+                               "export_backend":  "torchscript-two-stage",
+                               "input_manifest_sha256":  "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1",
+                               "max_abs_error":  0.0,
+                               "minimum_samples":  32,
+                               "passed":  true,
+                               "reference_backend":  "torch-2.12.1+cu126",
+                               "sample_count":  32,
+                               "tolerance":  0.003
+                           },
+    "gate_policy":  {
+                        "evaluation_gates":  [
+                                                 {
+                                                     "metric":  "normalized_exact_match",
+                                                     "operator":  "gte",
+                                                     "threshold":  0.5
+                                                 }
+                                             ],
+                        "export_max_abs_error":  0.003,
+                        "export_min_samples":  32,
+                        "task_manifest_sha256":  "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1"
+                    },
+    "intended_use":  "PCB schematic ocr inference in the verified PCBParse pipeline",
+    "license":  "Official Dataset300 competition terms; redistribution not granted",
+    "limitations":  [
+                        "The CTC charset is derived exactly from included train rows; validation OOV records remain explicit errors and are never added to the vocabulary.",
+                        "Validation contains 17 charset-OOV records across 23 unique code points.",
+                        "OCR detection and recognition ONNX exports are verification companions; the production adapter loads the unified model.pt bundle.",
+                        "Validation is limited to the frozen Dataset300 validation split.",
+                        "Candidate status does not authorize models.lock blessing.",
+                        "The repository does not contain the official Dataset300 training-data license; verify the competition terms before publishing or redistributing the trained artifact."
+                    ],
+    "out_of_scope_use":  [
+                             "production deployment before five-task system validation"
+                         ],
+    "schema_version":  1,
+    "source_manifest_sha256":  "1282c9c6f7ae5df9647e5e49180cd98b16eeb781880193f386d44ce30eecd5b8",
+    "split_manifest_sha256":  "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1",
+    "task":  "ocr",
+    "training_config_sha256":  "a8fb494b855099900d5e58b0d1423fd36c6cd852703886fdee8b7587a0b7fdfd",
+    "version":  "ocr-e4212287d6ac31d2",
+    "evaluation_predictions_path":  "predictions.jsonl",
+    "inference":  {
+                      "recognition_threshold":  0,
+                      "device":  "auto",
+                      "detector_threshold":  0.5,
+                      "recognition_batch_size":  32,
+                      "detector_min_area":  4,
+                      "max_recognition_width":  4096,
+                      "detector_batch_size":  4,
+                      "max_detections_per_view":  512
+                  }
+}

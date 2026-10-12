@@ -1,0 +1,62 @@
+{
+  "detector": {
+    "path": "detector.ts",
+    "report": {
+      "artifact_bytes": 195213,
+      "artifact_sha256": "d703b05906809f2479a6ec455ec56b80fb0201093d2ad916127344c96fd5356c",
+      "format": "torchscript",
+      "input_shape": [
+        1,
+        3,
+        512,
+        512
+      ],
+      "kind": "detector",
+      "max_abs_error": 0.0,
+      "mean_abs_error": 0.0,
+      "output_shape": [
+        1,
+        1,
+        512,
+        512
+      ],
+      "passed": true,
+      "path": "E:\\EDA挑战题目六\\work\\train-ocr-resume\\detector.ts",
+      "schema": "pcbparse.ocr.torch-export-consistency.v1",
+      "tolerance": 0.003
+    },
+    "sha256": "d703b05906809f2479a6ec455ec56b80fb0201093d2ad916127344c96fd5356c"
+  },
+  "kind": "pcbparse_ocr_two_stage_onnx_exports",
+  "maximum_absolute_error": 0.0,
+  "recognizer": {
+    "path": "recognizer.ts",
+    "report": {
+      "artifact_bytes": 812301,
+      "artifact_sha256": "1d98ad46c64306553364941fada9bce64b9d988bba4cadae84e7b12fe696f599",
+      "format": "torchscript",
+      "input_shape": [
+        1,
+        1,
+        48,
+        66
+      ],
+      "kind": "recognizer",
+      "max_abs_error": 0.0,
+      "mean_abs_error": 0.0,
+      "output_shape": [
+        17,
+        1,
+        826
+      ],
+      "passed": true,
+      "path": "E:\\EDA挑战题目六\\work\\train-ocr-resume\\recognizer.ts",
+      "schema": "pcbparse.ocr.torch-export-consistency.v1",
+      "tolerance": 0.003
+    },
+    "sha256": "1d98ad46c64306553364941fada9bce64b9d988bba4cadae84e7b12fe696f599"
+  },
+  "sample_count_per_submodel": 32,
+  "schema_version": 1,
+  "tolerance": 0.003
+}

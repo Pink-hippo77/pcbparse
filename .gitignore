@@ -34,7 +34,6 @@ weights/
 models/weights/
 models/candidates/
 models/*.bak
-models/pretrained/yolo11n.pt
 
 # Data images and large raw datasets
 data/images/
@@ -45,8 +44,8 @@ Dataset300/
 赛题六公开数据集/
 
 # Outputs
-outputs/
-output/
+/outputs/
+/output/
 
 # Debug/determinism artifacts (large JSON dumps)
 artifacts/debug_e2e_latest/
@@ -91,3 +90,28 @@ overlay_*.png
 .env.*
 !.env.example
 !.env.sample
+
+# Keep human-facing documentation, reports, and logs local
+*.md
+*.rst
+*.pdf
+*.docx
+*.pptx
+*.log
+docs/
+artifacts/analysis/
+artifacts/audits/
+artifacts/reference/
+artifacts/release/
+artifacts/reviews/
+artifacts/training/**/*.json
+artifacts/training/**/*.jsonl
+models/*.backup.*.json
+models/*.promotion-report.json
+models/*.report.json
+models/models.lock.pre-repair-*.json
+
+# Include the complete production bundles referenced by models/models.lock.json
+!models/releases/
+models/releases/*
+!models/releases/v8-portable/
