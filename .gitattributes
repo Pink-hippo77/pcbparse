@@ -2,3 +2,4 @@
 *.pth filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
 models/**/*.ts filter=lfs diff=lfs merge=lfs -text
+scripts/run_pin_package_experiment.sh text eol=lf

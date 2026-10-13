@@ -18,6 +18,7 @@ from pcbparse.association.text_component import (
     resolve_component_keys,
 )
 from pcbparse.association.text_pin import associate_pin_texts
+from pcbparse.association.pin_component import associate_pin_components
 from pcbparse.ir.models import CircuitIR
 from pcbparse.knowledge.model_catalog import load_model_catalog
 
@@ -48,6 +49,7 @@ def associate_ocr(
         if diagnostic.stage != ASSOCIATION_STAGE
     ]
     before = len(ir.diagnostics)
+    pin_component_summary = associate_pin_components(ir, resolved)
     postprocess_summary = postprocess_tokens(ir.texts)
     semantic_options: dict[str, Any] = {}
     if resolved.pin_body_component_roi_context_enabled:
@@ -100,6 +102,7 @@ def associate_ocr(
         "schema_version": 1,
         "config": resolved.to_dict(),
         "postprocess": postprocess_summary,
+        "pin_component": pin_component_summary,
         "semantic_fields": semantic_summary,
         "pin_ocr_gate": pin_ocr_gate_summary,
         "component": component_summary,
