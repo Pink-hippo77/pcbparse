@@ -238,7 +238,16 @@ def run_submission(
         "final_results_dir": "final_results",
         "submission_mode": "degraded",
         "runtime": _runtime_record(runtime, initialization_error),
-        "token_usage": token_totals,
+        "method": "pcbparse-production-image-only",
+        "timestamp": _utc_now(),
+        "processed_cases": len(cases),
+        "token_usage": {
+            "total_tokens": token_totals["input_tokens"] + token_totals["output_tokens"],
+            "prompt_tokens": token_totals["input_tokens"],
+            "completion_tokens": token_totals["output_tokens"],
+            "api_calls": token_totals["calls"],
+            **token_totals,
+        },
         "summary": {
             "status": (
                 "ok"
@@ -265,6 +274,13 @@ def run_submission(
         "cases": cases,
     }
     _atomic_write_json(destination / "decision_log.json", report)
+    failed_cases = [case for case in cases if case.get("fallback") or case.get("error")]
+    if failed_cases:
+        _atomic_write_json(destination / "error_manifest.json", {
+            "schema_version": 1,
+            "kind": "edarace-batch-errors",
+            "failed_cases": failed_cases,
+        })
     logger.info(
         "EDARace batch completed: cases=%d fallback=%d elapsed=%.3fs",
         len(cases),

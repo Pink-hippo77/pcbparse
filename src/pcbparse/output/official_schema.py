@@ -46,7 +46,7 @@ def split_official_pin_numbers(value: object) -> tuple[str, ...]:
 
 
 DEFAULT_OFFICIAL_SCHEMA: dict[str, Any] = {
-    "version": "official-guide-2026-example-spelling-v1",
+    "version": "qna-type-list-10gt-0930-v2",
     "top_level_keys": ["components", "pins", "nets"],
     "component": {
         # The guide's prose table says ``name`` while every machine-readable
@@ -56,20 +56,142 @@ DEFAULT_OFFICIAL_SCHEMA: dict[str, Any] = {
         # lowercase-name profile.
         "fields": ["type", "Name", "value", "bbox"],
         "bbox_encoding": "xyxy_list",
+        "allowed_types": [
+            'gnd', 'c', 'r', 'v', 'box',
+            'net_input', 'net_short', 'net_output', 'net_bidirection', 'd',
+            'led', 'pin', 'switch', 'l', 'mosfet',
+            'other', 'm3螺丝', 'bjt', 'testpoint', 'crystal',
+            'buzzer', 'battary', 'fuse', 'block', 'amp',
+            'jumper', 'motor', 'esd', 'dc', 'transfomer',
+            'ant', 'circle_header', 'opt', 'seg',
+        ],
         "type_aliases": {
-            "Box": "ic",
-            "box": "ic",
-            "BoxIc": "ic",
-            "boxic": "ic",
-            "R": "resistor",
-            "C": "capacitor",
-            "L": "inductor",
-            "Crystal": "crystal",
-            "Switch": "switch",
-            "Gnd": "gnd",
-            "GND": "gnd",
-            "NET_input": "vbus_in",
-            "Net_input": "vbus_in",
+            'gnd': 'gnd',
+            'c': 'c',
+            'r': 'r',
+            'v': 'v',
+            'box': 'box',
+            'net_input': 'net_input',
+            'net_short': 'net_short',
+            'net_output': 'net_output',
+            'net_bidirection': 'net_bidirection',
+            'd': 'd',
+            'led': 'led',
+            'pin': 'pin',
+            'switch': 'switch',
+            'l': 'l',
+            'mosfet': 'mosfet',
+            'other': 'other',
+            'm3螺丝': 'm3螺丝',
+            'bjt': 'bjt',
+            'testpoint': 'testpoint',
+            'crystal': 'crystal',
+            'buzzer': 'buzzer',
+            'battary': 'battary',
+            'fuse': 'fuse',
+            'block': 'block',
+            'amp': 'amp',
+            'jumper': 'jumper',
+            'motor': 'motor',
+            'esd': 'esd',
+            'dc': 'dc',
+            'transfomer': 'transfomer',
+            'ant': 'ant',
+            'circle_header': 'circle_header',
+            'opt': 'opt',
+            'seg': 'seg',
+            'Box': 'box',
+            'BoxIc': 'box',
+            'boxic': 'box',
+            'box_ic': 'box',
+            'ic': 'box',
+            'IC': 'box',
+            'R': 'r',
+            'Resistor': 'r',
+            'resistor': 'r',
+            'C': 'c',
+            'Capacitor': 'c',
+            'capacitor': 'c',
+            'L': 'l',
+            'Inductor': 'l',
+            'inductor': 'l',
+            'D': 'd',
+            'Diode': 'd',
+            'diode': 'd',
+            'MOSFET': 'mosfet',
+            'Mosfet': 'mosfet',
+            'BJT': 'bjt',
+            'Bjt': 'bjt',
+            'LED': 'led',
+            'Led': 'led',
+            'Fuse': 'fuse',
+            'FUSE': 'fuse',
+            'Battary': 'battary',
+            'Battery': 'battary',
+            'battery': 'battary',
+            'Jumper': 'jumper',
+            'Testpoint': 'testpoint',
+            'TestPoint': 'testpoint',
+            'Crystal': 'crystal',
+            'Switch': 'switch',
+            'Gnd': 'gnd',
+            'GND': 'gnd',
+            'V': 'v',
+            'VCC': 'v',
+            'Vcc': 'v',
+            'vcc': 'v',
+            'NET_input': 'net_input',
+            'Net_input': 'net_input',
+            'vbus_in': 'net_input',
+            'NET_short': 'net_short',
+            'Net_short': 'net_short',
+            'NET_output': 'net_output',
+            'Net_output': 'net_output',
+            'vbus_out': 'net_output',
+            'NET_bidirection': 'net_bidirection',
+            'Net_bidirection': 'net_bidirection',
+            'Other': 'other',
+            'Pin': 'pin',
+            'M3螺丝': 'm3螺丝',
+            'transformer': 'transfomer',
+            'BOX': 'box',
+            'NET_INPUT': 'net_input',
+            'Net_Input': 'net_input',
+            'NET_SHORT': 'net_short',
+            'Net_Short': 'net_short',
+            'NET_OUTPUT': 'net_output',
+            'Net_Output': 'net_output',
+            'NET_BIDIRECTION': 'net_bidirection',
+            'Net_Bidirection': 'net_bidirection',
+            'PIN': 'pin',
+            'SWITCH': 'switch',
+            'OTHER': 'other',
+            'TESTPOINT': 'testpoint',
+            'CRYSTAL': 'crystal',
+            'BUZZER': 'buzzer',
+            'Buzzer': 'buzzer',
+            'BATTARY': 'battary',
+            'BLOCK': 'block',
+            'Block': 'block',
+            'AMP': 'amp',
+            'Amp': 'amp',
+            'JUMPER': 'jumper',
+            'MOTOR': 'motor',
+            'Motor': 'motor',
+            'ESD': 'esd',
+            'Esd': 'esd',
+            'DC': 'dc',
+            'Dc': 'dc',
+            'TRANSFOMER': 'transfomer',
+            'Transfomer': 'transfomer',
+            'ANT': 'ant',
+            'Ant': 'ant',
+            'CIRCLE_HEADER': 'circle_header',
+            'Circle_Header': 'circle_header',
+            'OPT': 'opt',
+            'Opt': 'opt',
+            'SEG': 'seg',
+            'Seg': 'seg',
         },
     },
     "pin": {
@@ -136,6 +258,17 @@ def validate_profile(profile: Mapping[str, Any]) -> None:
         for key, value in aliases.items()
     ):
         raise OfficialSchemaError("component.type_aliases must map non-empty strings to strings")
+    allowed_types = component_profile.get("allowed_types")
+    if (
+        not isinstance(allowed_types, list)
+        or not allowed_types
+        or any(not isinstance(item, str) or not item for item in allowed_types)
+        or len(allowed_types) != len(set(allowed_types))
+    ):
+        raise OfficialSchemaError("component.allowed_types must be a non-empty unique string list")
+    allowed_type_set = set(allowed_types)
+    if any(value not in allowed_type_set for value in aliases.values()):
+        raise OfficialSchemaError("component.type_aliases targets must belong to allowed_types")
     if component_profile.get("bbox_encoding") != "xyxy_list":
         raise OfficialSchemaError("only component.bbox_encoding=xyxy_list is supported")
     if profile.get("pin", {}).get("point_encoding") != "object_xy":
@@ -316,6 +449,10 @@ def validate_official_output(
         name_field = schema["component"]["fields"][1]
         if not isinstance(component["type"], str) or not component["type"]:
             raise OfficialSchemaError(f"components.{key}.type must be a non-empty string")
+        if component["type"] not in schema["component"]["allowed_types"]:
+            raise OfficialSchemaError(
+                f"components.{key}.type {component['type']!r} is not in component.allowed_types"
+            )
         for text_field in (name_field, "value"):
             if component[text_field] is not None and not isinstance(component[text_field], str):
                 raise OfficialSchemaError(

@@ -51,6 +51,126 @@ class _CropCandidate:
     orientation_degrees: int = 0
     orientation_candidates_degrees: tuple[int, ...] = (0,)
     np_crop: Any | None = None
+    variant_name: str = "base"
+    pre_upscale: int = 1
+
+
+# --- Multi-crop candidate re-read (opt80 r05) ---------------------------------
+# Deterministic recognition-time augmentation: every detected text box is also
+# read from a few fixed crop variants (small padding / min-size expansion /
+# pre-upscale smoothing).  Exactly one candidate per detector box is kept, chosen
+# by a fixed selection policy.  Disabled by default; when disabled the pipeline
+# takes the original single-crop path unchanged.
+
+_REREAD_SELECTION_POLICIES = (
+    "consensus_grammar_original",
+    "consensus_score",
+    "score_max",
+)
+
+_DESIGNATOR_STRUCTURE_RE = __import__("re").compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$")
+
+
+def _reread_variant_crops(
+    box: tuple[float, float, float, float],
+    view_width: int,
+    view_height: int,
+) -> list[tuple[str, tuple[int, int, int, int], int]]:
+    """Fixed crop variants around a detected box: (name, crop_box, pre_upscale)."""
+
+    x1, y1, x2, y2 = box
+    variants: list[tuple[str, tuple[int, int, int, int], int]] = []
+
+    def clip(vbox: tuple[float, float, float, float]) -> tuple[int, int, int, int] | None:
+        ix1 = max(0, min(view_width - 1, int(math.floor(vbox[0]))))
+        iy1 = max(0, min(view_height - 1, int(math.floor(vbox[1]))))
+        ix2 = max(ix1 + 1, min(view_width, int(math.ceil(vbox[2]))))
+        iy2 = max(iy1 + 1, min(view_height, int(math.ceil(vbox[3]))))
+        if ix2 <= ix1 or iy2 <= iy1:
+            return None
+        return (ix1, iy1, ix2, iy2)
+
+    padded = clip((x1 - 2.0, y1 - 2.0, x2 + 2.0, y2 + 2.0))
+    if padded is not None:
+        variants.append(("pad2", padded, 1))
+        variants.append(("pad2x3", padded, 3))
+    center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    half_h = max(y2 - y1, 16.0) / 2.0
+    half_w = max(x2 - x1, 8.0) / 2.0
+    expanded = clip((center_x - half_w, center_y - half_h, center_x + half_w, center_y + half_h))
+    if expanded is not None:
+        variants.append(("min16", expanded, 1))
+    return variants
+
+
+def _reread_candidate_key(
+    item: tuple[_CropCandidate, str, float, list[str], int, float],
+) -> tuple[int, int]:
+    candidate = item[0]
+    return (candidate.view_index, candidate.detection_index)
+
+
+def _reread_select(
+    pool: list[tuple[_CropCandidate, str, float, list[str], int, float]],
+    policy: str,
+) -> tuple[_CropCandidate, str, float, list[str], int, float]:
+    """Deterministic single-candidate selection across crop variants."""
+
+    if policy == "score_max":
+        return max(pool, key=lambda item: (item[2], item[0].variant_name))
+    counts: dict[str, int] = {}
+    for item in pool:
+        counts[item[1]] = counts.get(item[1], 0) + 1
+    top = max(counts.values())
+    tied = [item for item in pool if counts[item[1]] == top]
+    if policy == "consensus_score":
+        return max(tied, key=lambda item: (item[2], item[0].variant_name))
+    # consensus_grammar_original: majority first, then structurally valid text,
+    # then the original detector-box read, then recognition score.
+    return max(
+        tied,
+        key=lambda item: (
+            1 if _text_has_structure(item[1]) else 0,
+            1 if item[0].variant_name == "base" else 0,
+            item[2],
+            item[0].variant_name,
+        ),
+    )
+
+
+def _select_reread_results(
+    recognized: Sequence[tuple[_CropCandidate, str, float, list[str], int, float]],
+    policy: str,
+) -> tuple[
+    list[tuple[_CropCandidate, str, float, list[str], int, float]],
+    dict[tuple[int, int], list[dict[str, Any]]],
+]:
+    """Keep one candidate per detector box and record the considered variants."""
+
+    groups: dict[tuple[int, int], list[tuple[_CropCandidate, str, float, list[str], int, float]]] = {}
+    for item in recognized:
+        groups.setdefault(_reread_candidate_key(item), []).append(item)
+    selected: list[tuple[_CropCandidate, str, float, list[str], int, float]] = []
+    meta: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for key in sorted(groups):
+        pool = sorted(
+            groups[key],
+            key=lambda item: (item[0].variant_name, item[0].orientation_degrees),
+        )
+        chosen = _reread_select(pool, policy)
+        selected.append(chosen)
+        meta[key] = [
+            {
+                "variant": item[0].variant_name,
+                "orientation_degrees": item[0].orientation_degrees,
+                "pre_upscale": item[0].pre_upscale,
+                "text": item[1],
+                "recognition_score": item[2],
+                "selected": item is chosen,
+            }
+            for item in pool
+        ]
+    return selected, meta
 
 
 class TorchOCRAdapter:
@@ -71,6 +191,8 @@ class TorchOCRAdapter:
         recognition_candidate_count: int = 0,
         vertical_rotation_enabled: bool = False,
         recognizer_backend: Any | None = None,
+        reread_enabled: bool = False,
+        reread_selection: str = "consensus_grammar_original",
     ) -> None:
         self._bundle = bundle
         self._detector = bundle.detector
@@ -101,6 +223,12 @@ class TorchOCRAdapter:
             raise TorchOCRAdapterError(
                 "vertical_rotation_enabled must be a boolean"
             )
+        if type(reread_enabled) is not bool:
+            raise TorchOCRAdapterError("reread_enabled must be a boolean")
+        if reread_selection not in _REREAD_SELECTION_POLICIES:
+            raise TorchOCRAdapterError(
+                f"unsupported reread_selection policy {reread_selection!r}"
+            )
         self._detector_min_area = detector_min_area
         self._detector_batch_size = detector_batch_size
         self._recognition_batch_size = recognition_batch_size
@@ -108,6 +236,8 @@ class TorchOCRAdapter:
         self._max_recognition_width = max_recognition_width
         self._recognition_candidate_count = recognition_candidate_count
         self._vertical_rotation_enabled = vertical_rotation_enabled
+        self._reread_enabled = reread_enabled
+        self._reread_selection = reread_selection
         self._recognizer_backend = recognizer_backend
         self._last_detection_trace: list[dict[str, Any]] = []
         self._detection_trace_log: list[dict[str, Any]] = []
@@ -172,6 +302,28 @@ class TorchOCRAdapter:
         if type(value) is not bool:
             raise TorchOCRAdapterError("vertical_rotation_enabled must be a boolean")
         self._vertical_rotation_enabled = value
+
+    @property
+    def reread_enabled(self) -> bool:
+        return self._reread_enabled
+
+    @reread_enabled.setter
+    def reread_enabled(self, value: bool) -> None:
+        if type(value) is not bool:
+            raise TorchOCRAdapterError("reread_enabled must be a boolean")
+        self._reread_enabled = value
+
+    @property
+    def reread_selection(self) -> str:
+        return self._reread_selection
+
+    @reread_selection.setter
+    def reread_selection(self, value: str) -> None:
+        if value not in _REREAD_SELECTION_POLICIES:
+            raise TorchOCRAdapterError(
+                f"unsupported reread_selection policy {value!r}"
+            )
+        self._reread_selection = value
 
     def recognize(self, views: list[ImageView], ctx: Any = None) -> list[TextToken]:
         if not isinstance(views, list) or any(not isinstance(view, ImageView) for view in views):
@@ -338,6 +490,40 @@ class TorchOCRAdapter:
                                         np_crop=rotated_np,
                                     )
                                 )
+                        if self._reread_enabled and width <= self._max_recognition_width:
+                            for variant_name, variant_box, pre_upscale in _reread_variant_crops(
+                                (x1, y1, x2, y2), view.width, view.height
+                            ):
+                                v_tensor, v_width, v_sha256 = _recognition_tensor(
+                                    view,
+                                    variant_box,
+                                    torch,
+                                    height=self._preprocess["recognition_height"],
+                                    pre_upscale=pre_upscale,
+                                )
+                                if v_width > self._max_recognition_width:
+                                    continue
+                                candidates.append(
+                                    _CropCandidate(
+                                        view_index=view_index,
+                                        detection_index=detection_index,
+                                        view=view,
+                                        box=(x1, y1, x2, y2),
+                                        detector_box=detector_box,
+                                        crop_box=variant_box,
+                                        tensor=v_tensor,
+                                        width=v_width,
+                                        crop_sha256=v_sha256,
+                                        orientation_candidates_degrees=(0,),
+                                        np_crop=(
+                                            _crop_to_np(view, variant_box, pre_upscale=pre_upscale)
+                                            if self._recognizer_backend is not None
+                                            else None
+                                        ),
+                                        variant_name=variant_name,
+                                        pre_upscale=pre_upscale,
+                                    )
+                                )
         _check_budget(ctx, "ocr_detector:after")
         self._last_detection_trace = detection_trace
         if not candidates:
@@ -348,15 +534,27 @@ class TorchOCRAdapter:
         recognized: list[
             tuple[_CropCandidate, str, float, list[str], int, float]
         ] = []
+        # Re-read variants are recognized in their own batches: the base crops
+        # must keep the exact flag-off batch layout so their reads stay
+        # bit-identical (batch composition must not perturb the original reads).
+        base_candidates = [c for c in candidates if c.variant_name == "base"]
+        variant_candidates = [c for c in candidates if c.variant_name != "base"]
         if self._recognizer_backend is not None:
-            recognized = self._recognize_with_backend(
-                candidates, detection_trace, ctx=ctx,
-            )
+            for group in (base_candidates, variant_candidates):
+                if group:
+                    recognized.extend(
+                        self._recognize_with_backend(group, detection_trace, ctx=ctx)
+                    )
         else:
+            recognition_batches = _recognition_batches(
+                base_candidates, self._recognition_batch_size
+            )
+            if variant_candidates:
+                recognition_batches = recognition_batches + _recognition_batches(
+                    variant_candidates, self._recognition_batch_size
+                )
             with self._lock, torch.inference_mode():
-                for batch_index, batch in enumerate(
-                    _recognition_batches(candidates, self._recognition_batch_size)
-                ):
+                for batch_index, batch in enumerate(recognition_batches):
                     _check_budget(ctx, "ocr_recognition_batch:before")
                     maximum_width = max(candidate.width for candidate in batch)
                     padding_ratio = _padding_ratio(batch, maximum_width)
@@ -395,7 +593,8 @@ class TorchOCRAdapter:
                         if not text or score < self._recognition_threshold:
                             for entry in detection_trace:
                                 if (
-                                    entry.get("view_id") == candidate.view.view_id
+                                    candidate.variant_name == "base"
+                                    and entry.get("view_id") == candidate.view.view_id
                                     and entry.get("detection_index") == candidate.detection_index
                                     and entry.get("recognition_attempted")
                                 ):
@@ -422,7 +621,8 @@ class TorchOCRAdapter:
                         )
                         for entry in detection_trace:
                             if (
-                                entry.get("view_id") == candidate.view.view_id
+                                candidate.variant_name == "base"
+                                and entry.get("view_id") == candidate.view.view_id
                                 and entry.get("detection_index") == candidate.detection_index
                                 and entry.get("recognition_attempted")
                             ):
@@ -432,6 +632,11 @@ class TorchOCRAdapter:
                                 entry["candidates"] = list(alternatives)
         _check_budget(ctx, "ocr_recognizer:after")
         recognized = _select_orientation_results(recognized)
+        reread_meta: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        if self._reread_enabled:
+            recognized, reread_meta = _select_reread_results(
+                recognized, self._reread_selection
+            )
 
         recognized.sort(
             key=lambda item: (
@@ -476,6 +681,47 @@ class TorchOCRAdapter:
                 f"ocr:{self._bundle.checkpoint_sha256[:16]}:{digest}:{duplicate_index}"
             )
             x1, y1, x2, y2 = candidate.box
+            metadata: dict[str, Any] = {
+                "architecture": {
+                    "detector": "tiny_ocr_unet",
+                    "recognizer": "tiny_crnn_bilstm_ctc",
+                },
+                "coordinate_system": "image_view_local_xyxy",
+                "crop_source": "original_view_pixels",
+                "crop_sha256": candidate.crop_sha256,
+                "orientation_degrees": candidate.orientation_degrees,
+                "orientation_candidates_degrees": list(
+                    candidate.orientation_candidates_degrees
+                ),
+                "orientation_policy": (
+                    "identity_plus_90_vertical_v1"
+                    if len(candidate.orientation_candidates_degrees) > 1
+                    else "identity_only_v1"
+                ),
+                "transform_chain": candidate.view.transform.to_records(),
+                "detector_score": detector_score,
+                "recognition_score": recognition_score,
+                "detector_component_area": candidate.detector_box.area,
+                "detector_index": candidate.detection_index,
+                "crop_box": list(candidate.crop_box),
+                "recognition_width": candidate.width,
+                "recognition_batch_index": recognition_batch_index,
+                "recognition_padding_ratio": recognition_padding_ratio,
+                "checkpoint_epoch": self._bundle.epoch,
+                "checkpoint_global_step": self._bundle.global_step,
+                "semantic_fields_inferred": False,
+                "recognition_candidate_count": self._recognition_candidate_count,
+                "recognition_candidates": list(text_candidates),
+            }
+            if self._reread_enabled:
+                metadata["reread"] = {
+                    "policy": self._reread_selection,
+                    "selected_variant": candidate.variant_name,
+                    "pre_upscale": candidate.pre_upscale,
+                    "variants": reread_meta.get(
+                        (candidate.view_index, candidate.detection_index), []
+                    ),
+                }
             output.append(
                 TextToken(
                     internal_id=token_id,
@@ -496,38 +742,7 @@ class TorchOCRAdapter:
                             view_id=candidate.view.view_id,
                             score=max(0.0, min(1.0, score)),
                             payload_ref=f"sha256:{self._bundle.checkpoint_sha256}",
-                            metadata={
-                                "architecture": {
-                                    "detector": "tiny_ocr_unet",
-                                    "recognizer": "tiny_crnn_bilstm_ctc",
-                                },
-                                "coordinate_system": "image_view_local_xyxy",
-                                "crop_source": "original_view_pixels",
-                                "crop_sha256": candidate.crop_sha256,
-                                "orientation_degrees": candidate.orientation_degrees,
-                                "orientation_candidates_degrees": list(
-                                    candidate.orientation_candidates_degrees
-                                ),
-                                "orientation_policy": (
-                                    "identity_plus_90_vertical_v1"
-                                    if len(candidate.orientation_candidates_degrees) > 1
-                                    else "identity_only_v1"
-                                ),
-                                "transform_chain": candidate.view.transform.to_records(),
-                                "detector_score": detector_score,
-                                "recognition_score": recognition_score,
-                                "detector_component_area": candidate.detector_box.area,
-                                "detector_index": candidate.detection_index,
-                                "crop_box": list(candidate.crop_box),
-                                "recognition_width": candidate.width,
-                                "recognition_batch_index": recognition_batch_index,
-                                "recognition_padding_ratio": recognition_padding_ratio,
-                                "checkpoint_epoch": self._bundle.epoch,
-                                "checkpoint_global_step": self._bundle.global_step,
-                                "semantic_fields_inferred": False,
-                                "recognition_candidate_count": self._recognition_candidate_count,
-                                "recognition_candidates": list(text_candidates),
-                            },
+                            metadata=metadata,
                         )
                     ],
                 )
@@ -654,6 +869,10 @@ def factory(path: str | Path, entry: Mapping[str, Any]) -> TorchOCRAdapter:
         recognition_candidate_count=_entry_nonnegative_integer(
             entry, "recognition_candidate_count", default=0
         ),
+        reread_enabled=_entry_value(entry, "reread_enabled", default=False),
+        reread_selection=str(
+            _entry_value(entry, "reread_selection", default="consensus_grammar_original")
+        ),
     )
     backend_spec = _entry_value(entry, "recognizer_backend", default=None)
     if backend_spec is not None:
@@ -684,15 +903,23 @@ def _recognition_tensor(
     *,
     height: int,
     rotation_degrees: int = 0,
+    pre_upscale: int = 1,
 ) -> tuple[Any, int, str]:
     if rotation_degrees not in {0, 90}:
         raise TorchOCRAdapterError(
             "OCR crop rotation_degrees must be 0 or 90"
         )
+    if type(pre_upscale) is not int or pre_upscale < 1:
+        raise TorchOCRAdapterError("OCR crop pre_upscale must be a positive integer")
     source_crop = view.image.crop(crop_box).convert("L")
     crop = source_crop
     if rotation_degrees == 90:
         crop = source_crop.rotate(90, expand=True, resample=Image.Resampling.BILINEAR)
+    if pre_upscale > 1:
+        crop = crop.resize(
+            (crop.width * pre_upscale, crop.height * pre_upscale),
+            Image.Resampling.LANCZOS,
+        )
     try:
         crop_sha256 = _image_crop_sha256(crop)
         width = max(1, int(math.floor(crop.width * height / crop.height + 0.5)))
@@ -731,12 +958,20 @@ def _crop_to_np(
     crop_box: tuple[int, int, int, int],
     *,
     rotation_degrees: int = 0,
+    pre_upscale: int = 1,
 ) -> Any:
     """Extract a crop as a grayscale numpy array for external recognizer backends."""
+    if type(pre_upscale) is not int or pre_upscale < 1:
+        raise TorchOCRAdapterError("OCR crop pre_upscale must be a positive integer")
     source_crop = view.image.crop(crop_box).convert("L")
     crop = source_crop
     if rotation_degrees == 90:
         crop = source_crop.rotate(90, expand=True, resample=Image.Resampling.BILINEAR)
+    if pre_upscale > 1:
+        crop = crop.resize(
+            (crop.width * pre_upscale, crop.height * pre_upscale),
+            Image.Resampling.LANCZOS,
+        )
     try:
         return np.asarray(crop, dtype=np.uint8).copy()
     finally:
@@ -755,12 +990,12 @@ def _select_orientation_results(
     the text that matches a known grammar pattern (designator, pin number,
     value) and prefers 0° over 90° as a deterministic tie-breaker.
     """
-    selected: dict[tuple[int, int], tuple[_CropCandidate, str, float, list[str], int, float]] = {}
+    selected: dict[tuple[int, int, str], tuple[_CropCandidate, str, float, list[str], int, float]] = {}
     for item in recognized:
         candidate = item[0]
         text = item[1]
         score = item[2]
-        key = (candidate.view_index, candidate.detection_index)
+        key = (candidate.view_index, candidate.detection_index, candidate.variant_name)
         current = selected.get(key)
         if current is None:
             selected[key] = item
@@ -793,7 +1028,7 @@ _TEXT_STRUCTURE_PATTERNS = (
     __import__("re").compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$"),          # designator
     __import__("re").compile(r"^[0-9]{1,3}$"),                       # pin number
     __import__("re").compile(r"^(?:[A-Z]{1,2}[0-9]{1,2}|[0-9]{1,2}[A-Z]{1,2})$"),  # alnum pin
-    __import__("re").compile(r"^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*[kKmMuUnNpPFfHhVvAaWwRrΩµ%]*$"),  # value
+    __import__("re").compile(r"^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*[kKmMuUnNpPFfHhVvAaWwRrΩµμ%]*$"),  # value
 )
 
 

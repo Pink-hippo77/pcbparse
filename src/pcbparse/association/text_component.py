@@ -60,6 +60,39 @@ def _is_valid_designator(value: str, category: str = "") -> bool:
     return False
 
 
+def _assign_qna_special_coordinate_keys(components: list[Component]) -> list[str]:
+    """Assign the official coordinate identity to otherwise keyless VCC/GND symbols.
+
+    Q&A states that VCC/GND use the empty-set key and match by coordinates;
+    GND instance numbering does not affect scoring. This rule never touches
+    visible OCR text, pin numbers, or components with an existing key.
+    """
+    assigned: list[str] = []
+    for component in components:
+        if component.category not in {"Gnd", "V"}:
+            continue
+        if isinstance(component.key, str) and component.key.strip():
+            continue
+        component.key = "\u2205"
+        upsert_evidence(
+            component.evidence,
+            make_rule_evidence(
+                evidence_id=f"association:qna-special-coordinate-key:{component.internal_id}",
+                score=float(component.score),
+                payload_ref=component.internal_id,
+                metadata={
+                    "kind": "qna-special-coordinate-identity",
+                    "official_key": "\u2205",
+                    "component_category": component.category,
+                    "matching": "coordinate",
+                    "qna_reference": "VCC/GND coordinate matching; GND instance name is unscored",
+                },
+            ),
+        )
+        assigned.append(component.internal_id)
+    return assigned
+
+
 def resolve_component_keys(
     components: list[Component],
     texts: list[TextToken],
@@ -67,6 +100,7 @@ def resolve_component_keys(
     max_distance_factor: float = 2.0,
     unique_margin: float = 0.10,
     min_score: float = 0.0,
+    alternative_guard: str = "unique_margin",
 ) -> dict[str, str]:
     """Assign unique designators from OCR tokens.
 
@@ -213,7 +247,16 @@ def resolve_component_keys(
             ),
             reverse=True,
         )
-        if alternatives and score - alternatives[0] < unique_margin:
+        # The default guard defers an assignment whenever the component still
+        # has a near-tie alternative candidate.  Because this loop keeps going,
+        # the deferred edge is *not* a real abstention: the component is left to
+        # be filled by a strictly worse edge later in score order.  Under
+        # ``argument_max`` the component keeps its best argument unless another
+        # candidate for the *same* component is strictly better.
+        if alternative_guard == "argument_max":
+            if alternatives and score < alternatives[0]:
+                continue
+        elif alternatives and score - alternatives[0] < unique_margin:
             continue
         component = next(
             item
@@ -570,7 +613,7 @@ def associate_component_texts(
                 # must not override it during field selection. Other fields
                 # retain the existing mixed-candidate behavior.
                 choice_rows = rows
-                if field == "designator":
+                if field == "designator" and not config.key_evidence_pool_enabled:
                     explicit_rows = [
                         row
                         for row in rows
@@ -698,6 +741,7 @@ def associate_component_texts(
         )
         upsert_evidence(component.evidence, evidence)
 
+    _assign_qna_special_coordinate_keys(components)
     return {
         "relevant_tokens": relevant_tokens,
         "accepted_targets": accepted_targets,

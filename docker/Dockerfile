@@ -13,7 +13,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /submission/app
 
-COPY pyproject.toml requirements.edarace.txt /submission/app/
+COPY pyproject.toml README.md requirements.edarace.txt /submission/app/
 COPY src /submission/app/src
 COPY configs /submission/app/configs
 COPY models/models.lock.json /submission/app/models/models.lock.json

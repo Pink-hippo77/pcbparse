@@ -47,8 +47,7 @@
   "ocr": {
     "detector_threshold": 0.5,
     "vertical_rotation_enabled": true,
-    "recognition_candidate_count": 5,
-    "recognizer_backend": "en_PP-OCRv5_mobile_rec"
+    "recognition_candidate_count": 0
   },
   "qwen": {
     "enabled": false,

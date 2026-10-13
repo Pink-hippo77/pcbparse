@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Any, Mapping
 
 from pcbparse.association.netlabel_text import associate_netlabel_texts
+from pcbparse.association.binding_repair import repair_binding
 from pcbparse.association.ocr_common import (
     ASSOCIATION_STAGE,
     OCRAssociationConfig,
@@ -87,9 +88,29 @@ def associate_ocr(
         max_distance_factor=float(resolved.component_max_distance_factor),
         unique_margin=float(resolved.component_unique_margin),
         min_score=float(resolved.component_min_score),
+        alternative_guard=(
+            "argument_max" if resolved.key_argument_max_enabled else "unique_margin"
+        ),
     )
     component_summary['global_key_assignments'] = dict(sorted(global_key_assignments.items()))
     component_summary['global_key_assignment_count'] = len(global_key_assignments)
+    # S02 binding-funnel repair.  Disabled by default; when both flags are off
+    # ``repair_binding`` returns None and nothing (including metadata) is
+    # written, so the stage output stays byte-identical.
+    binding_repair_summary = repair_binding(
+        ir.components,
+        ir.texts,
+        enabled=bool(
+            resolved.role_tolerant_binding_enabled or resolved.binding_swap_repair_enabled
+        ),
+        role_tolerant_enabled=bool(resolved.role_tolerant_binding_enabled),
+        swap_enabled=bool(resolved.binding_swap_repair_enabled),
+        max_distance_factor=float(resolved.component_max_distance_factor),
+        min_score=float(resolved.component_min_score),
+        min_gain_px=float(resolved.binding_swap_min_gain_px),
+    )
+    if binding_repair_summary is not None:
+        component_summary['binding_repair'] = binding_repair_summary
     pin_summary = associate_pin_texts(
         ir.pins,
         ir.texts,

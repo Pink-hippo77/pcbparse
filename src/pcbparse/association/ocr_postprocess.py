@@ -18,7 +18,9 @@ modified.
 
 from __future__ import annotations
 
+import os
 import re
+from copy import deepcopy
 from typing import Any
 
 from pcbparse.ir.models import TextToken
@@ -32,7 +34,6 @@ from pcbparse.ir.models import TextToken
 # prefixes), "any" (general).
 _CONFUSION_TO_DIGIT: dict[str, str] = {
     "O": "0", "o": "0",
-    "D": "0",
     "I": "1", "l": "1", "|": "1", "!": "1",
     "Z": "2", "z": "2",
     "S": "5", "s": "5",
@@ -75,7 +76,7 @@ _DESIGNATOR_RE = re.compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$")
 _PIN_NUMBER_RE = re.compile(r"^[0-9]{1,3}$")
 _ALNUM_PIN_RE = re.compile(r"^(?:[A-Z]{1,2}[0-9]{1,2}|[0-9]{1,2}[A-Z]{1,2})$")
 _VALUE_RE = re.compile(
-    r"^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*[kKmMuUnNpPFfHhVvAaWwRrΩµ%]*$"
+    r"^(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*[kKmMuUnNpPFfHhVvAaWwRrΩµμ%]*$"
 )
 _NETLIKE_RE = re.compile(r"^[A-Za-z0-9_+.\-]+$")
 
@@ -322,20 +323,305 @@ def correct_ocr_text(
     return corrected, context, records
 
 
+# ---------------------------------------------------------------------------
+# Co-located duplicate / fragment token reconciliation (opt90-ocr, goal C)
+# ---------------------------------------------------------------------------
+# Multi-view OCR (image tiles + component crops) can emit several observations
+# of one physical string: a complete read next to a truncated fragment or a
+# degraded misread at the same location.  Such duplicate observations are
+# defects -- text-box evaluation matches one token per ground-truth box and a
+# degraded observation can steal that slot from the complete read.
+#
+# ``reconcile_colocated_text_tokens`` merges same-region observations into one
+# surviving token (deterministic winner: longer raw text -> higher recognition
+# score -> tighter box -> earlier internal_id), drops the degraded observations
+# and records the merge as Evidence on the survivor.  Text is never rewritten,
+# no string is ever fabricated, and genuinely distinct nearby strings (region
+# overlap below the threshold and no containment) are always preserved.
+# Flag-gated, default OFF (see ``_reconcile_flag``).
+_REGION_OVERLAP_MIN = 0.5
+_CONTAIN_MARGIN_PX = 2.0
+_EXTENT_RATIO_MIN = 0.3
+
+
+def _reconcile_bbox(token: TextToken) -> tuple[float, float, float, float]:
+    return (token.bbox.x1, token.bbox.y1, token.bbox.x2, token.bbox.y2)
+
+
+def _overlap_fraction_smaller(a: tuple[float, float, float, float],
+                              b: tuple[float, float, float, float]) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    smaller = min(area_a, area_b)
+    return inter / smaller if smaller > 0.0 else 0.0
+
+
+def _contains_box(outer: tuple[float, float, float, float],
+                  inner: tuple[float, float, float, float]) -> bool:
+    return (
+        outer[0] - _CONTAIN_MARGIN_PX <= inner[0]
+        and outer[1] - _CONTAIN_MARGIN_PX <= inner[1]
+        and inner[2] <= outer[2] + _CONTAIN_MARGIN_PX
+        and inner[3] <= outer[3] + _CONTAIN_MARGIN_PX
+    )
+
+
+def _comparable_extent(a: tuple[float, float, float, float],
+                       b: tuple[float, float, float, float]) -> bool:
+    """Two observations of one physical string span comparable text extents.
+
+    An over-merged read that swallowed several strings has a much larger box
+    than any single-string token inside it; such a pair is NOT a duplicate.
+    """
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    larger = max(area_a, area_b)
+    if larger <= 0.0:
+        return False
+    return min(area_a, area_b) / larger >= _EXTENT_RATIO_MIN
+
+
+def _same_region(a: tuple[float, float, float, float],
+                 b: tuple[float, float, float, float]) -> bool:
+    if not _comparable_extent(a, b):
+        return False
+    if _overlap_fraction_smaller(a, b) >= _REGION_OVERLAP_MIN:
+        return True
+    return _contains_box(a, b) or _contains_box(b, a)
+
+
+def _recognition_score(token: TextToken) -> float:
+    for evidence in token.evidence:
+        metadata = getattr(evidence, "metadata", None)
+        if isinstance(metadata, dict) and "recognition_score" in metadata:
+            try:
+                return float(metadata["recognition_score"])
+            except (TypeError, ValueError):
+                continue
+    return float(token.score)
+
+
+def _observation_quality(token: TextToken) -> tuple[float, int, float]:
+    """Deterministic quality of one observation.
+
+    Recognition confidence first (rounded to two decimals as a noise band, so
+    short-string score inflation does not decide), then longer raw text (a
+    fragment is the shorter observation), then tighter box.
+    """
+    box = _reconcile_bbox(token)
+    area = max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
+    return (round(_recognition_score(token), 2), len((token.raw_text or "").strip()), -area)
+
+
+def _reconcile_flag(duplicate_reconcile: bool | None) -> bool:
+    if duplicate_reconcile is not None:
+        return bool(duplicate_reconcile)
+    value = os.environ.get("PCBPARSE_OCR_DUPLICATE_RECONCILE", "0")
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def reconcile_colocated_text_tokens(
+    tokens: list[TextToken],
+    *,
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """Merge same-region observations and retain their original payloads in IR evidence."""
+    if not enabled:
+        return {"enabled": False, "dropped": 0}
+    from pcbparse.association.ocr_common import make_rule_evidence, upsert_evidence
+
+    def source_payload(token: TextToken) -> list[dict[str, Any]]:
+        return [
+            {
+                "evidence_id": item.evidence_id,
+                "source": item.source,
+                "view_id": item.view_id,
+                "score": item.score,
+                "payload_ref": item.payload_ref,
+                "metadata": deepcopy(item.metadata),
+            }
+            for item in token.evidence
+            if item.metadata.get("kind") != "ocr-colocate-reconcile"
+        ]
+
+    def snapshot(token: TextToken) -> dict[str, Any]:
+        return {
+            "token_id": token.internal_id,
+            "raw_text": token.raw_text,
+            "resolved_text": token.resolved_text,
+            "candidates": list(token.candidates),
+            "category": token.category,
+            "details": token.details,
+            "bbox": list(_reconcile_bbox(token)),
+            "confidence": token.score,
+            "source_object_id": token.source_object_id,
+            "component_id": token.component_id,
+            "pin_id": token.pin_id,
+            "sources": source_payload(token),
+        }
+
+    def inherited(token: TextToken) -> list[dict[str, Any]]:
+        members: list[dict[str, Any]] = []
+        for item in token.evidence:
+            metadata = item.metadata
+            if metadata.get("kind") != "ocr-colocate-reconcile":
+                continue
+            observations = metadata.get("observations")
+            if isinstance(observations, list):
+                members.extend(
+                    deepcopy(member)
+                    for member in observations
+                    if isinstance(member, dict)
+                )
+                continue
+            # Preserve legacy loser history as far as the old evidence allows.
+            for old in metadata.get("dropped", []):
+                if not isinstance(old, dict):
+                    continue
+                members.append(
+                    {
+                        "token_id": old.get("token_id"),
+                        "raw_text": old.get("raw_text"),
+                        "bbox": deepcopy(old.get("bbox")),
+                        "confidence": old.get("confidence"),
+                        "sources": deepcopy(old.get("sources", [])),
+                    }
+                )
+        return members
+
+    ordered = sorted(tokens, key=lambda item: item.internal_id)
+    original = {item.internal_id: item for item in ordered}
+    dropped: dict[str, dict[str, Any]] = {}
+    changed = True
+    while changed:
+        changed = False
+        for index, left in enumerate(ordered):
+            if left.internal_id in dropped:
+                continue
+            for right in ordered[index + 1:]:
+                # Once left is dropped it cannot absorb further candidates.
+                if left.internal_id in dropped:
+                    break
+                if right.internal_id in dropped:
+                    continue
+                left_box = _reconcile_bbox(left)
+                right_box = _reconcile_bbox(right)
+                if not _same_region(left_box, right_box):
+                    continue
+                if _observation_quality(left) >= _observation_quality(right):
+                    winner, loser = left, right
+                else:
+                    winner, loser = right, left
+                dropped[loser.internal_id] = {
+                    "token_id": loser.internal_id,
+                    "raw_text": loser.raw_text,
+                    "merged_into": winner.internal_id,
+                    "winner_raw_text": winner.raw_text,
+                    "region_overlap": round(
+                        _overlap_fraction_smaller(left_box, right_box), 4
+                    ),
+                }
+                changed = True
+
+    def final_owner(token_id: str) -> str:
+        seen: set[str] = set()
+        while token_id in dropped and token_id not in seen:
+            seen.add(token_id)
+            token_id = dropped[token_id]["merged_into"]
+        return token_id
+
+    survivors = [
+        item for item in ordered if item.internal_id not in dropped
+    ]
+    grouped_ids: dict[str, list[str]] = {}
+    for token_id in dropped:
+        grouped_ids.setdefault(final_owner(token_id), []).append(token_id)
+
+    members_by_owner: dict[str, list[TextToken]] = {}
+    for item in ordered:
+        members_by_owner.setdefault(final_owner(item.internal_id), []).append(item)
+
+    for winner in survivors:
+        members: dict[str, dict[str, Any]] = {}
+        for item in members_by_owner.get(winner.internal_id, []):
+            for old in inherited(item):
+                member_id = old.get("token_id")
+                if isinstance(member_id, str):
+                    members[member_id] = old
+            members[item.internal_id] = snapshot(item)
+        if len(members) <= 1 or not grouped_ids.get(winner.internal_id):
+            continue
+
+        dropped_records = []
+        for token_id in sorted(grouped_ids[winner.internal_id]):
+            item = original.get(token_id)
+            if item is None:
+                continue
+            dropped_records.append(
+                {
+                    **dropped[token_id],
+                    "bbox": list(_reconcile_bbox(item)),
+                    "confidence": item.score,
+                    "sources": source_payload(item),
+                }
+            )
+        evidence = make_rule_evidence(
+            evidence_id=f"ocr-colocate-reconcile:{winner.internal_id}",
+            score=winner.score,
+            payload_ref=winner.internal_id,
+            metadata={
+                "kind": "ocr-colocate-reconcile",
+                "rule": "same_region_duplicate_observation_v1",
+                "observations": [
+                    members[member_id] for member_id in sorted(members)
+                ],
+                "dropped": dropped_records,
+            },
+        )
+        upsert_evidence(winner.evidence, evidence)
+
+    tokens[:] = survivors
+    final_ids = {item.internal_id for item in survivors}
+    merges = {
+        winner_id: sorted(token_ids)
+        for winner_id, token_ids in sorted(grouped_ids.items())
+        if winner_id in final_ids
+    }
+    return {
+        "enabled": True,
+        "dropped": len(dropped),
+        "merges": merges,
+    }
+
 def postprocess_tokens(
     tokens: list[TextToken],
     *,
     enabled: bool = True,
+    duplicate_reconcile: bool | None = None,
 ) -> dict[str, Any]:
     """Apply confusion-pair and format-grammar corrections to OCR tokens in place.
 
     Only ``resolved_text`` is updated (when a correction is found).  ``raw_text``
     is never modified.  A rewrite trace is stored in each token's evidence.
 
+    When ``duplicate_reconcile`` is true (or ``None`` and the environment switch
+    ``PCBPARSE_OCR_DUPLICATE_RECONCILE`` is on) same-region duplicate/fragment
+    observations are merged first via :func:`reconcile_colocated_text_tokens`.
+    Default OFF; the off-state is byte-identical to the previous behaviour.
+
     Returns a summary dict with correction statistics.
     """
     if not enabled:
         return {"enabled": False, "corrected": 0, "total": 0, "by_context": {}}
+    reconcile_summary = (
+        reconcile_colocated_text_tokens(tokens) if _reconcile_flag(duplicate_reconcile)
+        else None
+    )
     corrected_count = 0
     total = 0
     by_context: dict[str, int] = {}
@@ -368,15 +654,19 @@ def postprocess_tokens(
                 },
             )
             upsert_evidence(token.evidence, evidence)
-    return {
+    summary: dict[str, Any] = {
         "enabled": True,
         "corrected": corrected_count,
         "total": total,
         "by_context": dict(sorted(by_context.items())),
     }
+    if reconcile_summary is not None:
+        summary["colocate_reconcile"] = reconcile_summary
+    return summary
 
 
 __all__ = [
     "correct_ocr_text",
     "postprocess_tokens",
+    "reconcile_colocated_text_tokens",
 ]

@@ -12,7 +12,13 @@ from typing import Any, Protocol
 
 from pcbparse.association import associate_ocr
 from pcbparse.graph.palette_wire import apply_palette_wire_filter, prepare_palette_wire
-from pcbparse.graph.physical import build_physical_graph
+from pcbparse.graph.internal_wire_filter import filter_internal_wire_segments
+from pcbparse.graph.physical import (
+    build_physical_graph,
+    filter_body_outline_wire_segments,
+    filter_decorative_wire_segments,
+    filter_glyph_wire_segments,
+)
 from pcbparse.ir.models import CircuitIR, Diagnostic, IRState
 from pcbparse.nets.hypergraph import build_electrical_nets
 from pcbparse.output.official_schema import split_official_pin_numbers
@@ -274,31 +280,149 @@ def _infer_one(
 
     graph_config = config.get("graph", {})
     association_config = config.get("association", {})
+    internal_wire_filter_enabled = graph_config.get("internal_wire_filter_enabled", False)
+    if type(internal_wire_filter_enabled) is not bool:
+        raise ValueError("graph.internal_wire_filter_enabled must be a boolean")
+    body_outline_filter_enabled = graph_config.get("body_outline_filter_enabled", False)
+    if type(body_outline_filter_enabled) is not bool:
+        raise ValueError("graph.body_outline_filter_enabled must be a boolean")
+    glyph_wire_filter_enabled = graph_config.get("glyph_wire_filter_enabled", False)
+    if type(glyph_wire_filter_enabled) is not bool:
+        raise ValueError("graph.glyph_wire_filter_enabled must be a boolean")
+    decorative_wire_filter_enabled = graph_config.get(
+        "decorative_wire_filter_enabled", False
+    )
+    if type(decorative_wire_filter_enabled) is not bool:
+        raise ValueError("graph.decorative_wire_filter_enabled must be a boolean")
+    graph_kwargs = {
+        "endpoint_tolerance_px": float(graph_config.get("endpoint_merge_tolerance_px", 3.0)),
+        "collinear_merge_tolerance_px": float(graph_config.get("collinear_merge_tolerance_px", 0.0)),
+        "collinear_gap_merge_tolerance_px": float(graph_config.get("collinear_gap_merge_tolerance_px", 0.0)),
+        "pin_snap_min_px": float(association_config.get("pin_wire_snap_min_px", 2.0)),
+        "pin_snap_tolerance_px": float(
+            association_config.get(
+                "pin_wire_snap_max_px",
+                graph_config.get("pin_snap_tolerance_px", 6.0),
+            )
+        ),
+        "pin_point_projection_max_px": float(graph_config.get("pin_point_projection_max_px", 0.0)),
+        "unique_margin": float(association_config.get("unique_margin", 1.5)),
+        "gap_repair_max_px": float(graph_config.get("gap_repair_max_px", 12.0)),
+    }
+
+    def rebuild_physical_graph():
+        return build_physical_graph(ir, **graph_kwargs)
+
     with ctx.stage("physical_graph") as trace:
         if palette_context is not None:
             apply_palette_wire_filter(ir, palette_context)
-        ir.physical_nets, snap_decisions = build_physical_graph(
-            ir,
-            endpoint_tolerance_px=float(graph_config.get("endpoint_merge_tolerance_px", 3.0)),
-            collinear_merge_tolerance_px=float(
-                graph_config.get("collinear_merge_tolerance_px", 0.0)
-            ),
-            collinear_gap_merge_tolerance_px=float(
-                graph_config.get("collinear_gap_merge_tolerance_px", 0.0)
-            ),
-            pin_snap_min_px=float(
-                association_config.get("pin_wire_snap_min_px", 2.0)
-            ),
-            pin_snap_tolerance_px=float(
-                association_config.get(
-                    "pin_wire_snap_max_px",
-                    graph_config.get("pin_snap_tolerance_px", 6.0),
-                )
-            ),
-            pin_point_projection_max_px=float(graph_config.get("pin_point_projection_max_px", 0.0)),
-            unique_margin=float(association_config.get("unique_margin", 1.5)),
-            gap_repair_max_px=float(graph_config.get("gap_repair_max_px", 12.0)),
-        )
+        if body_outline_filter_enabled:
+            outline_report = filter_body_outline_wire_segments(
+                ir,
+                tolerance_px=float(graph_config.get("body_outline_tolerance_px", 4.0)),
+                coverage=float(graph_config.get("body_outline_coverage", 0.5)),
+                min_edge_span_px=float(graph_config.get("body_outline_min_edge_span_px", 20.0)),
+            )
+            trace["message"] = (
+                trace.get("message", "")
+                + f"body_outline_suppressed={outline_report['suppressed']}"
+            )
+        if glyph_wire_filter_enabled:
+            glyph_report = filter_glyph_wire_segments(
+                ir,
+                margin_px=float(graph_config.get("glyph_wire_margin_px", 2.0)),
+            )
+            trace["message"] = (
+                trace.get("message", "")
+                + f"glyph_wire_suppressed={glyph_report['suppressed']},"
+                f"glyph_junctions_suppressed={glyph_report['junctions_suppressed']}"
+            )
+        ir.physical_nets, snap_decisions = rebuild_physical_graph()
+
+        if internal_wire_filter_enabled:
+            filter_report = filter_internal_wire_segments(
+                ir,
+                containment_threshold=float(
+                    graph_config.get("internal_wire_containment_threshold", 0.80)
+                ),
+                pin_radius=float(
+                    graph_config.get(
+                        "internal_wire_pin_anchor_radius_px",
+                        association_config.get(
+                            "pin_wire_snap_max_px",
+                            graph_config.get("pin_snap_tolerance_px", 6.0),
+                        ),
+                    )
+                ),
+                label_radius=float(
+                    graph_config.get("internal_wire_label_anchor_radius_px", 8.0)
+                ),
+            )
+            ir.metadata["internal_wire_filter"] = filter_report
+            if filter_report["deleted_segments"]:
+                # Rebuild derived graph evidence after changing perceived edges.
+                ir.physical_nets = []
+                ir.electrical_nets = []
+                for pin in ir.pins:
+                    pin.evidence = [
+                        evidence
+                        for evidence in pin.evidence
+                        if not (
+                            isinstance(evidence.metadata, dict)
+                            and evidence.metadata.get("kind") == "pin_net_evidence"
+                        )
+                    ]
+                for label in ir.net_labels:
+                    label.attached_physical_net_id = None
+                for key in (
+                    "connection_evidence",
+                    "connection_params",
+                    "snap_decisions",
+                    "pin_net_evidence",
+                    "label_merge_events",
+                ):
+                    ir.metadata.pop(key, None)
+                ir.physical_nets, snap_decisions = rebuild_physical_graph()
+        if decorative_wire_filter_enabled:
+            decorative_report = filter_decorative_wire_segments(
+                ir,
+                span_fraction=float(
+                    graph_config.get("decorative_span_fraction", 0.8)
+                ),
+                rect_min_area_px=float(
+                    graph_config.get("decorative_rect_min_area_px", 500.0)
+                ),
+                interior_inset_px=float(
+                    graph_config.get("decorative_interior_inset_px", 5.0)
+                ),
+            )
+            trace["message"] = (
+                trace.get("message", "")
+                + f"decorative_wire_suppressed={decorative_report['suppressed']}"
+            )
+            if decorative_report["suppressed"]:
+                ir.physical_nets = []
+                ir.electrical_nets = []
+                for pin in ir.pins:
+                    pin.evidence = [
+                        evidence
+                        for evidence in pin.evidence
+                        if not (
+                            isinstance(evidence.metadata, dict)
+                            and evidence.metadata.get("kind") == "pin_net_evidence"
+                        )
+                    ]
+                for label in ir.net_labels:
+                    label.attached_physical_net_id = None
+                for key in (
+                    "connection_evidence",
+                    "connection_params",
+                    "snap_decisions",
+                    "pin_net_evidence",
+                    "label_merge_events",
+                ):
+                    ir.metadata.pop(key, None)
+                ir.physical_nets, snap_decisions = rebuild_physical_graph()
         ir.metadata["snap_decisions"] = [
             {
                 "pin_id": decision.pin_id,
@@ -311,6 +435,11 @@ def _infer_one(
         ]
         ir.state = IRState.GRAPHED
         trace["object_count"] = len(ir.physical_nets)
+        if internal_wire_filter_enabled:
+            trace["message"] = (
+                f"internal_filter_deleted="
+                f"{ir.metadata.get('internal_wire_filter', {}).get('deleted_segments', 0)}"
+            )
 
     label_config = config.get("labels", {})
     with ctx.stage("electrical_graph") as trace:

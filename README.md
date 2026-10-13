@@ -1,117 +1,66 @@
 # PCB 原理图自动解析
 
-面向 PCB 原理图图像的解析项目，按分层流水线识别器件、文字、引脚和导线，构建电路连接关系，并输出符合赛题格式的 JSON。系统以 Circuit-IR 作为内部表示，输出前经过严格校验。
+面向赛题六的 PCB 原理图图像解析系统。以 Circuit-IR 为内部表示，经过模型感知、OCR/引脚绑定、物理图构建、电气网络归并、严格校验后，输出官方 JSON。
 
-## 处理流程
+生产推理只读取图像、模型、配置和静态器件库。输出顶层为 `components`、`pins`、`nets`；缺少器件标识或引脚编号时，不自动编造字段。
 
-`perception` 读取图像并运行模型适配器 → `association` 绑定 OCR 文本与器件、引脚 → `graph` 构建 Physical Graph → `nets` 生成 Electrical Net → `validation` 检查结果 → `output` 写出官方 JSON。
+## 仓库范围
 
-输出 JSON 顶层包含 `components`、`pins` 和 `nets`。缺少器件标识或引脚编号时，系统会按校验策略阻止序列化，不会自动编造字段。生产推理只使用输入图像、模型、配置和静态器件库，不读取标注或同名 sidecar 文件。
-
-## 目录
+Git 仅保存主代码及运行、构建所需的配置：
 
 | 路径 | 内容 |
 | --- | --- |
-| `src/pcbparse/` | 推理流水线、Circuit-IR、验证器、序列化器、CLI 和服务接口 |
-| `data_tools/` | 数据集清单、审计、派生数据及模型晋级工具 |
-| `configs/` | 流水线、运行 profile 和训练配置 |
-| `models/models.lock.json` | 生产模型锁，是生产模型配置的权威来源 |
-| `models/releases/v8-portable/` | 锁定的生产模型包及 lineage 文件 |
-| `tests/` | unittest 单元与集成测试 |
-| `scripts/` | 测试和训练辅助脚本 |
-| `docker/` | 官方运行镜像及提交入口 |
+| `src/pcbparse/` | 推理、训练、Circuit-IR、校验、序列化、CLI 和服务 |
+| `src/data_tools/`、`data_tools/` | 数据准备、训练资产检查和模型晋级工具 |
+| `configs/` | 生产流水线、运行 profile 和训练配置 |
+| `models/models.lock.json` | 唯一生产模型权威 |
+| `models/registry.yaml` | 描述性模型信息 |
+| `docker/` | 容器构建和提交入口 |
 
-模型权重通过 Git LFS 存储。数据集、虚拟环境和运行输出不随仓库提供；准备数据时按项目的数据配置和训练契约操作。
+数据集、权重、完整模型 bundle、测试、评测模块、实验脚本、历史文档及运行结果留在工作区或 llm 服务器，不随 Git 分支分发。评测模块同时排除在安装包之外。当前分支的清理不改写历史提交。
 
-## 获取与安装
+服务器完整项目位于 `/home/data/yinjx/pcbparse-competition/project`，包含合并后的数据与模型资产。新克隆的代码仓库需要另外准备这些资产。
 
-克隆前安装 Git LFS。克隆后拉取模型文件：
+## 安装与检查
+
+运行环境为 Python 3.11 或 3.12。PowerShell 示例：
 
 ```powershell
-git lfs install
 git clone https://github.com/yueryu54111-commits/pcbparse.git
 cd pcbparse
-git lfs pull
-```
-
-项目运行时使用 Python 3.11 或 3.12，依赖为 NumPy、Pillow 和 Pydantic。Windows PowerShell 安装示例：
-
-```powershell
-py -3.11 -m venv .venv
-./.venv/Scripts/Activate.ps1
 python -m pip install -e .
 $env:PYTHONPATH = (Resolve-Path './src').Path
-```
-
-Linux/macOS 可使用相同的 editable 安装方式，并将 `PYTHONPATH` 设为仓库的 `src` 目录。训练、测试和 YOLO 工具使用不同的虚拟环境；训练环境需安装与设备匹配的 PyTorch，官方 Docker 镜像提供其 CUDA 运行时。
-
-## 检查模型就绪状态
-
-普通健康检查：
-
-```powershell
 python -m pcbparse.cli healthcheck
 ```
 
-生产就绪检查会校验配置、模型锁、权重哈希和 lineage，并加载生产适配器执行 smoke：
+普通健康检查验证进程、导入及序列化。准备锁中指定的完整模型 bundle 后，用实际竞赛配置执行生产就绪检查：
 
 ```powershell
 python -m pcbparse.cli healthcheck `
   --require-ready `
-  --config configs/pipeline.yaml `
+  --config configs/pipeline.edarace.yaml `
   --models-lock models/models.lock.json
 ```
 
-当前生产锁包含 `component`、`ocr`、`pin`、`wire` 四个任务，junction 使用确定性 vectorizer。只有配置启用 learned junction 时才会需要第五个模型任务。健康检查通过表示运行就绪检查通过，不代表精度达到竞赛指标或官方评分通过。
+模型锁包含 `component`、`ocr`、`pin`、`wire` 四个任务，junction 默认使用确定性 vectorizer。哈希或 lineage 缺失时保持 unready。不得手工修改锁中的 `blessed` 或 `status`。
 
-## 运行推理
-
-将单张图像或图像目录传给 CLI。目录会递归搜索可解码的图像文件：
+## 推理与提交
 
 ```powershell
 python -m pcbparse.cli infer `
-  --input input/schematic.png `
-  --output outputs/result `
-  --config configs/pipeline.yaml `
-  --profile baseline `
-  --provider production `
-  --models-lock models/models.lock.json `
-  --fail-fast
+  --input ./input `
+  --output ./output `
+  --profile competition `
+  --config configs/pipeline.edarace.yaml `
+  --models-lock models/models.lock.json
+
+python -m pcbparse.submission_agent -input ./input -output ./output
 ```
 
-推理结果写入指定输出目录。批处理遇到失败时会生成 `error_manifest.json`。生产 profile 在模型锁或运行就绪门禁未通过时会 fail-closed；`dataset_debug`、`dataset_golden` 和 `heuristic` 仅用于本地调试，不能作为生产预测或精度证据。
+竞赛入口写出 `output/final_results/<case_id>_Pred.json` 和 `output/decision_log.json`。Linux 容器入口为 `/submission/agent_system`。构建容器前需备齐模型锁指定的 `models/releases/v8-portable/`；官方镜像提供 CUDA 匹配的 PyTorch，`requirements.edarace.txt` 不替换其 torch。
 
-## 数据、训练与测试
+## 训练与工作区验证
 
-训练数据不包含在仓库中。当前训练流程只接受符合 lineage 要求的 `dataset300-v2`；`dataset300-v1` 仅供审计。训练前先运行 preflight：
+训练只使用 `dataset300-v2`，其他派生版本保留审计用途。单 GPU 训练串行执行，先检查初始化资产和配置，再运行 smoke。模型晋级需要完整 bundle 和证据报告，经晋级工具生成新锁。
 
-```powershell
-python -m pcbparse.training.preflight_cli `
-  --config configs/train/dataset300_v2_torch.json `
-  --workspace-root .
-```
-
-训练先用 `--smoke` 验证设备、验证和导出流程。训练产物是 candidate bundle，不会自动改写生产模型锁；模型锁晋级由 `data_tools.model_promotion` 完成，并要求完整 bundle 与证据。
-
-正式测试口径为 unittest，按单元测试再集成测试运行：
-
-```powershell
-./scripts/run_tests.ps1 -Python ./.venv-test/Scripts/python.exe
-```
-
-也可使用 CI 等价命令：
-
-```powershell
-$env:PYTHONPATH = (Resolve-Path './src').Path
-python -m unittest discover -s tests -p 'test_*.py' -v
-```
-
-## Docker
-
-提交镜像基于官方的 `edarace-agent-base:ubuntu24`。本机需先准备该基础镜像，再从仓库根目录构建：
-
-```powershell
-docker build -t pcbparse:edarace -f docker/Dockerfile .
-```
-
-镜像的批处理入口为 `docker/agent_system`，不启动 HTTP 服务。推理输出和模型文件的使用应遵循相应模型卡及数据授权条款。
+服务器完整工作区保留 unittest 与离线评测工具。按 unit、integration 顺序执行工作区测试；GitHub CI 只验证代码编译、健康检查和主要入口，不把缺少评测代码的克隆视为完整评测环境。模型加载通过不代表获得官方竞赛成绩。

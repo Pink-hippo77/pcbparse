@@ -1,7 +1,0 @@
-{
-  "name": "debug",
-  "provider": "dataset_debug",
-  "qwen_enabled": false,
-  "artifact_policy": "all",
-  "strict_validation": true
-}

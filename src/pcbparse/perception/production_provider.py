@@ -623,6 +623,8 @@ def _parse_ocr_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]
         "strip_batch_size",
         "vertical_rotation_enabled",
         "recognizer_backend",
+        "reread_enabled",
+        "reread_selection",
     }
     unknown = sorted(set(section) - allowed)
     if unknown:
@@ -660,6 +662,16 @@ def _parse_ocr_inference_overrides(section: Mapping[str, Any]) -> dict[str, Any]
                 "pipeline ocr.recognizer_backend must be a string or object"
             )
         result["recognizer_backend"] = value
+    if "reread_enabled" in section:
+        value = section["reread_enabled"]
+        if type(value) is not bool:
+            raise ValueError("pipeline ocr.reread_enabled must be a boolean")
+        result["reread_enabled"] = value
+    if "reread_selection" in section:
+        value = section["reread_selection"]
+        if not isinstance(value, str):
+            raise ValueError("pipeline ocr.reread_selection must be a string")
+        result["reread_selection"] = value
     return result
 
 
@@ -700,6 +712,14 @@ def _apply_ocr_inference_overrides(provider: Any, overrides: Mapping[str, Any]) 
         raise ProductionProviderError(
             "pipeline OCR recognizer_backend requires a backend-capable OCR adapter"
         )
+    if "reread_enabled" in overrides and not hasattr(provider, "reread_enabled"):
+        raise ProductionProviderError(
+            "pipeline OCR reread_enabled requires a reread-capable OCR adapter"
+        )
+    if "reread_selection" in overrides and not hasattr(provider, "reread_selection"):
+        raise ProductionProviderError(
+            "pipeline OCR reread_selection requires a reread-capable OCR adapter"
+        )
     try:
         if "detector_threshold" in overrides:
             provider.detector_threshold = float(overrides["detector_threshold"])
@@ -723,6 +743,10 @@ def _apply_ocr_inference_overrides(provider: Any, overrides: Mapping[str, Any]) 
             provider.version = (
                 f"{base_version}+{provider._recognizer_backend.version}"
             )
+        if "reread_enabled" in overrides:
+            provider.reread_enabled = overrides["reread_enabled"]
+        if "reread_selection" in overrides:
+            provider.reread_selection = str(overrides["reread_selection"])
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise ProductionProviderError(
             f"invalid pipeline OCR inference override: {exc}"

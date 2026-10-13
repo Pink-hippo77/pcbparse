@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 import math
 import re
 from typing import Any
@@ -21,7 +22,7 @@ from pcbparse.association.pin_assignment import (
     PinAssignmentCandidate,
     solve_pin_assignment_group,
 )
-from pcbparse.ir.models import Diagnostic, Pin, TextToken
+from pcbparse.ir.models import BBox, Component, Diagnostic, Pin, TextToken
 
 
 _PIN_TEXT_FIELDS = {
@@ -560,4 +561,168 @@ def _candidate_record(
     }
 
 
-__all__ = ["associate_pin_texts"]
+def prune_pin_precision(
+    pins: list[Pin],
+    components: "Sequence[Component]",
+    *,
+    enabled: bool = False,
+    deep_body_px: float = 11.0,
+    row_misalign_px: float = 3.5,
+    bbox_escape_ratio: float = 0.15,
+) -> dict[str, Any]:
+    """Deterministically drop physically implausible pin detections.
+
+    Disabled unless ``enabled`` is true (production default is off).  All
+    decisions are made on a frozen snapshot of the inputs; the union of the
+    three physical rules below is then removed from ``pins`` in place, the
+    same list contract the OCR gate uses:
+
+    * ``deep_body`` -- the pin base sits more than ``deep_body_px`` inside
+      the owner component body edge on its orientation side, leaving the
+      whole stub detached from the body outline.  Evaluated only with row
+      consensus (two or more pins on the same attachment row); on a
+      singleton row the body edge is not a trustworthy anchor, so the pin
+      is kept (this also preserves the pins that carry net pairs).
+    * ``row_misalign`` -- inside a (component, orientation) attachment row
+      the pin deviates from the row median by more than ``row_misalign_px``.
+    * ``bbox_escape`` -- the tip lies outside the owner bounding box by
+      more than ``bbox_escape_ratio`` of the box diagonal.
+
+    The rules read detection geometry only; ground truth never participates.
+    Pins without a resolved number are never pruned: the serializer gate
+    rejects them anyway, and letting them vote would distort the row
+    statistics of the serializable population the thresholds were tuned on.
+    The returned summary is JSON-safe and deterministic for identical input,
+    so it can live in ``ocr_association`` metadata and byte-stable output.
+    """
+
+    if type(enabled) is not bool:
+        raise ValueError("enabled must be a boolean")
+    deep_limit = float(deep_body_px)
+    if not math.isfinite(deep_limit) or deep_limit < 0:
+        raise ValueError("deep_body_px must be a non-negative finite number")
+    row_limit = float(row_misalign_px)
+    if not math.isfinite(row_limit) or row_limit < 0:
+        raise ValueError("row_misalign_px must be a non-negative finite number")
+    escape_ratio = float(bbox_escape_ratio)
+    if not math.isfinite(escape_ratio) or not 0 < escape_ratio <= 1:
+        raise ValueError("bbox_escape_ratio must be in (0, 1]")
+
+    ordered = sorted(pins, key=lambda item: item.internal_id)
+    # Only serializable candidates (resolved pin number) take part in the
+    # decision.  Candidates the serializer gate will drop anyway (missing
+    # number / unowned) must not distort row statistics or receive verdicts;
+    # the rules were calibrated on the serialized pin population.
+    eligible = [item for item in ordered if item.number]
+    candidate_count = len(ordered)
+    thresholds = {
+        "deep_body_px": deep_limit,
+        "row_misalign_px": row_limit,
+        "bbox_escape_ratio": escape_ratio,
+        "row_consensus_min_pins": 2,
+    }
+    if not enabled:
+        return {
+            "enabled": False,
+            "candidate_count": candidate_count,
+            "eligible_count": len(eligible),
+            "retained_count": candidate_count,
+            "removed_count": 0,
+            "removed_by_rule": {"deep_body": 0, "row_misalign": 0, "bbox_escape": 0},
+            "removed_ids": [],
+            "thresholds": thresholds,
+            "reason": "disabled",
+        }
+
+    boxes: dict[str, BBox] = {
+        item.internal_id: item.bbox for item in components if item.bbox is not None
+    }
+
+    # Row statistics use the frozen snapshot so that removing one pin can
+    # never shift the median and cascade into further removals.
+    rows: dict[tuple[str | None, str], list[tuple[str, float]]] = defaultdict(list)
+    for pin in eligible:
+        key = (str(pin.component_id) if pin.component_id else None, str(pin.orientation))
+        axis_value = pin.point.y if key[1] in ("T", "B") else pin.point.x
+        rows[key].append((pin.internal_id, float(axis_value)))
+    row_deviation: dict[str, float] = {}
+    row_size: dict[str, int] = {}
+    for members in rows.values():
+        for member_id, _value in members:
+            row_size[member_id] = len(members)
+        if len(members) < 2:
+            continue
+        values = sorted(value for _member_id, value in members)
+        median = values[len(values) // 2]
+        for member_id, value in members:
+            row_deviation[member_id] = abs(value - median)
+
+    removed_by_rule = {"deep_body": 0, "row_misalign": 0, "bbox_escape": 0}
+    removed_ids: list[str] = []
+    for pin in eligible:
+        box = boxes.get(str(pin.component_id)) if pin.component_id else None
+        fired = False
+        edge_offset = _body_edge_offset(pin, box)
+        if (
+            edge_offset is not None
+            and row_size.get(pin.internal_id, 0) >= 2
+            and edge_offset < -deep_limit
+        ):
+            removed_by_rule["deep_body"] += 1
+            fired = True
+        deviation = row_deviation.get(pin.internal_id)
+        if deviation is not None and deviation > row_limit:
+            removed_by_rule["row_misalign"] += 1
+            fired = True
+        if box is not None and _tip_box_escape(pin, box) > escape_ratio:
+            removed_by_rule["bbox_escape"] += 1
+            fired = True
+        if fired:
+            removed_ids.append(pin.internal_id)
+
+    if removed_ids:
+        doomed = set(removed_ids)
+        pins[:] = [item for item in pins if item.internal_id not in doomed]
+    return {
+        "enabled": True,
+        "candidate_count": candidate_count,
+        "eligible_count": len(eligible),
+        "retained_count": len(pins),
+        "removed_count": len(removed_ids),
+        "removed_by_rule": removed_by_rule,
+        "removed_ids": removed_ids,
+        "thresholds": thresholds,
+        "reason": "applied",
+    }
+
+
+def _body_edge_offset(pin: Pin, box: "BBox | None") -> float | None:
+    """Signed distance of the pin base from the owner body edge.
+
+    Negative values place the base inside the body (the direction a real
+    stub grows from); returns ``None`` when geometry is unavailable.
+    """
+
+    if box is None or pin.base is None:
+        return None
+    if pin.orientation in ("T", "B"):
+        edge = box.y1 if pin.orientation == "T" else box.y2
+        sign = -1.0 if pin.orientation == "T" else 1.0
+        return (pin.base.y - edge) * sign
+    if pin.orientation in ("L", "R"):
+        edge = box.x1 if pin.orientation == "L" else box.x2
+        sign = -1.0 if pin.orientation == "L" else 1.0
+        return (pin.base.x - edge) * sign
+    return None
+
+
+def _tip_box_escape(pin: Pin, box: BBox) -> float:
+    """Distance from the tip to the owner bounding box, in diagonals."""
+
+    dx = max(box.x1 - pin.point.x, 0.0, pin.point.x - box.x2)
+    dy = max(box.y1 - pin.point.y, 0.0, pin.point.y - box.y2)
+    diagonal = math.hypot(box.x2 - box.x1, box.y2 - box.y1) or 1.0
+    return math.hypot(dx, dy) / diagonal
+
+
+__all__ = ["associate_pin_texts", "prune_pin_precision"]

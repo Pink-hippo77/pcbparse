@@ -601,51 +601,84 @@ def _closest_component_pair(
     right_id: int,
     radius: int,
 ) -> tuple[float, Pixel | None, Pixel | None]:
-    """Closest pixel pair between two mask components, bounded by the radius."""
+    """Closest pixel pair between two mask components, bounded by the radius.
+
+    Closing can merge large foreground regions. Search the finite set of
+    row/column offsets allowed by the closing radius instead of comparing the
+    Cartesian product of both components' pixels. For equal-distance results,
+    retain the historical row-major (left pixel, right pixel) tie break.
+    """
 
     left_pixels = np.argwhere(labels == left_id)
-    right_pixels = np.argwhere(labels == right_id)
+    right_mask = labels == right_id
+    right_pixels = np.argwhere(right_mask)
     if left_pixels.size == 0 or right_pixels.size == 0:
         return float(2 * radius), None, None
-    # Bound the search by the closing reach so gap estimates stay local; a
-    # square closing of radius r can bridge empty runs up to 2*r pixels, i.e.
-    # closest-pixel distances up to 2*r + 1.
+
     reach = float(2 * radius + 1)
-    best = reach
-    best_pair: tuple[Pixel, Pixel] | None = None
-    offsets: list[tuple[int, int, float]] | None = None
-    right_index: set[Pixel] | None = None
-    if np.isfinite(reach) and 0 <= reach <= 31:
-        bound = int(reach)
-        local_offsets = [
-            (dy, dx, hypot(dy, dx))
-            for dy in range(-bound, bound + 1)
-            for dx in range(-bound, bound + 1)
-            if hypot(dy, dx) <= reach
-        ]
-        # Small components cost less to scan directly. For large components,
-        # only integer pixels within the original closing reach can qualify.
-        if len(right_pixels) > len(local_offsets):
-            offsets = local_offsets
-            right_index = {(int(row), int(column)) for row, column in right_pixels}
-    for left_row, left_column in left_pixels:
-        left = (int(left_row), int(left_column))
-        if offsets is not None:
-            # Preserve row-major right-pixel ordering so equal-distance pairs
-            # choose exactly the same endpoints as the full Cartesian scan.
-            for dy, dx, gap in offsets:
-                right = (left[0] + dy, left[1] + dx)
-                if right in right_index and (best_pair is None or gap < best):
-                    best, best_pair = gap, (left, right)
-        else:
-            for right_row, right_column in right_pixels:
-                right = (int(right_row), int(right_column))
-                gap = float(hypot(left[0] - right[0], left[1] - right[1]))
-                if gap <= reach and (best_pair is None or gap < best):
-                    best, best_pair = gap, (left, right)
-    if best_pair is None:
+    if reach < 0:
         return float(2 * radius), None, None
-    return max(0.0, best - 1.0), best_pair[0], best_pair[1]
+    search_radius = int(reach)
+    left_rows, left_columns = left_pixels[:, 0], left_pixels[:, 1]
+    right_rows, right_columns = right_pixels[:, 0], right_pixels[:, 1]
+    if (
+        int(left_rows.max()) + search_radius < int(right_rows.min())
+        or int(right_rows.max()) + search_radius < int(left_rows.min())
+        or int(left_columns.max()) + search_radius < int(right_columns.min())
+        or int(right_columns.max()) + search_radius < int(left_columns.min())
+    ):
+        return float(2 * radius), None, None
+
+    offsets_by_distance: dict[float, list[tuple[int, int]]] = {}
+    for row_delta in range(-search_radius, search_radius + 1):
+        for column_delta in range(-search_radius, search_radius + 1):
+            distance = float(hypot(row_delta, column_delta))
+            if distance <= reach:
+                offsets_by_distance.setdefault(distance, []).append(
+                    (row_delta, column_delta)
+                )
+
+    height, width = labels.shape
+    for distance in sorted(offsets_by_distance):
+        best_order: tuple[int, int, int, int] | None = None
+        best_pair: tuple[Pixel, Pixel] | None = None
+        for row_delta, column_delta in offsets_by_distance[distance]:
+            neighbor_rows = left_rows + row_delta
+            neighbor_columns = left_columns + column_delta
+            valid = (
+                (neighbor_rows >= 0)
+                & (neighbor_rows < height)
+                & (neighbor_columns >= 0)
+                & (neighbor_columns < width)
+            )
+            valid_indices = np.flatnonzero(valid)
+            if valid_indices.size == 0:
+                continue
+            matched_positions = np.flatnonzero(
+                right_mask[
+                    neighbor_rows[valid_indices],
+                    neighbor_columns[valid_indices],
+                ]
+            )
+            if matched_positions.size == 0:
+                continue
+            index = int(valid_indices[int(matched_positions[0])])
+            left_pixel = (
+                int(left_rows[index]),
+                int(left_columns[index]),
+            )
+            right_pixel = (
+                int(neighbor_rows[index]),
+                int(neighbor_columns[index]),
+            )
+            order = (*left_pixel, *right_pixel)
+            if best_order is None or order < best_order:
+                best_order = order
+                best_pair = (left_pixel, right_pixel)
+        if best_pair is not None:
+            return max(0.0, distance - 1.0), best_pair[0], best_pair[1]
+
+    return float(2 * radius), None, None
 
 
 def _estimate_component_gap(

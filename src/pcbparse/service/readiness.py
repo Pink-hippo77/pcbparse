@@ -385,6 +385,9 @@ def _validate_entry(
                 validate_inference_contract(
                     cast(ModelTask, task),
                     inference,
+                    lineage_mode=cast(
+                        "str", entry.get("lineage_mode", "dataset300-trained")
+                    ),
                 )
             except (CandidateBundleError, KeyError, TypeError, ValueError) as exc:
                 _add_issue(

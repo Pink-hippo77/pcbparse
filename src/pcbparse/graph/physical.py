@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import json
 import math
 from collections import defaultdict
@@ -340,6 +341,734 @@ def segments_are_connected(
             visited.add(neighbor)
             stack.append(neighbor)
     return len(visited) == len(available)
+
+
+def filter_body_outline_wire_segments(
+    ir: CircuitIR,
+    *,
+    tolerance_px: float = 4.0,
+    coverage: float = 0.5,
+    min_edge_span_px: float = 20.0,
+) -> dict[str, Any]:
+    """Remove wire segments that trace component body outlines (opt80 r08).
+
+    A stroke running along a component bbox edge (both endpoints within
+    ``tolerance_px`` of the edge line) whose collinear union covers at least
+    ``coverage`` of the edge length is treated as the drawn body outline, not a
+    wire: schematic body borders are routinely captured by the wire mask and,
+    once vectorized, they fuse every pin stub that touches the body edge into
+    one physical net (the dominant graph false-pair source on val30).
+
+    Conservative guards: only edges at least ``min_edge_span_px`` long are
+    considered, and at least ``coverage * span`` absolute length must be
+    covered before suppression. Segments are removed from ``ir.segments`` (the
+    same contract as the internal-wire filter); a report is returned for trace.
+    """
+    if tolerance_px < 0 or not math.isfinite(tolerance_px):
+        raise ValueError("body outline tolerance must be finite and non-negative")
+    if not 0.0 < coverage <= 1.0:
+        raise ValueError("body outline coverage must be in (0, 1]")
+    if min_edge_span_px < 0:
+        raise ValueError("min_edge_span_px must be non-negative")
+    suppressed: set[str] = set()
+    for component in ir.components:
+        x1, y1, x2, y2 = (
+            component.bbox.x1,
+            component.bbox.y1,
+            component.bbox.x2,
+            component.bbox.y2,
+        )
+        width, height = x2 - x1, y2 - y1
+        if width <= 0 or height <= 0:
+            continue
+        edges = (
+            ("v", x1, y1, y2, height),
+            ("v", x2, y1, y2, height),
+            ("h", y1, x1, x2, width),
+            ("h", y2, x1, x2, width),
+        )
+        for axis, position, span_lo, span_hi, span in edges:
+            if span < min_edge_span_px:
+                continue
+            covering: list[tuple[str, float, float]] = []
+            for segment in ir.segments:
+                if segment.internal_id in suppressed:
+                    continue
+                if axis == "v":
+                    if (
+                        abs(segment.start.x - position) > tolerance_px
+                        or abs(segment.end.x - position) > tolerance_px
+                    ):
+                        continue
+                    low, high = sorted((segment.start.y, segment.end.y))
+                else:
+                    if (
+                        abs(segment.start.y - position) > tolerance_px
+                        or abs(segment.end.y - position) > tolerance_px
+                    ):
+                        continue
+                    low, high = sorted((segment.start.x, segment.end.x))
+                clipped_low, clipped_high = max(low, span_lo), min(high, span_hi)
+                if clipped_high > clipped_low:
+                    covering.append(
+                        (segment.internal_id, clipped_low, clipped_high)
+                    )
+            if not covering:
+                continue
+            intervals = sorted((low, high) for _, low, high in covering)
+            merged: list[tuple[float, float]] = []
+            for low, high in intervals:
+                if merged and low <= merged[-1][1]:
+                    merged[-1] = (merged[-1][0], max(merged[-1][1], high))
+                else:
+                    merged.append((low, high))
+            covered = sum(high - low for low, high in merged)
+            if covered / span >= coverage:
+                suppressed.update(segment_id for segment_id, _, _ in covering)
+    if not suppressed:
+        return {"suppressed": 0, "ids": []}
+    removed = [s for s in ir.segments if s.internal_id not in suppressed]
+    ir.segments = removed
+    return {"suppressed": len(suppressed), "ids": sorted(suppressed)}
+
+
+def filter_glyph_wire_segments(
+    ir: CircuitIR,
+    *,
+    margin_px: float = 2.0,
+) -> dict[str, Any]:
+    """Remove glyph strokes that OCR text boxes explain (opt80 r08 residual).
+
+    A wire segment whose BOTH endpoints lie inside the same detected text box
+    (plus ``margin_px``) is a glyph stroke of that label, not a through wire:
+    such strokes enter the wire mask from net labels and bridge otherwise
+    separate wires. Segments that cross the text box boundary (label stubs and
+    real wires under text) are kept. Junction points fully inside one text box
+    are removed for the same reason. Evidence: offline replay on the r08
+    candidate (work/module-opt80-20261007/r08/run-001/r08g-replay2.json) took
+    graph pairs from TP40/FP180 to TP24/FP39.
+    """
+    if margin_px < 0 or not math.isfinite(margin_px):
+        raise ValueError("glyph margin must be finite and non-negative")
+    text_boxes = [
+        (text.bbox.x1, text.bbox.y1, text.bbox.x2, text.bbox.y2) for text in ir.texts
+    ]
+
+    def _inside_one_box(point_a: Point, point_b: Point) -> bool:
+        for x1, y1, x2, y2 in text_boxes:
+            if all(
+                x1 - margin_px <= p.x <= x2 + margin_px
+                and y1 - margin_px <= p.y <= y2 + margin_px
+                for p in (point_a, point_b)
+            ):
+                return True
+        return False
+
+    removed_segments = [
+        s for s in ir.segments if _inside_one_box(s.start, s.end)
+    ]
+    removed_ids = {s.internal_id for s in removed_segments}
+    kept_junctions = [
+        j for j in ir.junctions if not _inside_one_box(j.point, j.point)
+    ]
+    removed_junctions = len(ir.junctions) - len(kept_junctions)
+    if not removed_ids and not removed_junctions:
+        return {"suppressed": 0, "junctions_suppressed": 0, "ids": []}
+    ir.segments = [s for s in ir.segments if s.internal_id not in removed_ids]
+    ir.junctions = kept_junctions
+    return {
+        "suppressed": len(removed_ids),
+        "junctions_suppressed": removed_junctions,
+        "ids": sorted(removed_ids),
+    }
+
+
+def _decor_point_seg_dist(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
+    dx, dy = bx - ax, by - ay
+    denom = dx * dx + dy * dy
+    if denom <= 1e-12:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / denom))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def _decor_seg_seg_dist(
+    ax: float, ay: float, bx: float, by: float,
+    cx: float, cy: float, dx_: float, dy_: float,
+) -> float:
+    def _cross(ox: float, oy: float, px: float, py: float, qx: float, qy: float) -> float:
+        return (px - ox) * (qy - oy) - (py - oy) * (qx - ox)
+
+    d1 = _cross(cx, cy, dx_, dy_, ax, ay)
+    d2 = _cross(cx, cy, dx_, dy_, bx, by)
+    d3 = _cross(ax, ay, bx, by, cx, cy)
+    d4 = _cross(ax, ay, bx, by, dx_, dy_)
+    if ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0)):
+        return 0.0
+    return min(
+        _decor_point_seg_dist(ax, ay, cx, cy, dx_, dy_),
+        _decor_point_seg_dist(bx, by, cx, cy, dx_, dy_),
+        _decor_point_seg_dist(cx, cy, ax, ay, bx, by),
+        _decor_point_seg_dist(dx_, dy_, ax, ay, bx, by),
+    )
+
+
+def _decor_merged_lines(
+    segments: Sequence[WireSegment],
+    labels: Sequence[Any],
+    boxes: Sequence[tuple[float, float, float, float]],
+    *,
+    lat_tol: float,
+    gap_tol: float,
+    axis_tol: float,
+) -> list[dict[str, Any]]:
+    """Merge collinear axis-aligned segments into line records with anchors.
+
+    S09 task-7 (performance, semantics frozen): the greedy merge below is
+    bit-for-bit the same decision procedure as before, but the "scan every
+    item again until the cluster stops growing" loop is bounded to the items
+    inside the leader's lateral band.  Three facts make that a pure constant
+    factor win rather than a semantic change:
+
+    * an item can join the cluster only when
+      ``abs(pos2 - pos_leader) <= lat_tol`` (the original compares against the
+      leader's ``pos``, never against a running mean), and
+    * ``items`` is sorted by ``round(pos, 1)``, so those items are one
+      contiguous run of the sorted list; and
+    * ``cur_lo``/``cur_hi`` only ever widen, so the set of absorbable items is
+      monotone in the scan - it is already maximal after the first pass, which
+      is why the original's ``while changed`` outer loop never had to run a
+      second time with new members.
+
+    The label/box distance scan still visits members and references in their
+    original order, so the ``min`` reductions see the same operands in the
+    same sequence.
+    """
+    lines: list[dict[str, Any]] = []
+    for orient in ("h", "v"):
+        items: list[tuple[float, float, float, WireSegment]] = []
+        for segment in segments:
+            ax, ay = segment.start.x, segment.start.y
+            bx, by = segment.end.x, segment.end.y
+            if orient == "h" and abs(by - ay) <= axis_tol:
+                items.append((min(ax, bx), max(ax, bx), (ay + by) / 2.0, segment))
+            elif orient == "v" and abs(bx - ax) <= axis_tol:
+                items.append((min(ay, by), max(ay, by), (ax + bx) / 2.0, segment))
+        items.sort(key=lambda item: (round(item[2], 1), item[0]))
+        # Reachability band for the cluster scan.  An item can only join the
+        # cluster when ``abs(pos2 - pos_leader) <= lat_tol``, and the original
+        # always compares against the leader's ``pos`` (never a running mean).
+        # ``items`` is sorted by the geometric position (the ``round(pos, 1)``
+        # key is monotone), so the eligible items form one contiguous range that
+        # may include items *before* the leader - the original's fixed point
+        # scans the whole list in index order, so a lower-index neighbour really
+        # is absorbed.  Both edges come from bisection on the position column;
+        # the ``abs(pos2 - pos) <= lat_tol`` test itself is still evaluated
+        # inside the loop exactly as before.
+        #
+        # The rescan is kept verbatim: ``cur_lo``/``cur_hi`` widen as members
+        # join, and widening can make an *earlier-indexed* candidate reachable
+        # later (real 0092 has exactly that shape), so a single pass would drop
+        # members.  Restricting the rescan to the band is the whole saving - the
+        # scan the original wasted is the part that provably fails the lateral
+        # test, and out-of-band items are never marked used by this cluster, so
+        # the remaining clusters are seeded identically.
+        pos_values = [item[2] for item in items]
+        used = [False] * len(items)
+        for index in range(len(items)):
+            if used[index]:
+                continue
+            used[index] = True
+            base_lo, base_hi, pos, segment = items[index]
+            members = [segment]
+            cur_lo, cur_hi = base_lo, base_hi
+            first = bisect.bisect_left(pos_values, pos - lat_tol)
+            if pos + lat_tol >= pos_values[-1]:
+                last = len(items) - 1
+            else:
+                last = bisect.bisect_right(pos_values, pos + lat_tol) - 1
+            changed = True
+            while changed:
+                changed = False
+                for other_index in range(first, last + 1):
+                    if used[other_index]:
+                        continue
+                    lo2, hi2, pos2, other = items[other_index]
+                    if abs(pos2 - pos) <= lat_tol and not (
+                        hi2 < cur_lo - gap_tol or lo2 > cur_hi + gap_tol
+                    ):
+                        used[other_index] = True
+                        members.append(other)
+                        cur_lo, cur_hi = min(cur_lo, lo2), max(cur_hi, hi2)
+                        changed = True
+            label_dist = 1e9
+            comp_dist = 1e9
+            for member in members:
+                m_ax, m_ay = member.start.x, member.start.y
+                m_bx, m_by = member.end.x, member.end.y
+                # Cheap AABB rejection: ``label_dist`` only ever decreases, so a
+                # label whose bounding box is already farther than the current
+                # best cannot lower it.  ``_decor_point_seg_dist`` >= the
+                # point-to-AABB distance, so the filter never drops the true
+                # minimum, and the surviving calls still run in the original
+                # order with the original ``min`` reduction.
+                m_lo_x, m_hi_x = (m_ax, m_bx) if m_ax <= m_bx else (m_bx, m_ax)
+                m_lo_y, m_hi_y = (m_ay, m_by) if m_ay <= m_by else (m_by, m_ay)
+                if label_dist < 1e9:
+                    for label in labels:
+                        lp = label.point
+                        dx = m_lo_x - lp.x if lp.x < m_lo_x else (
+                            lp.x - m_hi_x if lp.x > m_hi_x else 0.0)
+                        dy = m_lo_y - lp.y if lp.y < m_lo_y else (
+                            lp.y - m_hi_y if lp.y > m_hi_y else 0.0)
+                        if dx * dx + dy * dy > label_dist * label_dist:
+                            continue
+                        label_dist = min(
+                            label_dist,
+                            _decor_point_seg_dist(
+                                lp.x, lp.y, m_ax, m_ay, m_bx, m_by,
+                            ),
+                        )
+                else:
+                    for label in labels:
+                        label_dist = min(
+                            label_dist,
+                            _decor_point_seg_dist(
+                                label.point.x, label.point.y,
+                                m_ax, m_ay, m_bx, m_by,
+                            ),
+                        )
+                if comp_dist < 1e9:
+                    for x1, y1, x2, y2 in boxes:
+                        dx = m_lo_x - x2 if x2 < m_lo_x else (
+                            x1 - m_hi_x if x1 > m_hi_x else 0.0)
+                        dy = m_lo_y - y2 if y2 < m_lo_y else (
+                            y1 - m_hi_y if y1 > m_hi_y else 0.0)
+                        if dx * dx + dy * dy > comp_dist * comp_dist:
+                            continue
+                        ex1, ey1 = x1, y1
+                        ex2, ey2 = x2, y1
+                        comp_dist = min(
+                            comp_dist,
+                            _decor_seg_seg_dist(m_ax, m_ay, m_bx, m_by,
+                                                ex1, ey1, ex2, ey2),
+                        )
+                        ex1, ey1 = x2, y1
+                        ex2, ey2 = x2, y2
+                        comp_dist = min(
+                            comp_dist,
+                            _decor_seg_seg_dist(m_ax, m_ay, m_bx, m_by,
+                                                ex1, ey1, ex2, ey2),
+                        )
+                        ex1, ey1 = x2, y2
+                        ex2, ey2 = x1, y2
+                        comp_dist = min(
+                            comp_dist,
+                            _decor_seg_seg_dist(m_ax, m_ay, m_bx, m_by,
+                                                ex1, ey1, ex2, ey2),
+                        )
+                        ex1, ey1 = x1, y2
+                        ex2, ey2 = x1, y1
+                        comp_dist = min(
+                            comp_dist,
+                            _decor_seg_seg_dist(m_ax, m_ay, m_bx, m_by,
+                                                ex1, ey1, ex2, ey2),
+                        )
+                else:
+                    for x1, y1, x2, y2 in boxes:
+                        for ex1, ey1, ex2, ey2 in (
+                            (x1, y1, x2, y1), (x2, y1, x2, y2),
+                            (x2, y2, x1, y2), (x1, y2, x1, y1),
+                        ):
+                            comp_dist = min(
+                                comp_dist,
+                                _decor_seg_seg_dist(m_ax, m_ay, m_bx, m_by,
+                                                    ex1, ey1, ex2, ey2),
+                            )
+            lines.append({
+                "orient": orient,
+                "pos": pos,
+                "lo": cur_lo,
+                "hi": cur_hi,
+                "span": cur_hi - cur_lo,
+                "members": members,
+                "label_dist": label_dist,
+                "comp_dist": comp_dist,
+            })
+    return lines
+
+
+def _decor_rect_outline_lines(
+    lines: Sequence[dict[str, Any]],
+    *,
+    rect_min_area_px: float,
+    rect_corner_tol_px: float,
+    rect_min_cover: float,
+) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]]:
+    """Return the rectangle-outline quadruples the fold enumeration would emit.
+
+    S09 task-7 (performance, semantics frozen).  The original walks every
+    ``(h1, h2, v1, v2)`` quadruple.  Every bound below is a *necessary*
+    condition of a test the original performs, so it can only remove quadruples
+    the original would also have rejected; the original's tests are still
+    evaluated, in the original order, on the candidates that survive.
+
+    With ``x1 = v1.pos``, ``x2 = v2.pos``, ``y1 = h1.pos``, ``y2 = h2.pos``,
+    ``w = x2 - x1`` and ``h = y2 - y1``, the original requires
+
+      A) ``w * h >= rect_min_area_px``
+      B) ``cover * w <= h1.span`` and ``cover * w <= h2.span``
+      C) ``cover * h <= v1.span`` and ``cover * h <= v2.span``
+      D) ``|h1.lo - x1| <= tol``, ``|h1.hi - x2| <= tol`` (likewise for ``h2``)
+      E) ``|v.lo - y1| <= tol``, ``|v.hi - y2| <= tol`` (likewise for ``v2``)
+
+    From B and C: ``w <= max(h1.span, h2.span) / cover`` (``span_dom``) and
+    ``h <= max(v1.span, v2.span) / cover``.  From D: ``x1 >= h1.lo - tol`` and
+    ``x2 <= h1.hi + tol``, so ``w <= h1.span + 2*tol``.  Combining A with the
+    ``h <= 1200`` window gives ``w >= rect_min_area_px / 1200``.  Hence
+
+      ``x1 >= h1.lo - tol``,  ``x2 <= h1.hi + tol``,
+      ``w = x2 - x1`` with ``max(5, rect_min_area_px / 1200) <= w <= span_dom``
+
+    which is exactly the two bisection windows used below: ``v1`` is searched in
+    ``[h1.lo - tol, h1.hi + tol - w_min]`` and, for each ``v1``, ``v2`` in
+    ``(v1.pos, h1.hi + tol]``.  E additionally needs ``v.hi >= y2 - tol`` for
+    both verticals (the ``v_hi_bound`` test).
+
+    Earlier revisions searched ``v1`` in a window derived only from ``h1.lo``,
+    ``h1.hi`` and ``h2`` and then re-tested the width inside the inner loop;
+    that still scanned a large fraction of ``vertical`` per horizontal pair and
+    measured *no* speed-up at 1000 real segments.  The ``w`` window above is
+    what actually bounds the work.
+    """
+    order = {id(line): index for index, line in enumerate(lines)}
+    horizontal = sorted(
+        [ln for ln in lines if ln["orient"] == "h" and ln["span"] >= 30],
+        key=lambda ln: (ln["pos"], order[id(ln)]),
+    )
+    vertical = sorted(
+        [ln for ln in lines if ln["orient"] == "v" and ln["span"] >= 30],
+        key=lambda ln: (ln["pos"], order[id(ln)]),
+    )
+    if not horizontal or not vertical:
+        return []
+
+    v_positions = [ln["pos"] for ln in vertical]
+    v_hi_all = [ln["hi"] for ln in vertical]
+    v_spans = [ln["span"] for ln in vertical]
+    cover = rect_min_cover
+    tol = rect_corner_tol_px
+    w_min = rect_min_area_px / 1200.0
+    if w_min < 5.0:
+        w_min = 5.0
+
+    marked: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+    for h1_index, h1 in enumerate(horizontal):
+        h1_pos, h1_lo, h1_hi, h1_span = h1["pos"], h1["lo"], h1["hi"], h1["span"]
+        # D bounds x1 from below and x2 from above; A+B bound their difference.
+        x1_lo = h1_lo - tol
+        x2_hi = h1_hi + tol
+        for h2_index in range(h1_index + 1, len(horizontal)):
+            h2 = horizontal[h2_index]
+            gap_h = h2["pos"] - h1_pos
+            if gap_h > 1200.0:
+                break                       # position-ordered: no later h2 qualifies
+            if not gap_h > 5.0:
+                continue
+            # A leaves room for a rectangle only if w * gap_h can reach the area.
+            if gap_h * (x2_hi - x1_lo) < rect_min_area_px:
+                continue
+            h2_span = h2["span"]
+            span_dom = (h1_span if h1_span > h2_span else h2_span) / cover
+            # A also needs w >= rect_min_area_px / gap_h, and gap_h <= 1200 turns
+            # that into the global floor w_min.
+            w_hi = x2_hi - x1_lo
+            if span_dom < w_hi:
+                w_hi = span_dom
+            if w_hi < w_min:
+                continue
+            v_hi_bound = gap_h + h1_pos - tol      # E: v.hi >= y2 - tol
+            v1_first = bisect.bisect_left(v_positions, x1_lo)
+            v1_last = bisect.bisect_right(v_positions, x2_hi - w_min)
+            if v1_last <= v1_first:
+                continue
+            for v1_index in range(v1_first, v1_last):
+                v1 = vertical[v1_index]
+                v1_pos = v1["pos"]
+                # Only the upper endpoint is constrained by y2 - tol.
+                # The old corner predicate permits lo > y2 - tol when the
+                # vertical span is still at least 30 and both corners are
+                # within tolerance.
+                if not (v_hi_all[v1_index] >= v_hi_bound):
+                    continue
+                v2_lo = v1_pos + w_min
+                # The legacy rectangle predicate also caps width at 1200 px.
+                v2_hi = min(x2_hi, v1_pos + 1200.0)
+                if v2_lo > v2_hi:
+                    continue
+                w_cap = span_dom
+                w_room = x2_hi - v1_pos
+                if w_room < w_cap:
+                    w_cap = w_room
+                # Include equality at the area-derived lower bound; the legacy
+                # strict width > 5 predicate is checked inside the candidate loop.
+                v2_first = bisect.bisect_left(v_positions, v2_lo, v1_index + 1)
+                v2_last = bisect.bisect_right(v_positions, v2_hi, v2_first)
+                for v2_index in range(v2_first, v2_last):
+                    rect_width = v_positions[v2_index] - v1_pos
+                    if rect_width > w_cap:
+                        break
+                    if not (v_hi_all[v2_index] >= v_hi_bound):
+                        continue
+                    v2 = vertical[v2_index]
+                    # Enforce the complete legacy width range after subtraction;
+                    # the indexed upper bound alone can round at translated coords.
+                    if not (5.0 < rect_width <= 1200.0):
+                        continue
+                    if rect_width * gap_h < rect_min_area_px:
+                        continue
+                    x1, x2 = v1_pos, v2["pos"]
+                    if not abs(h1_lo - x1) <= tol:
+                        continue
+                    if not abs(h1_hi - x2) <= tol:
+                        continue
+                    if not abs(h2["lo"] - x1) <= tol:
+                        continue
+                    if not abs(h2["hi"] - x2) <= tol:
+                        continue
+                    # ``v`` records carry a y-extent: the original tests
+                    # ``|v.lo - y1| <= tol`` and ``|v.hi - y2| <= tol`` with
+                    # ``y1 = h1.pos`` and ``y2 = h2.pos``.  The parentheses are
+                    # load-bearing: without them Python evaluates
+                    # ``(v.lo - gap_h) + h1_pos``.
+                    y1 = h1_pos
+                    y2 = gap_h + h1_pos
+                    if not abs(v1["lo"] - y1) <= tol:
+                        continue
+                    if not abs(v1["hi"] - y2) <= tol:
+                        continue
+                    if not abs(v2["lo"] - y1) <= tol:
+                        continue
+                    if not abs(v2["hi"] - y2) <= tol:
+                        continue
+                    if (
+                        h1_span < cover * rect_width
+                        or h2_span < cover * rect_width
+                        or v1["span"] < cover * gap_h
+                        or v2["span"] < cover * gap_h
+                    ):
+                        continue
+                    marked.append((h1, h2, v1, v2))
+    return marked
+
+
+def filter_decorative_wire_segments(
+    ir: CircuitIR,
+    *,
+    canvas_width: int | None = None,
+    canvas_height: int | None = None,
+    span_fraction: float = 0.8,
+    span_far_label_px: float = 20.0,
+    span_far_comp_px: float = 20.0,
+    rect_min_area_px: float = 500.0,
+    rect_corner_tol_px: float = 15.0,
+    rect_min_cover: float = 0.4,
+    companion_max_gap_px: float = 40.0,
+    companion_far_label_px: float = 20.0,
+    companion_far_comp_px: float = 20.0,
+    interior_inset_px: float = 5.0,
+    merge_lat_tol_px: float = 4.0,
+    merge_gap_tol_px: float = 30.0,
+    axis_tol_px: float = 2.0,
+) -> dict[str, Any]:
+    """Remove sheet-furniture and symbol strokes from the wire segment set.
+
+    opt80 r12: the wire mask also fires on page furniture (frames, section
+    dividers, title-block tables) and component symbol outlines (chip body
+    rectangles), and those strokes stay in ``ir.segments`` as the dominant
+    wire false-positive pixel mass (four-layer attribution in
+    work/module-opt80-20261007/r12-wire/r12a-attribution.json). Four
+    structural signatures separate them from wires without image or GT
+    access:
+
+    * ``canvas_span``  - an axis-aligned line covering >= ``span_fraction`` of
+      the canvas dimension while staying far from OCR labels and component
+      bboxes (page frame / section divider);
+    * ``companion``    - its parallel neighbour (double-line sheet borders);
+    * ``rect_outline`` - merged lines closing a rectangle of at least
+      ``rect_min_area_px`` (chip body outlines / symbol boxes; wire networks
+      are cycle-free at this scale);
+    * ``interior``     - a stroke with both endpoints at least
+      ``interior_inset_px`` deep inside a component bbox (symbol strokes live
+      inside bodies, wires attach at their edges).
+
+    Conservative guards: every structural test is geometric, deterministic
+    and keyed to canvas/component geometry, so real wires that merely run
+    long or parallel are kept (the "far from label/component" gates). The
+    same contract as :func:`filter_body_outline_wire_segments` applies:
+    suppressed segments are removed from ``ir.segments`` and a report with
+    per-layer counts is returned for trace. Offline replay on the r11
+    candidate (work/module-opt80-20261007/r12-wire/r12i-t3.json) moves wire
+    precision 0.543 -> 0.691 at recall 0.866 (F1 0.6685 -> 0.7687) and cuts
+    graph pairwise FP 12 -> 8 while TP stays at 25.
+    """
+    for name, value in (("span_fraction", span_fraction), ("rect_min_cover", rect_min_cover)):
+        if not 0.0 < value <= 1.0:
+            raise ValueError(f"{name} must be in (0, 1]")
+    for name, value in (
+        ("span_far_label_px", span_far_label_px),
+        ("span_far_comp_px", span_far_comp_px),
+        ("rect_min_area_px", rect_min_area_px),
+        ("rect_corner_tol_px", rect_corner_tol_px),
+        ("companion_max_gap_px", companion_max_gap_px),
+        ("companion_far_label_px", companion_far_label_px),
+        ("companion_far_comp_px", companion_far_comp_px),
+        ("interior_inset_px", interior_inset_px),
+        ("merge_lat_tol_px", merge_lat_tol_px),
+        ("merge_gap_tol_px", merge_gap_tol_px),
+        ("axis_tol_px", axis_tol_px),
+    ):
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and non-negative")
+    width = canvas_width if canvas_width is not None else ir.image.width
+    height = canvas_height if canvas_height is not None else ir.image.height
+    if width <= 0 or height <= 0:
+        raise ValueError("canvas dimensions must be positive")
+
+    segments = list(ir.segments)
+    labels = [label for label in ir.net_labels if label.point is not None]
+    boxes = [
+        (c.bbox.x1, c.bbox.y1, c.bbox.x2, c.bbox.y2)
+        for c in ir.components
+        if c.bbox.x2 > c.bbox.x1 and c.bbox.y2 > c.bbox.y1
+    ]
+    lines = _decor_merged_lines(
+        segments, labels, boxes,
+        lat_tol=merge_lat_tol_px, gap_tol=merge_gap_tol_px, axis_tol=axis_tol_px,
+    )
+    layers: dict[str, set[str]] = {}
+
+    def _mark(layer: str, segment: WireSegment) -> None:
+        layers.setdefault(layer, set()).add(segment.internal_id)
+
+    span_lines: list[dict[str, Any]] = []
+    for line in lines:
+        dim = width if line["orient"] == "h" else height
+        if (
+            line["span"] >= span_fraction * dim
+            and line["label_dist"] > span_far_label_px
+            and line["comp_dist"] > span_far_comp_px
+        ):
+            span_lines.append(line)
+            for member in line["members"]:
+                _mark("canvas_span", member)
+
+    # S09 task-7: identity set instead of a list scan (the original used
+    # ``line in span_lines``, an element-by-element ``==`` over dicts, which is
+    # both O(len(span_lines)) and content-based).  Only the elements appended
+    # below can ever be tested, so identity answers exactly the same question.
+    span_line_ids = {id(line) for line in span_lines}
+
+    for line in lines:
+        if id(line) in span_line_ids:
+            continue
+        line_orient = line["orient"]
+        line_pos, line_lo, line_hi = line["pos"], line["lo"], line["hi"]
+        line_span = line["span"]
+        # The two distance gates and the gap gate are per-line constants; the
+        # original evaluated them with ``and`` in one chain, so hoisting them
+        # ahead of the anchor loop (and leaving ``overlap`` inside) keeps the
+        # same first-failing-condition and the same set of marked lines.
+        if not (
+            line["label_dist"] > companion_far_label_px
+            and line["comp_dist"] > companion_far_comp_px
+        ):
+            continue
+        half_span = 0.5 * line_span
+        for anchor in span_lines:
+            if line_orient != anchor["orient"]:
+                continue
+            if abs(line_pos - anchor["pos"]) > companion_max_gap_px:
+                continue
+            if min(line_hi, anchor["hi"]) - max(line_lo, anchor["lo"]) < half_span:
+                continue
+            if line_span < 0.25 * anchor["span"]:
+                continue
+            for member in line["members"]:
+                _mark("companion", member)
+            break
+
+    for h1, h2, v1, v2 in _decor_rect_outline_lines(
+        lines,
+        rect_min_area_px=rect_min_area_px,
+        rect_corner_tol_px=rect_corner_tol_px,
+        rect_min_cover=rect_min_cover,
+    ):
+        for line in (h1, h2, v1, v2):
+            for member in line["members"]:
+                _mark("rect_outline", member)
+
+    for segment in segments:
+        seg_x1, seg_y1 = segment.start.x, segment.start.y
+        seg_x2, seg_y2 = segment.end.x, segment.end.y
+        seg_lo_x, seg_hi_x = (seg_x1, seg_x2) if seg_x1 <= seg_x2 else (seg_x2, seg_x1)
+        seg_lo_y, seg_hi_y = (seg_y1, seg_y2) if seg_y1 <= seg_y2 else (seg_y2, seg_y1)
+        for x1, y1, x2, y2 in boxes:
+            # The original tests the two endpoints against the box; a box whose
+            # x-range misses the segment's (or whose y-range does) cannot
+            # contain both endpoints, so this only skips boxes whose endpoint
+            # test was going to fail.
+            if x2 < seg_lo_x or x1 > seg_hi_x or y2 < seg_lo_y or y1 > seg_hi_y:
+                continue
+            if (
+                x1 <= seg_x1 <= x2 and y1 <= seg_y1 <= y2
+                and x1 <= seg_x2 <= x2 and y1 <= seg_y2 <= y2
+            ):
+                inset = min(
+                    seg_x1 - x1, x2 - seg_x1,
+                    seg_y1 - y1, y2 - seg_y1,
+                    seg_x2 - x1, x2 - seg_x2,
+                    seg_y2 - y1, y2 - seg_y2,
+                )
+                if inset >= interior_inset_px:
+                    _mark("interior", segment)
+                break
+
+    suppressed: set[str] = set()
+    for ids in layers.values():
+        suppressed |= ids
+    if not suppressed:
+        return {"suppressed": 0, "ids": [], "layers": {}, "junctions_suppressed": 0}
+    ir.segments = [s for s in ir.segments if s.internal_id not in suppressed]
+    # Derived-reference hygiene: every structure that stores segment ids must
+    # forget the suppressed strokes, or ReferenceValidator blocks the output
+    # with dangling-reference errors (the same contract as the palette filter).
+    for pin in ir.pins:
+        pin.edge_ids = [
+            edge_id for edge_id in pin.edge_ids if edge_id not in suppressed
+        ]
+    minimum_branches = {"t_junction": 3, "connected_cross": 4}
+    kept_junctions = []
+    removed_junctions = 0
+    for junction in ir.junctions:
+        junction.segment_ids = [
+            segment_id
+            for segment_id in junction.segment_ids
+            if segment_id not in suppressed
+        ]
+        branch_count = len(set(junction.segment_ids))
+        minimum = minimum_branches.get(junction.kind)
+        if branch_count == 0 or (minimum is not None and branch_count < minimum):
+            removed_junctions += 1
+            continue
+        kept_junctions.append(junction)
+    ir.junctions = kept_junctions
+    return {
+        "suppressed": len(suppressed),
+        "ids": sorted(suppressed),
+        "junctions_suppressed": removed_junctions,
+        "layers": {name: len(ids) for name, ids in sorted(layers.items())},
+    }
 
 
 def build_physical_graph(

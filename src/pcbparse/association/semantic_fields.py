@@ -89,14 +89,25 @@ def infer_semantic_fields(
     known_model_names: AbstractSet[str] = frozenset(),
     pin_body_name_context_enabled: bool = False,
     pin_body_component_roi_context_enabled: bool = False,
+    ignored_pin_ids: AbstractSet[str] = frozenset(),
 ) -> dict[str, Any]:
     """Assign conservative ``details`` labels to untyped OCR tokens in place.
 
     Existing (Golden or otherwise authoritative) ``details`` are never
     overwritten.  Returns a compact summary for the association report.
+
+    ``ignored_pin_ids`` removes geometrically implausible pin detections from
+    role-inference proximity queries only (the pins themselves are untouched).
+    Evidence: the opt90 S6 forensics showed designator texts routed to
+    pinnumber/pinname by pins that the precision prune and the serialization
+    gate later drop -- the classifier saw the pre-gate pin population while the
+    saved IR records the post-gate one (27 of 36 victims had no surviving pin
+    within the classifier radius).
     """
 
     component_index = {component.internal_id: component for component in components}
+    if ignored_pin_ids:
+        pins = [pin for pin in pins if pin.internal_id not in ignored_pin_ids]
     pin_index = {pin.internal_id: pin for pin in pins}
     segment_index = {segment.internal_id: segment for segment in segments}
     summary: dict[str, Any] = {
@@ -450,6 +461,19 @@ def _classify_global(
                         if _ALNUM_PIN_NUMBER.fullmatch(normalized):
                             return "pinnumber", nearest_pin[0].component_id, nearest_pin[0].internal_id
                         return "pinname", nearest_pin[0].component_id, nearest_pin[0].internal_id
+                return "designator", component.internal_id, None
+        # Prefix rescue: the geometrically nearest component may be a
+        # different-category neighbor (a resistor beside a transistor).  A
+        # candidate component whose category prefix IS compatible owns the
+        # designator reading before any pin fallback may claim the token.
+        # BOX wildcard compatibility is deliberately excluded here so
+        # enclosure regions cannot steal tokens from pin-adjacent fallbacks.
+        for component in components if component_candidates is None else component_candidates:
+            if nearest_component is not None and component is nearest_component[0]:
+                continue
+            if component.category.upper() == "BOX":
+                continue
+            if _prefix_compatible(component.category, normalized):
                 return "designator", component.internal_id, None
         # Alphanumeric pin labels near a pin tip use the dedicated path.
         if nearest_pin is not None and _ALNUM_PIN_NUMBER.fullmatch(normalized):

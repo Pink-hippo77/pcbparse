@@ -354,10 +354,18 @@ class CompositeProviderConfig:
                 "recognition_candidate_count",
                 "vertical_rotation_enabled",
                 "recognizer_backend",
+                "reread_enabled",
+                "reread_selection",
             }
         )
         if unknown_ocr_keys:
             raise ValueError(f"unsupported OCR inference override(s): {unknown_ocr_keys}")
+        if "reread_enabled" in self.ocr_inference_overrides:
+            if type(self.ocr_inference_overrides["reread_enabled"]) is not bool:
+                raise ValueError("ocr reread_enabled must be a boolean")
+        if "reread_selection" in self.ocr_inference_overrides:
+            if not isinstance(self.ocr_inference_overrides["reread_selection"], str):
+                raise ValueError("ocr reread_selection must be a string")
         if "detector_threshold" in self.ocr_inference_overrides:
             threshold = self.ocr_inference_overrides["detector_threshold"]
             if (

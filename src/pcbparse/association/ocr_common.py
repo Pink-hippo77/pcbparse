@@ -37,6 +37,19 @@ class OCRAssociationConfig:
     netlabel_unique_margin_px: float = 3.0
     netlabel_min_text_score: float = 0.60
     max_recorded_candidates: int = 5
+    # S02 binding-funnel repair (diagnostic-driven, default off).  Both flags
+    # are inert when false: the association stage writes no extra metadata and
+    # no component/token field, so the disabled pipeline stays byte-identical.
+    role_tolerant_binding_enabled: bool = False
+    binding_swap_repair_enabled: bool = False
+    binding_swap_min_gain_px: float = 1.0
+    key_argument_max_enabled: bool = False
+    # When true the designator field pools explicit (ROI-owned) and global
+    # evidence in one score comparison instead of discarding the global rows as
+    # soon as one explicit row exists.  The two provenance paths score on
+    # different scales (raw token confidence vs. composite), so the default
+    # filter can hand a component a strictly worse reading.
+    key_evidence_pool_enabled: bool = False
     component_model_catalog_path: str | None = None
     component_model_catalog_sha256: str | None = None
 
@@ -87,6 +100,20 @@ class OCRAssociationConfig:
             raise ValueError("pin_name_row_penalty must be a finite number in [0, 1]")
         if type(self.bind_global_component_targets) is not bool:
             raise ValueError("bind_global_component_targets must be a boolean")
+        if type(self.role_tolerant_binding_enabled) is not bool:
+            raise ValueError("role_tolerant_binding_enabled must be a boolean")
+        if type(self.binding_swap_repair_enabled) is not bool:
+            raise ValueError("binding_swap_repair_enabled must be a boolean")
+        if type(self.key_argument_max_enabled) is not bool:
+            raise ValueError("key_argument_max_enabled must be a boolean")
+        if type(self.key_evidence_pool_enabled) is not bool:
+            raise ValueError("key_evidence_pool_enabled must be a boolean")
+        if (
+            isinstance(self.binding_swap_min_gain_px, bool)
+            or not math.isfinite(float(self.binding_swap_min_gain_px))
+            or float(self.binding_swap_min_gain_px) < 0.0
+        ):
+            raise ValueError("binding_swap_min_gain_px must be a finite non-negative number")
         path, digest = self.component_model_catalog_path, self.component_model_catalog_sha256
         if (path is None) != (digest is None):
             raise ValueError("model catalog path and sha256 must be provided together")

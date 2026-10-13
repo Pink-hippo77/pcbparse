@@ -343,6 +343,28 @@ def _wire_provenance(ir: CircuitIR) -> dict[str, Any]:
     }
 
 
+def _reject_error_diagnostics(ir: CircuitIR) -> None:
+    """Entry self-check: never serialize an IR carrying ERROR diagnostics.
+
+    The production orchestrator refuses to serialize after a failed validation,
+    but that gate cannot replace the public entry self-check: a direct caller
+    can hand in a ``VALIDATED``-state IR whose ``diagnostics`` still contain
+    ERROR records.  Such contradictory IR must fail here instead of emitting an
+    official submission.  WARNING and INFO diagnostics never block.
+    """
+
+    error_codes = sorted(
+        f"{item.code}@{item.stage}"
+        for item in ir.diagnostics
+        if item.severity == "ERROR"
+    )
+    if error_codes:
+        raise OfficialSchemaError(
+            "serialization rejects IR carrying ERROR diagnostics "
+            f"({len(error_codes)}): {error_codes[:5]}"
+        )
+
+
 def serialize_official_with_quality(
     ir: CircuitIR,
     profile: str | Path | Mapping[str, Any] | None = None,
@@ -367,6 +389,7 @@ def serialize_official_with_quality(
     """
     if mode not in {"strict", "degraded"}:
         raise OfficialSchemaError(f"unsupported serialization mode {mode!r}")
+    _reject_error_diagnostics(ir)
     missing_keys = _missing_designator_ids(ir)
     if missing_keys:
         raise OfficialSchemaError(
@@ -428,6 +451,7 @@ def serialize_official(
         raise OfficialSchemaError(
             f"official serialization requires VALIDATED IR, got {ir.state}"
         )
+    _reject_error_diagnostics(ir)
     schema = load_official_schema(profile)
 
     image_height = float(ir.image.height)

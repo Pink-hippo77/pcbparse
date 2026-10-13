@@ -1113,12 +1113,18 @@ def _train_pin(**kwargs: Any) -> _TaskOutcome:
     samples = _pin_export_samples(
         torch, val_loader, task_config, limits.export_samples, limits.max_val_batches
     )
-    export_path = output / "model.onnx"
+    # Honor the task export format like the component/wire trainers do; the
+    # default in training config is "onnx", and "torchscript" exports without
+    # the optional onnx package (the blessed production pin is TorchScript).
+    pin_export_format = str(task_config.export_format or "onnx")
+    export_path = output / (
+        "model.ts" if pin_export_format == "torchscript" else "model.onnx"
+    )
     report = export_pin_model(
         model,
         export_path,
         samples,
-        export_format="onnx",
+        export_format=pin_export_format,
         opset=int(task_config.export_opset or 17),
         tolerance=_export_tolerance(task_config, limits),
     )
@@ -1418,7 +1424,7 @@ def _train_ocr(**kwargs: Any) -> _TaskOutcome:
         binding.task_root,
         source_root=source_root,
         split="train",
-        image_mode="lazy",
+        image_mode="materialized",
         image_height=recognition_height,
     )
     recognition_sampling_power = float(

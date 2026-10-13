@@ -1,118 +1,64 @@
-# Python caches
+# Git stores active application, training/data tooling and build metadata.
+# Dataset/model assets, evaluation, tests and experiments remain in the workspace.
+/*
+!/.gitignore
+!/.gitattributes
+!/.dockerignore
+!/.github/
+!/README.md
+!/pyproject.toml
+!/requirements.lock
+!/requirements.runtime.lock
+!/requirements.edarace.txt
+!/requirements-yolo.txt
+!/src/
+!/data_tools/
+!/configs/
+!/models/
+!/docker/
+
+# Evaluation is an offline workspace companion.
+/src/pcbparse/evaluation/
+
+# Production/training configurations, without experiment sweeps.
+/configs/*
+!/configs/models.yaml
+!/configs/official_schema.yaml
+!/configs/pipeline.yaml
+!/configs/pipeline.edarace.yaml
+!/configs/thresholds.yaml
+!/configs/profiles/
+!/configs/train/
+/configs/profiles/*
+!/configs/profiles/baseline.yaml
+!/configs/profiles/competition.yaml
+/configs/train/opt*.json
+
+# Physical model bundles remain on the server.
+/models/*
+!/models/models.lock.json
+!/models/registry.yaml
+
+/docker/*
+!/docker/Dockerfile
+!/docker/Dockerfile.cpu
+!/docker/agent_system
+
+/data_tools/*
+!/data_tools/*.py
+
+# Caches, credentials and generated binaries.
 __pycache__/
 *.py[cod]
-*.pyo
 *.egg-info/
-
-# Build artifacts
-build/
-dist/
-
-# Virtual environments
-.venv-test/
-.venv-train/
-.venv-yolo/
-.venv/
-
-# Test/coverage
-.coverage
-.pytest_cache/
-
-# Work directories (contain large inference artifacts, caches, run outputs)
-work/
-
-# Consolidated historical runs and externally supplied binary assets
-archive/legacy-training/runs/
-archive/legacy-training/results/
-archive/legacy-training/documents/
-external/official-docker/edarace-agent-base_ubuntu24.tar
-external/official-docker/edarace-agent-base_ubuntu24/
-
-# Model weights and release bundles (large binary files)
-releases/
-weights/
-models/weights/
-models/candidates/
-models/*.bak
-
-# Data images and large raw datasets
-data/images/
-data/raw/
-data/manifests/
-data/derived/
-Dataset300/
-赛题六公开数据集/
-
-# Outputs
-/outputs/
-/output/
-
-# Debug/determinism artifacts (large JSON dumps)
-artifacts/debug_e2e_latest/
-artifacts/determinism/
-artifacts/training/materialized/
-artifacts/reviews/*/runs/
-
-# Credentials and secrets
 .env
+.env.*
 *.pem
 *.key
-credentials/
-configs/qwen_local.json
-
-# OS files
+*.pt
+*.pth
+*.onnx
+*.ts
 Thumbs.db
 Desktop.ini
 .DS_Store
-
-# IDE
-.vscode/
-.idea/
-
-# Temporary files
-*.tmp
-*.bak
-tmp/
-
-# Local agent sessions, presentation builds, and remote workspace mirrors
-.codex-reference2-review/
-.codex-review/
-.codex-workthought-build/
-.goal/
-.remote_mirror/
-.remote_scripts/
-remote_src/
-_pin_diag/
-.tmp_remote_analyze.py
-overlay_*.png
-
-# Local environment overrides
-.env.*
-!.env.example
-!.env.sample
-
-# Keep human-facing documentation, reports, and logs local
-*.md
-!/README.md
-*.rst
-*.pdf
-*.docx
-*.pptx
-*.log
-docs/
-artifacts/analysis/
-artifacts/audits/
-artifacts/reference/
-artifacts/release/
-artifacts/reviews/
-artifacts/training/**/*.json
-artifacts/training/**/*.jsonl
-models/*.backup.*.json
-models/*.promotion-report.json
-models/*.report.json
-models/models.lock.pre-repair-*.json
-
-# Include the complete production bundles referenced by models/models.lock.json
-!models/releases/
-models/releases/*
-!models/releases/v8-portable/

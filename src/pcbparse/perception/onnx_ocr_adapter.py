@@ -20,7 +20,7 @@ from pcbparse.io import ImageView
 from pcbparse.ir.models import BBox, Evidence, TextToken
 from pcbparse.perception.protocols import ProviderError
 from pcbparse.perception.onnx_ocr_processing import (
-    crop_quad, db_polygons, decode_ctc, detection_tensor, recognition_tensor,
+    OCRProcessingError, crop_quad, db_polygons, decode_ctc, detection_tensor, recognition_tensor,
 )
 
 
@@ -151,6 +151,7 @@ class ONNXOCRAdapter:
         self._lock = threading.RLock()
         self._last_detection_trace = []
         self._detection_trace_log = []
+        self._last_invalid_crop_quads = 0
 
     @property
     def detector_threshold(self): return self._detector_threshold
@@ -188,10 +189,19 @@ class ONNXOCRAdapter:
             unclip_ratio=self.unclip_ratio,max_candidates=self.max_candidates,
             check=lambda:self._check(ctx,'ocr_onnx_postprocess'))
         crops = []
+        invalid_crop_quads = 0
         for index,(polygon,score) in enumerate(polygons):
             self._check(ctx,'ocr_onnx_crop')
-            crop = crop_quad(bgr,polygon,check=lambda:self._check(ctx,'ocr_onnx_crop'))
+            try:
+                crop = crop_quad(bgr,polygon,check=lambda:self._check(ctx,'ocr_onnx_crop'))
+            except OCRProcessingError:
+                # Detector polygons are independent proposals. A malformed
+                # quadrilateral has no safe text crop; discard only that
+                # proposal so it cannot abort valid crops in the same view.
+                invalid_crop_quads += 1
+                continue
             crops.append((index,crop))
+        self._last_invalid_crop_quads = invalid_crop_quads
         order = sorted(crops,key=lambda item:(item[1].shape[1]/item[1].shape[0],item[0]))
         results = {}
         for start in range(0,len(order),self.batch_size):
@@ -207,7 +217,8 @@ class ONNXOCRAdapter:
             texts = decode_ctc(outputs[0],self.charset)
             for (index,_),result in zip(batch,texts): results[index] = result
         return [(text,score,polygon,det_score) for index,(polygon,det_score) in enumerate(polygons)
-                for text,score in [results[index]] if text.strip() and score >= self.recognition_threshold]
+                if index in results for text,score in [results[index]]
+                if text.strip() and score >= self.recognition_threshold]
 
     def recognize(self,views: list[ImageView],ctx: Any) -> list[TextToken]:
         if len({view.view_id for view in views}) != len(views): raise ONNXOCRAdapterError('duplicate OCR view IDs')
@@ -217,8 +228,10 @@ class ONNXOCRAdapter:
                 bgr = np.asarray(view.image.convert('RGB'))[:,:,::-1].copy()
                 pixels_hash = hashlib.sha256(bgr.tobytes()).hexdigest()
                 predictions = self.infer_bgr(bgr,ctx)
-                trace.append({'view_id':view.view_id,'detections':len(predictions),'runtime':'onnxruntime',
-                              'active_providers':self.active_providers,'descriptor_sha256':self.descriptor_sha256})
+                trace.append({'view_id':view.view_id,'detections':len(predictions),
+                              'invalid_crop_quads':self._last_invalid_crop_quads,
+                              'runtime':'onnxruntime','active_providers':self.active_providers,
+                              'descriptor_sha256':self.descriptor_sha256})
                 for index,(text,score,polygon,det_score) in enumerate(predictions):
                     low,high = polygon.min(0),polygon.max(0)
                     x1,y1 = max(0,float(low[0])),max(0,float(low[1]))

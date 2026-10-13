@@ -58,7 +58,8 @@
     "allow_virtual_repair_ratio": 0.08,
     "collinear_merge_tolerance_px": 0.75,
     "collinear_gap_merge_tolerance_px": 6.0,
-    "palette_wire_filter_enabled": true
+    "palette_wire_filter_enabled": true,
+    "internal_wire_filter_enabled": true
   },
   "labels": {
     "min_text_score": 0.75,
