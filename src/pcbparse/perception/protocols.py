@@ -68,6 +68,17 @@ class PinProvider(Protocol):
 
 
 @runtime_checkable
+class FullImagePinProvider(PinProvider, Protocol):
+    """Optional image-wide detector; output coordinates belong to this view.
+
+    Candidates may have no component owner. Semantic ownership is resolved
+    in association rather than inferred from an arbitrary component crop.
+    """
+
+    def predict_image(self, image: ImageView, ctx: Any) -> list[PinCandidate]: ...
+
+
+@runtime_checkable
 class WireProvider(Protocol):
     version: str
 
@@ -94,6 +105,7 @@ __all__ = [
     "JunctionProvider",
     "PinCandidate",
     "PinProvider",
+    "FullImagePinProvider",
     "ProviderError",
     "ProviderTimeoutError",
     "WireMask",

@@ -22,6 +22,9 @@ class OCRAssociationConfig:
     # Global OCR remains reassignable until field resolution unless disabled.
     bind_global_component_targets: bool = True
     pin_max_distance_px: float = 36.0
+    pin_component_assignment_enabled: bool = False
+    pin_component_max_distance_px: float = 64.0
+    pin_component_unique_margin_px: float = 3.0
     pin_min_score: float = 0.60
     pin_unique_margin: float = 0.10
     pin_body_name_context_enabled: bool = False
@@ -41,6 +44,7 @@ class OCRAssociationConfig:
         positive = {
             "component_max_distance_factor": self.component_max_distance_factor,
             "pin_max_distance_px": self.pin_max_distance_px,
+            "pin_component_max_distance_px": self.pin_component_max_distance_px,
             "pin_ocr_gate_max_distance_px": self.pin_ocr_gate_max_distance_px,
             "netlabel_max_distance_px": self.netlabel_max_distance_px,
             "max_recorded_candidates": self.max_recorded_candidates,
@@ -51,6 +55,7 @@ class OCRAssociationConfig:
         margins = {
             "component_unique_margin": self.component_unique_margin,
             "pin_unique_margin": self.pin_unique_margin,
+            "pin_component_unique_margin_px": self.pin_component_unique_margin_px,
             "netlabel_unique_margin_px": self.netlabel_unique_margin_px,
         }
         for name, value in margins.items():
@@ -66,6 +71,11 @@ class OCRAssociationConfig:
                 raise ValueError(f"{name} must be in [0, 1]")
         if type(self.pin_ocr_gate_enabled) is not bool:
             raise ValueError("pin_ocr_gate_enabled must be a boolean")
+        if type(self.pin_component_assignment_enabled) is not bool:
+            raise ValueError("pin_component_assignment_enabled must be a boolean")
+        for value in (self.pin_component_max_distance_px, self.pin_component_unique_margin_px):
+            if isinstance(value, bool) or not math.isfinite(float(value)):
+                raise ValueError("pin component distances must be finite numbers")
         if type(self.pin_body_name_context_enabled) is not bool:
             raise ValueError("pin_body_name_context_enabled must be a boolean")
         if type(self.pin_body_component_roi_context_enabled) is not bool:

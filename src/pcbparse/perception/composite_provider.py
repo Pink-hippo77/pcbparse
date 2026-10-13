@@ -16,7 +16,7 @@ from pcbparse.io import (
     tile_image_view,
 )
 from pcbparse.ir.models import BBox, CircuitIR, Component, Evidence, IRState, Junction, Pin, Point, RepairRecord, TextToken, WireSegment
-from pcbparse.perception.protocols import ComponentProvider, JunctionProvider, OCRProvider, PinProvider, WireMask, WireProvider
+from pcbparse.perception.protocols import ComponentProvider, FullImagePinProvider, JunctionProvider, OCRProvider, PinProvider, WireMask, WireProvider
 from pcbparse.perception.coordinate_binding import (
     bind_bbox_evidence,
     bind_point_evidence,
@@ -783,11 +783,23 @@ class CompositePerceptionProvider:
             for item in pin_component_views
             for view in [item.full_roi, *item.side_strips.values()]
         }
-        pins = _restore_pins(
-            self.pin_provider.predict(pin_component_views, ctx),
-            pin_view_index,
-            pin_view_owners,
-        )
+        full_image_pins = isinstance(self.pin_provider, FullImagePinProvider)
+        if full_image_pins:
+            pins = _restore_pins(
+                self.pin_provider.predict_image(original, ctx),
+                {original.view_id: original},
+                {},
+                unowned_views=frozenset({original.view_id}),
+            )
+            component_ids = {item.internal_id for item in components}
+            if any(pin.component_id is not None and pin.component_id not in component_ids for pin in pins):
+                raise ValueError("full-image Pin provider references an unknown component")
+        else:
+            pins = _restore_pins(
+                self.pin_provider.predict(pin_component_views, ctx),
+                pin_view_index,
+                pin_view_owners,
+            )
         _assign_global_ids(pins, "pin")
         _phase_timings["pin_detect"] = time.monotonic() - _t_pin
         # --- Phase: Wire Segmentation ---
@@ -867,6 +879,7 @@ class CompositePerceptionProvider:
                 "pin_component_views": [
                     view.full_roi.view_id for view in pin_component_views
                 ],
+                "pin_inference_scope": "full_image" if full_image_pins else "component_roi",
                 "component_candidate_gate": {
                     "raw_count": raw_component_count,
                     "score_threshold": self.config.component_candidate_min_score,
@@ -963,6 +976,8 @@ def _restore_pins(
     pins: list[Pin],
     views: dict[str, ImageView],
     view_owners: dict[str, str],
+    *,
+    unowned_views: frozenset[str] = frozenset(),
 ) -> list[Pin]:
     output: list[Pin] = []
     for pin in pins:
@@ -972,21 +987,22 @@ def _restore_pins(
         view = _source_view(item.evidence, views, object_id=item.internal_id, required=True)
         if view is not None:
             expected_owner = view_owners.get(view.view_id)
-            if expected_owner is None:
+            if expected_owner is None and view.view_id not in unowned_views:
                 raise ValueError(
                     f"pin {item.internal_id} source view has no component owner"
                 )
-            if item.component_id is None:
+            if expected_owner is not None and item.component_id is None:
                 # The ComponentView is an explicit inference context, so this
                 # is provenance restoration rather than semantic guessing.
                 item.component_id = expected_owner
-            elif item.component_id != expected_owner:
+            elif expected_owner is not None and item.component_id != expected_owner:
                 raise ValueError(
                     f"pin {item.internal_id} component owner {item.component_id!r} "
                     f"conflicts with source view owner {expected_owner!r}"
                 )
-            for evidence in item.evidence:
-                evidence.metadata.setdefault("component_id", expected_owner)
+            if expected_owner is not None:
+                for evidence in item.evidence:
+                    evidence.metadata.setdefault("component_id", expected_owner)
             item.point = view.to_original(item.point)
             if item.base is not None:
                 item.base = view.to_original(item.base)

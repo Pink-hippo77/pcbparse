@@ -93,6 +93,7 @@ overlay_*.png
 
 # Keep human-facing documentation, reports, and logs local
 *.md
+!/README.md
 *.rst
 *.pdf
 *.docx

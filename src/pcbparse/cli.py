@@ -378,6 +378,11 @@ def _provider(
     pipeline_config: dict[str, Any] | None = None,
 ):
     if name == "production":
+        if pipeline_config is not None and "pin_package" in pipeline_config:
+            raise ValueError(
+                "Pin package config is experimental; use python -m data_tools.pin_package_infer. "
+                "The production entry point uses models/models.lock.json."
+            )
         from pcbparse.perception.production_provider import (
             composite_provider_config_from_pipeline,
             load_production_provider,
