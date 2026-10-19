@@ -982,7 +982,14 @@ def validate_inference_contract(
                 f"pretrained_external inference contract is not defined for task {task!r}"
             )
     else:
-        expected = _INFERENCE_KEYS[task]
+        # Dataset300-trained OCR may be packaged as the same hash-bound DB/CTC
+        # descriptor used by the ONNX production adapter.  Select the contract
+        # by its exact key set so the unclip and box thresholds remain bound.
+        descriptor_expected = _DESCRIPTOR_INFERENCE_KEYS.get(task)
+        if descriptor_expected is not None and set(raw) == descriptor_expected:
+            expected = descriptor_expected
+        else:
+            expected = _INFERENCE_KEYS[task]
     actual = set(raw)
     if actual != expected:
         raise CandidateBundleError(
@@ -1006,7 +1013,7 @@ def validate_inference_contract(
     if not isinstance(canonical.get("device"), str) or not canonical["device"].strip():
         raise CandidateBundleError("runtime inference device must be non-empty text")
 
-    if lineage_mode == "pretrained_external":
+    if expected == _DESCRIPTOR_INFERENCE_KEYS.get(task):
         _validate_descriptor_inference_values(task, canonical)
         return canonical
 

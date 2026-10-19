@@ -51,6 +51,13 @@ def resize_linear(image: np.ndarray, width: int, height: int) -> np.ndarray:
     return result
 
 
+def detector_canvas_size(height: int, width: int) -> tuple[int, int]:
+    """Pixel canvas before resize; tiny views are padded at bottom/right."""
+    if type(height) is not int or type(width) is not int or min(height,width)<1:
+        raise OCRProcessingError('invalid source dimensions')
+    return (max(32,height),max(32,width)) if height+width<64 else (height,width)
+
+
 def detection_tensor(bgr: np.ndarray, *, limit_side_len: int = 64,
                      max_side_limit: int = 4000) -> np.ndarray:
     bgr = _raster(bgr)
@@ -58,8 +65,9 @@ def detection_tensor(bgr: np.ndarray, *, limit_side_len: int = 64,
         raise OCRProcessingError('invalid detector resize limits')
     h, w = bgr.shape[:2]
     source = bgr
-    if h+w < 64:
-        source = np.zeros((max(32, h), max(32, w), 3), dtype=np.uint8)
+    canvas_height,canvas_width=detector_canvas_size(h,w)
+    if (canvas_height,canvas_width)!=(h,w):
+        source = np.zeros((canvas_height,canvas_width,3), dtype=np.uint8)
         source[:h, :w] = bgr
     sh, sw = source.shape[:2]
     ratio = max(1., limit_side_len/min(sh, sw))

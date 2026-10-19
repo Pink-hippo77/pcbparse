@@ -22,7 +22,11 @@ from pcbparse.perception.coordinate_binding import (
     bind_point_evidence,
     bind_segment_evidence,
 )
-from pcbparse.perception.ocr_multilevel import MultilevelOCRConfig, run_multilevel_ocr
+from pcbparse.perception.ocr_multilevel import (
+    MultilevelOCRConfig,
+    reread_final_tokens,
+    run_multilevel_ocr,
+)
 from pcbparse.perception.wire_vectorizer import (
     SkeletonPolyline,
     WireVectorizerConfig,
@@ -526,7 +530,7 @@ class CompositePerceptionProvider:
             self.component_provider,
             component_tiles,
             ctx,
-            batch_size=self.config.component_internal_border_refinement_batch_size,
+            batch_size=self.config.component_inference_batch_size,
         )
         for view, predicted in zip(component_tiles, component_predictions):
             restored = _restore_components(
@@ -558,7 +562,7 @@ class CompositePerceptionProvider:
             internal_border_margin_px=(
                 self.config.component_internal_border_margin_px
             ),
-            batch_size=self.config.component_inference_batch_size,
+            batch_size=self.config.component_internal_border_refinement_batch_size,
         )
         confirmed_component_candidates = _filter_unconfirmed_internal_border_components(
             component_candidates,
@@ -778,6 +782,8 @@ class CompositePerceptionProvider:
                 conflicting_text_iou_threshold=self.config.ocr_conflicting_text_iou,
             ),
         )
+        if getattr(self.ocr_provider, "final_reread_enabled", False):
+            texts = reread_final_tokens(self.ocr_provider, original, texts, ctx)
         _phase_timings["ocr_recognize"] = time.monotonic() - _t_ocr
         # --- Phase: Pin Detection ---
         _t_pin = time.monotonic()
