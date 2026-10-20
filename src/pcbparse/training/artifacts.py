@@ -757,7 +757,14 @@ def build_candidate_lock_entry(
 
 
 _INFERENCE_KEYS: dict[ModelTask, frozenset[str]] = {
-    "component": frozenset({"device", "score_threshold", "max_detections"}),
+    "component": frozenset(
+        {
+            "device",
+            "score_threshold",
+            "max_detections",
+            "per_class_score_thresholds",
+        }
+    ),
     "pin": frozenset(
         {
             "device",

@@ -1,102 +1,149 @@
 {
   "blessed": true,
-  "created_at_utc": "2026-10-19T15:20:02.382645Z",
+  "created_at_utc": "2026-10-20T13:05:15.480862Z",
   "junction_mode": "deterministic_vectorizer",
   "lineage_contract": "candidate_bundle_v1",
   "models": [
     {
-      "adapter": "pcbparse.perception.yolo_component_adapter:factory",
+      "adapter": "pcbparse.perception.torch_component_adapter:factory",
       "blessed": true,
-      "bundle_manifest_sha256": "149baaec1c657e9a6d3582122f9adf65f904575a90a2c23dc6e91eb360c68604",
-      "candidate_manifest_path": "releases/perception-final-20261019/component-yolo26l-balanced-v1/bundle.manifest.json",
+      "bundle_manifest_sha256": "d7ae1140c9be6f764194ec367f156fa61932ff50992a08c5be062389d63e669a",
+      "candidate_manifest_path": "releases/perception-final-20261020/component-retained-official20-v1/bundle.manifest.json",
       "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
       "evaluation": {
         "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
-        "evaluator": "pcbparse.perception.component.val30-public13",
-        "evaluator_version": "1",
+        "evaluator": "pcbparse.component.official-20px",
+        "evaluator_version": "2",
         "gates": [
           {
-            "metric": "detection_f1",
+            "metric": "val30_geometry_f1_20px",
             "operator": "gte",
-            "passed": true,
-            "threshold": 0.828547,
-            "value": 0.8537549407114624
+            "threshold": 0.8946910356832027,
+            "value": 0.9065255731922398,
+            "passed": true
           },
           {
-            "metric": "class_correct",
+            "metric": "val30_geometry_class_f1_20px",
             "operator": "gte",
-            "passed": true,
-            "threshold": 886.0,
-            "value": 950.0
+            "threshold": 0.8494342906875544,
+            "value": 0.8606701940035273,
+            "passed": true
           },
           {
-            "metric": "public13_detection_f1",
+            "metric": "public13_geometry_f1_20px",
             "operator": "gte",
-            "passed": true,
-            "threshold": 0.501982,
-            "value": 0.6196403872752421
+            "threshold": 0.8771466314398944,
+            "value": 0.9121338912133892,
+            "passed": true
+          },
+          {
+            "metric": "public13_geometry_class_f1_20px",
+            "operator": "gte",
+            "threshold": 0.845442536327609,
+            "value": 0.8786610878661087,
+            "passed": true
           }
         ],
         "metrics": {
-          "class_correct": 950.0,
-          "detection_f1": 0.8537549407114624,
-          "public13_detection_f1": 0.6196403872752421
+          "val30_geometry_tp_20px": 1028.0,
+          "val30_geometry_f1_20px": 0.9065255731922398,
+          "val30_geometry_class_tp_20px": 976.0,
+          "val30_geometry_class_f1_20px": 0.8606701940035273,
+          "public13_geometry_tp_20px": 327.0,
+          "public13_geometry_f1_20px": 0.9121338912133892,
+          "public13_geometry_class_tp_20px": 315.0,
+          "public13_geometry_class_f1_20px": 0.8786610878661087
         },
-        "predictions_sha256": "6fec38e687c23fd67c463faf6f204e749a50b9123e6628931368adec08dc677c",
+        "predictions_sha256": "d096f2d2dbfe944126bf676be3e9374a4c1918ea4894d164f0cb0d2d248948b4",
         "split": "val",
         "split_manifest_sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
       },
       "export_consistency": {
-        "export_backend": "ultralytics-pytorch-native",
-        "input_manifest_sha256": "1b035b72bb98f8d87ac5a7f940ac23cf558f144c7be40b59adc65f2f27068047",
+        "export_backend": "torchscript",
+        "input_manifest_sha256": "fe379b30be21bb63c90709841700689bcd793ba907f1b40d81a3e8b38cad52fe",
         "max_abs_error": 0.0,
-        "minimum_samples": 30,
+        "minimum_samples": 16,
         "passed": true,
-        "reference_backend": "ultralytics-pytorch-native",
-        "sample_count": 30,
-        "tolerance": 0.0
+        "reference_backend": "torch-2.5.1+cu121",
+        "sample_count": 16,
+        "tolerance": 0.001
       },
       "gate_policy": {
         "evaluation_gates": [
           {
-            "metric": "detection_f1",
+            "metric": "val30_geometry_f1_20px",
             "operator": "gte",
-            "threshold": 0.828547
+            "threshold": 0.8946910356832027
           },
           {
-            "metric": "class_correct",
+            "metric": "val30_geometry_class_f1_20px",
             "operator": "gte",
-            "threshold": 886.0
+            "threshold": 0.8494342906875544
           },
           {
-            "metric": "public13_detection_f1",
+            "metric": "public13_geometry_f1_20px",
             "operator": "gte",
-            "threshold": 0.501982
+            "threshold": 0.8771466314398944
+          },
+          {
+            "metric": "public13_geometry_class_f1_20px",
+            "operator": "gte",
+            "threshold": 0.845442536327609
           }
         ],
-        "export_max_abs_error": 0.0,
-        "export_min_samples": 30,
-        "task_manifest_sha256": "1b035b72bb98f8d87ac5a7f940ac23cf558f144c7be40b59adc65f2f27068047"
+        "export_max_abs_error": 0.001,
+        "export_min_samples": 16,
+        "task_manifest_sha256": "fe379b30be21bb63c90709841700689bcd793ba907f1b40d81a3e8b38cad52fe"
       },
       "inference": {
         "device": "auto",
+        "score_threshold": 0.3,
         "max_detections": 300,
-        "score_threshold": 0.2
+        "per_class_score_thresholds": {
+          "AMP": 0.45,
+          "ANT": 0.3,
+          "BJT": 0.3,
+          "Battary": 0.55,
+          "Block": 0.4,
+          "Box": 0.425,
+          "Buzzer": 0.3,
+          "C": 0.3,
+          "CIRCLE_HEADER": 0.725,
+          "Crystal": 0.325,
+          "D": 0.425,
+          "Fuse": 0.3,
+          "Gnd": 0.325,
+          "Jumper": 0.35,
+          "L": 0.3,
+          "LED": 0.675,
+          "M": 0.3,
+          "MOSFET": 0.3,
+          "Motor": 0.375,
+          "NET_input": 0.325,
+          "Net_output": 0.3,
+          "Opt": 0.325,
+          "Other": 0.45,
+          "PIN": 0.3,
+          "R": 0.3,
+          "Switch": 0.3,
+          "Testpoint": 0.575,
+          "V": 0.3
+        }
       },
       "license": "Official Dataset300 competition terms; redistribution not granted",
       "lineage_mode": "dataset300-trained",
-      "model_card_path": "releases/perception-final-20261019/component-yolo26l-balanced-v1/model_card.json",
-      "model_card_sha256": "71accb7740a73a1441e2dae83ea9294f4559a94b1aa2b797b1196fd06d61c1a0",
-      "path": "releases/perception-final-20261019/component-yolo26l-balanced-v1/model.pt",
+      "model_card_path": "releases/perception-final-20261020/component-retained-official20-v1/model_card.json",
+      "model_card_sha256": "170ae93f3da30b5244a7a856d6d11811bf14425ca9bc9a70248b4247f49019e8",
+      "path": "releases/perception-final-20261020/component-retained-official20-v1/model.pt",
       "precision": "fp32",
-      "sha256": "f9d9a719b847bf07de7dc6a3b7914d9de4151cc5b8cdc319ac93bb0e6d2b8ff6",
+      "sha256": "ace486dcb049ec81d62ea366c40acece2d944f9a1b61873d915b435fc033d2ad",
       "source_asset_sha256": [],
       "source_license": null,
       "source_repository_commit": null,
       "status": "blessed",
       "task": "component",
-      "training_config_sha256": "1b035b72bb98f8d87ac5a7f940ac23cf558f144c7be40b59adc65f2f27068047",
-      "version": "component-yolo26l-balanced-20261019"
+      "training_config_sha256": "3123cd40bd03f04afd23fe772545e5d0857d498b20ae0b8d0dc89e8d4c18f5fc",
+      "version": "component-retained-official20-20261020"
     },
     {
       "adapter": "pcbparse.perception.onnx_ocr_adapter:factory",
