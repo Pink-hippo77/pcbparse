@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import math
 import unicodedata
+
+import numpy as np
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from pcbparse.io import ComponentView, ImageView
-from pcbparse.ir.models import BBox, Point, TextToken
+from pcbparse.ir.models import BBox, Evidence, Point, TextToken
 from pcbparse.perception.coordinate_binding import bind_bbox_evidence
 from pcbparse.perception.protocols import OCRProvider
+from pcbparse.perception.onnx_ocr_processing import OCRProcessingError, crop_quad
 
 
 _SIDE_ORDER = ("L", "R", "T", "B")
@@ -37,6 +40,8 @@ class MultilevelOCRConfig:
     merge_conflicting_text: bool = False
     conflicting_text_iou_threshold: float = 0.85
     require_four_side_strips: bool = True
+    # Candidate only: reconsider suppressed global observations after legacy NMS.
+    global_duplicate_refinement_enabled: bool = False
 
     def __post_init__(self) -> None:
         for name in ("global_batch_size", "component_batch_size", "strip_batch_size"):
@@ -52,6 +57,8 @@ class MultilevelOCRConfig:
             raise ValueError("nms_center_distance_px cannot be negative")
         if type(self.merge_conflicting_text) is not bool:
             raise ValueError("merge_conflicting_text must be a boolean")
+        if type(self.global_duplicate_refinement_enabled) is not bool:
+            raise ValueError("global_duplicate_refinement_enabled must be a boolean")
         if not 0.0 <= self.conflicting_text_iou_threshold <= 1.0:
             raise ValueError("conflicting_text_iou_threshold must be in [0, 1]")
 
@@ -127,10 +134,109 @@ def run_multilevel_ocr(
     else:
         provider._detection_trace_log = trace_collector
 
+    global_observations = (
+        [item.token.model_copy(deep=True) for item in restored if item.level == "global"]
+        if settings.global_duplicate_refinement_enabled else []
+    )
     kept = _deduplicate(restored, settings)
-    output = sorted((item.token for item in kept), key=_output_sort_key)
+    output = [item.token for item in kept]
+    if settings.global_duplicate_refinement_enabled:
+        output = refine_global_duplicates(output, global_observations)
+    output.sort(key=_output_sort_key)
     for index, token in enumerate(output, start=1):
         token.internal_id = f"text:{index:06d}"
+    return output
+
+
+def reread_final_tokens(
+    provider: Any,
+    original: ImageView,
+    tokens: Sequence[TextToken],
+    ctx: Any = None,
+) -> list[TextToken]:
+    """Re-recognize final OCR boxes while preserving their geometry and identity."""
+    recognize = getattr(provider, "recognize_crops_bgr", None)
+    if not callable(recognize):
+        raise TypeError("final OCR rereader must implement recognize_crops_bgr")
+    bgr = np.asarray(original.image.convert("RGB"))[:, :, ::-1].copy()
+    crops: list[np.ndarray] = []
+    crop_modes: list[str] = []
+    for token in tokens:
+        choices: list[tuple[float, np.ndarray]] = []
+        for evidence in token.evidence:
+            metadata = evidence.metadata
+            polygon = metadata.get("polygon")
+            binding = metadata.get("local_to_global_binding", {})
+            matrix = binding.get("local_to_original_matrix") if isinstance(binding, dict) else None
+            if not isinstance(polygon, list) or not isinstance(matrix, list):
+                continue
+            quad = np.asarray(polygon, dtype=float)
+            transform = np.asarray(matrix, dtype=float)
+            if quad.shape != (4, 2) or transform.shape != (3, 3):
+                continue
+            if not np.isfinite(quad).all() or not np.isfinite(transform).all():
+                continue
+            homogeneous = np.c_[quad, np.ones(4)] @ transform.T
+            if np.any(np.abs(homogeneous[:, 2]) < 1e-8):
+                continue
+            restored = homogeneous[:, :2] / homogeneous[:, 2:3]
+            recognition_score = metadata.get("recognition_score", evidence.score)
+            choices.append((abs(float(recognition_score) - token.score), restored))
+        if choices:
+            quad = min(choices, key=lambda item: item[0])[1]
+            mode = "evidence_quad"
+        else:
+            box = token.bbox
+            quad = np.asarray(
+                [[box.x1, box.y1], [box.x2, box.y1], [box.x2, box.y2], [box.x1, box.y2]],
+                dtype=float,
+            )
+            mode = "bbox_fallback"
+        try:
+            crop = crop_quad(bgr, quad.astype(np.float32))
+        except OCRProcessingError:
+            box = token.bbox
+            x1, y1 = max(0, int(box.x1)), max(0, int(box.y1))
+            x2 = min(original.width, max(x1 + 1, int(box.x2)))
+            y2 = min(original.height, max(y1 + 1, int(box.y2)))
+            crop = np.ascontiguousarray(bgr[y1:y2, x1:x2])
+            mode = "bbox_after_invalid_quad"
+        crops.append(crop)
+        crop_modes.append(mode)
+    predictions = recognize(crops, ctx)
+    if not isinstance(predictions, list) or len(predictions) != len(tokens):
+        raise ValueError("final OCR rereader output cardinality mismatch")
+    output: list[TextToken] = []
+    descriptor = str(getattr(provider, "descriptor_sha256", "unknown"))
+    version = str(getattr(provider, "version", type(provider).__name__))
+    for token, prediction, mode in zip(tokens, predictions, crop_modes):
+        if not isinstance(prediction, tuple) or len(prediction) != 2 or not isinstance(prediction[0], str):
+            raise TypeError("final OCR rereader must return (text, score) tuples")
+        text, score = prediction
+        item = token.model_copy(deep=True)
+        previous = item.raw_text
+        item.raw_text = text
+        item.score = float(score)
+        item.candidates = []
+        item.resolved_text = None
+        item.evidence.append(
+            Evidence(
+                evidence_id=f"ocr-final-reread:{item.internal_id}",
+                source="ocr",
+                view_id=original.view_id,
+                score=float(score),
+                payload_ref=(f"sha256:{descriptor}" if len(descriptor) == 64 else None),
+                metadata={
+                    "provider": "final_box_rereader",
+                    "model_version": version,
+                    "descriptor_sha256": descriptor,
+                    "crop_mode": mode,
+                    "previous_raw_text": previous,
+                    "semantic_fields_generated": False,
+                },
+            )
+        )
+        output.append(item)
     return output
 
 
@@ -304,13 +410,19 @@ def _deduplicate(
 ) -> list[_RestoredToken]:
     ranked = sorted(restored, key=_nms_rank_key)
     kept: list[_RestoredToken] = []
+    by_match_key: dict[str, list[_RestoredToken]] = {}
     for candidate in ranked:
         # match_key is an identity key only.  raw_text is never rewritten here.
         match_key = _match_key(candidate.token.resolved_text or candidate.token.raw_text)
+        # Without conflicting-read merging, only observations of the same
+        # string can suppress this candidate. Preserve rank order within each
+        # bucket so winner selection and evidence remain unchanged. Conflicting
+        # reads still use the full list because ownership can change on merge.
+        pool = kept if config.merge_conflicting_text else by_match_key.get(match_key, ())
         duplicate = next(
             (
                 existing
-                for existing in kept
+                for existing in pool
                 if match_key
                 and (
                     (
@@ -343,36 +455,13 @@ def _deduplicate(
         )
         if duplicate is None:
             kept.append(candidate)
+            by_match_key.setdefault(match_key, []).append(candidate)
             continue
         _merge_suppressed_duplicate(duplicate, candidate)
-    # Cross-level merge: same text at overlapping original-image bboxes from
-    # different levels (global/component/strip) is one physical glyph.
-    cross_kept: list[_RestoredToken] = []
-    for candidate in kept:
-        match_key = _match_key(candidate.token.resolved_text or candidate.token.raw_text)
-        cross_dup = next(
-            (
-                existing
-                for existing in cross_kept
-                if match_key
-                and _match_key(
-                    existing.token.resolved_text or existing.token.raw_text
-                )
-                == match_key
-                and (
-                    _iou(existing.token.bbox, candidate.token.bbox)
-                    >= config.nms_iou_threshold
-                    or _center_distance(existing.token.bbox, candidate.token.bbox)
-                    <= config.nms_center_distance_px
-                )
-            ),
-            None,
-        )
-        if cross_dup is None:
-            cross_kept.append(candidate)
-        else:
-            _merge_suppressed_duplicate(cross_dup, candidate)
-    return cross_kept
+    # The pass above already compares same-string observations across all
+    # levels. Merging changes evidence/ownership, not strings or geometry,
+    # so a second cross-level scan cannot find additional duplicates.
+    return kept
 
 
 def _same_ocr_context(left: _RestoredToken, right: _RestoredToken) -> bool:
@@ -383,6 +472,83 @@ def _same_ocr_context(left: _RestoredToken, right: _RestoredToken) -> bool:
         and left.component_id == right.component_id
         and left.side == right.side
     )
+
+
+def refine_global_duplicates(
+    tokens: Sequence[TextToken], global_observations: Sequence[TextToken],
+) -> list[TextToken]:
+    """Choose an observed global box over a near-tied, tighter duplicate.
+
+    Only reconsider candidates explicitly suppressed by legacy NMS. Keep raw
+    strings and output cardinality fixed; do not invent or union coordinates.
+    Score proximity, containment and bounded area growth protect against broad
+    false boxes. Every replacement retains its own pixels/transform evidence.
+    This post-NMS API also allows exact replay from saved kept/global outputs.
+    """
+    by_id = {}
+    for token in global_observations:
+        if not token.evidence:
+            continue
+        meta = token.evidence[0].metadata
+        binding = meta.get("local_to_global_binding", {})
+        if meta.get("level") != "global" or not isinstance(binding, dict):
+            continue
+        local = binding.get("local_geometry", {}).get("values", [])
+        size = binding.get("view_size", [])
+        original = binding.get("original_geometry", {}).get("values", [])
+        if len(local) != 4 or len(size) != 2 or original != [token.bbox.x1,token.bbox.y1,token.bbox.x2,token.bbox.y2]:
+            continue
+        if min(local[0],local[1],size[0]-local[2],size[1]-local[3]) < 1:
+            continue  # A tile-edge observation may itself be truncated.
+        key = (meta.get("provider_local_id", token.internal_id), token.evidence[0].view_id)
+        by_id[key] = token
+    result = []
+    for token in tokens:
+        if not token.evidence:
+            result.append(token);continue
+        records = [r for e in token.evidence for r in e.metadata.get("suppressed_duplicates", [])]
+        area = token.bbox.width * token.bbox.height
+        eligible = []
+        for record in records:
+            candidate = by_id.get((record.get("provider_local_id"),record.get("view_id")))
+            if candidate is None or candidate.raw_text != token.raw_text or candidate.resolved_text != token.resolved_text:
+                continue
+            if candidate.score < max(.8, token.score-.03) or area <= 0:
+                continue
+            box = candidate.bbox
+            ratio = box.width * box.height / area
+            intersection = max(0.,min(box.x2,token.bbox.x2)-max(box.x1,token.bbox.x1)) * max(0.,min(box.y2,token.bbox.y2)-max(box.y1,token.bbox.y1))
+            if not (1.05 <= ratio <= 2. and intersection / area >= .9 and _iou(box,token.bbox) >= .5):
+                continue
+            eligible.append(candidate)
+        if not eligible:
+            result.append(token);continue
+        chosen = min(eligible,key=lambda t:(-t.bbox.width*t.bbox.height,-t.score,str(t.evidence[0].view_id),t.internal_id))
+        replacement = chosen.model_copy(deep=True)
+        def restored(t):
+            e=t.evidence[0];m=e.metadata
+            return _RestoredToken(t,str(m.get("provider_local_id",t.internal_id)),str(e.view_id),
+                str(m.get("level","global")),m.get("component_id"),m.get("side"))
+        _merge_suppressed_duplicate(restored(replacement),restored(token))
+        metadata = replacement.evidence[0].metadata
+        own = (metadata.get("provider_local_id",replacement.internal_id),replacement.evidence[0].view_id)
+        history = [*metadata.get("suppressed_duplicates",[]),*records]
+        unique = {(r.get("provider_local_id"),r.get("view_id")):r for r in history
+                  if (r.get("provider_local_id"),r.get("view_id")) != own}
+        metadata["suppressed_duplicates"] = sorted(unique.values(),key=lambda r:(str(r.get("view_id")),str(r.get("provider_local_id"))))
+        owners = token.evidence[0].metadata.get("component_context_candidates",[])
+        if owners:
+            metadata["component_context_candidates"] = list(owners)
+            metadata["component_context_conflict"] = True
+            metadata["component_id"] = None
+        metadata["global_duplicate_refinement"] = {
+            "previous_provider_local_id":token.evidence[0].metadata.get("provider_local_id",token.internal_id),
+            "previous_bbox":[token.bbox.x1,token.bbox.y1,token.bbox.x2,token.bbox.y2],
+            "previous_score":token.score,"raw_string_unchanged":True,
+        }
+        # IDs are regenerated by the normal output sorter after this pass.
+        result.append(replacement)
+    return result
 
 
 def _merge_suppressed_duplicate(winner: _RestoredToken, suppressed: _RestoredToken) -> None:
@@ -512,4 +678,6 @@ __all__ = [
     "MultiLevelOCRConfig",
     "MultilevelOCRConfig",
     "run_multilevel_ocr",
+    "reread_final_tokens",
+    "refine_global_duplicates",
 ]

@@ -1,34 +1,60 @@
 {
   "blessed": true,
-  "created_at_utc": "2026-08-27T04:28:11.717498Z",
+  "created_at_utc": "2026-10-20T13:05:15.480862Z",
   "junction_mode": "deterministic_vectorizer",
   "lineage_contract": "candidate_bundle_v1",
   "models": [
     {
       "adapter": "pcbparse.perception.torch_component_adapter:factory",
       "blessed": true,
-      "bundle_manifest_sha256": "30711359864a5e373c1bfbd01b62e31a9ef16b9adbd866c3f3e0f22c9aa86eef",
-      "candidate_manifest_path": "releases/v8-portable/component/train-component-v5-fullmix/bundle.manifest.json",
+      "bundle_manifest_sha256": "d7ae1140c9be6f764194ec367f156fa61932ff50992a08c5be062389d63e669a",
+      "candidate_manifest_path": "releases/perception-final-20261020/component-retained-official20-v1/bundle.manifest.json",
       "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
       "evaluation": {
         "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
-        "evaluator": "pcbparse.torch.component",
-        "evaluator_version": "1",
+        "evaluator": "pcbparse.component.official-20px",
+        "evaluator_version": "2",
         "gates": [
           {
-            "metric": "bbox_map50",
+            "metric": "val30_geometry_f1_20px",
             "operator": "gte",
-            "passed": true,
-            "threshold": 0.25,
-            "value": 0.25008817278820666
+            "threshold": 0.8946910356832027,
+            "value": 0.9065255731922398,
+            "passed": true
+          },
+          {
+            "metric": "val30_geometry_class_f1_20px",
+            "operator": "gte",
+            "threshold": 0.8494342906875544,
+            "value": 0.8606701940035273,
+            "passed": true
+          },
+          {
+            "metric": "public13_geometry_f1_20px",
+            "operator": "gte",
+            "threshold": 0.8771466314398944,
+            "value": 0.9121338912133892,
+            "passed": true
+          },
+          {
+            "metric": "public13_geometry_class_f1_20px",
+            "operator": "gte",
+            "threshold": 0.845442536327609,
+            "value": 0.8786610878661087,
+            "passed": true
           }
         ],
         "metrics": {
-          "bbox_map50": 0.25008817278820666,
-          "precision50": 0.03929009934144436,
-          "recall50": 0.31654676258992803
+          "val30_geometry_tp_20px": 1028.0,
+          "val30_geometry_f1_20px": 0.9065255731922398,
+          "val30_geometry_class_tp_20px": 976.0,
+          "val30_geometry_class_f1_20px": 0.8606701940035273,
+          "public13_geometry_tp_20px": 327.0,
+          "public13_geometry_f1_20px": 0.9121338912133892,
+          "public13_geometry_class_tp_20px": 315.0,
+          "public13_geometry_class_f1_20px": 0.8786610878661087
         },
-        "predictions_sha256": "153883e3834809539b7fb3ddc309bc1a480cf25bbc1b5f199fa689e429108f92",
+        "predictions_sha256": "d096f2d2dbfe944126bf676be3e9374a4c1918ea4894d164f0cb0d2d248948b4",
         "split": "val",
         "split_manifest_sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
       },
@@ -38,16 +64,31 @@
         "max_abs_error": 0.0,
         "minimum_samples": 16,
         "passed": true,
-        "reference_backend": "torch-2.12.1+cu126",
+        "reference_backend": "torch-2.5.1+cu121",
         "sample_count": 16,
         "tolerance": 0.001
       },
       "gate_policy": {
         "evaluation_gates": [
           {
-            "metric": "bbox_map50",
+            "metric": "val30_geometry_f1_20px",
             "operator": "gte",
-            "threshold": 0.25
+            "threshold": 0.8946910356832027
+          },
+          {
+            "metric": "val30_geometry_class_f1_20px",
+            "operator": "gte",
+            "threshold": 0.8494342906875544
+          },
+          {
+            "metric": "public13_geometry_f1_20px",
+            "operator": "gte",
+            "threshold": 0.8771466314398944
+          },
+          {
+            "metric": "public13_geometry_class_f1_20px",
+            "operator": "gte",
+            "threshold": 0.845442536327609
           }
         ],
         "export_max_abs_error": 0.001,
@@ -56,111 +97,153 @@
       },
       "inference": {
         "device": "auto",
+        "score_threshold": 0.3,
         "max_detections": 300,
-        "score_threshold": 0.0
+        "per_class_score_thresholds": {
+          "AMP": 0.45,
+          "ANT": 0.3,
+          "BJT": 0.3,
+          "Battary": 0.55,
+          "Block": 0.4,
+          "Box": 0.425,
+          "Buzzer": 0.3,
+          "C": 0.3,
+          "CIRCLE_HEADER": 0.725,
+          "Crystal": 0.325,
+          "D": 0.425,
+          "Fuse": 0.3,
+          "Gnd": 0.325,
+          "Jumper": 0.35,
+          "L": 0.3,
+          "LED": 0.675,
+          "M": 0.3,
+          "MOSFET": 0.3,
+          "Motor": 0.375,
+          "NET_input": 0.325,
+          "Net_output": 0.3,
+          "Opt": 0.325,
+          "Other": 0.45,
+          "PIN": 0.3,
+          "R": 0.3,
+          "Switch": 0.3,
+          "Testpoint": 0.575,
+          "V": 0.3
+        }
       },
       "license": "Official Dataset300 competition terms; redistribution not granted",
-      "model_card_path": "releases/v8-portable/component/train-component-v5-fullmix/model_card.json",
-      "model_card_sha256": "dc54b301b478916a509990f37ded027af37495c7fcebe4700a27dde4122de4d0",
-      "path": "releases/v8-portable/component/train-component-v5-fullmix/model.pt",
+      "lineage_mode": "dataset300-trained",
+      "model_card_path": "releases/perception-final-20261020/component-retained-official20-v1/model_card.json",
+      "model_card_sha256": "170ae93f3da30b5244a7a856d6d11811bf14425ca9bc9a70248b4247f49019e8",
+      "path": "releases/perception-final-20261020/component-retained-official20-v1/model.pt",
       "precision": "fp32",
-      "sha256": "34d79a6dfa4340e64dc96de4945bcfea6e376d9a6f4949876b58d7e719697af5",
+      "sha256": "ace486dcb049ec81d62ea366c40acece2d944f9a1b61873d915b435fc033d2ad",
+      "source_asset_sha256": [],
+      "source_license": null,
+      "source_repository_commit": null,
       "status": "blessed",
       "task": "component",
-      "training_config_sha256": "093b0b500a1fc6f8c6efcabb6e4d49d88b4dcceaad00b1604e1ab1047f7f30d2",
-      "version": "component-34d79a6dfa4340e6"
+      "training_config_sha256": "3123cd40bd03f04afd23fe772545e5d0857d498b20ae0b8d0dc89e8d4c18f5fc",
+      "version": "component-retained-official20-20261020"
     },
     {
-      "adapter": "pcbparse.perception.torch_ocr_adapter:factory",
+      "adapter": "pcbparse.perception.onnx_ocr_adapter:factory",
       "blessed": true,
-      "bundle_manifest_sha256": "ecbbaf59b8e07e6f3f4e6bec0c6d36b4cc7037c408cc5f567b766c1d65a0ac67",
-      "candidate_manifest_path": "releases/v8-portable/ocr/train-ocr-resume/bundle.manifest.json",
+      "bundle_manifest_sha256": "b98d8339a58d64b9028283541912f30ecba2857cd4cd335590f3adc319a3fee7",
+      "candidate_manifest_path": "releases/perception-final-20261019/ocr-db-ctc-final-reread-v1/bundle.manifest.json",
       "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
       "evaluation": {
         "dataset_config_hash": "3381e705c06642cacf8d3e9d82afbf2f725d3e925b67b049a57bd9b858632009",
-        "evaluator": "pcbparse.torch.ocr",
+        "evaluator": "pcbparse.perception.ocr-production-val30",
         "evaluator_version": "1",
         "gates": [
           {
-            "metric": "normalized_exact_match",
+            "metric": "complete_boxes",
             "operator": "gte",
             "passed": true,
-            "threshold": 0.5,
-            "value": 0.530745849894786
+            "threshold": 2593.0,
+            "value": 2866.0
+          },
+          {
+            "metric": "complete_and_exact",
+            "operator": "gte",
+            "passed": true,
+            "threshold": 2412.0,
+            "value": 2416.0
+          },
+          {
+            "metric": "missing_observations",
+            "operator": "lte",
+            "passed": true,
+            "threshold": 278.0,
+            "value": 228.0
           }
         ],
         "metrics": {
-          "charset_coverage_record_rate": 0.9960252513444002,
-          "charset_oov_record_count": 17.0,
-          "charset_oov_unique_codepoints": 23.0,
-          "charset_train_codepoints": 825.0,
-          "detector_false_negatives": 5884.0,
-          "detector_false_positives": 1727.0,
-          "detector_hmean": 0.3668579985026204,
-          "detector_ignored_predictions": 135.0,
-          "detector_mean_matched_iou": 0.7537751554800625,
-          "detector_precision": 0.5607833163784334,
-          "detector_recall": 0.2725924094449252,
-          "detector_true_positives": 2205.0,
-          "detector_validation_loss": 0.3180133736715084,
-          "normalized_exact_match": 0.530745849894786,
-          "recognition_cer": 0.300583829686855,
-          "recognition_encodable_exact_match": 0.5328638497652582,
-          "recognition_encodable_records_evaluated": 4260.0,
-          "recognition_evaluated_records": 4277.0,
-          "recognition_excluded_policy_records": 3.0,
-          "recognition_oov_exact_match": 0.0,
-          "recognition_oov_records_evaluated": 17.0,
-          "recognition_raw_exact_match": 0.530745849894786,
-          "recognition_total_included_records": 4277.0,
-          "recognition_validation_loss_encodable": 1.0907754349886842
+          "complete_and_exact": 2416.0,
+          "complete_boxes": 2866.0,
+          "exact_rate": 0.5644859813084112,
+          "missing_observations": 228.0
         },
-        "predictions_sha256": "ae70844f45ebb439115ebc15467ea79bd4ef661ca108b36f5c4588fdff11a079",
+        "predictions_sha256": "b65fb75c98bdd931ec6e0656e86d0b250ab71828584c73359e603cc41f0b9892",
         "split": "val",
         "split_manifest_sha256": "c6f95c3f4240f039672483877d2f9fe405e7883a2bfdac60afd8343bec25c7c1"
       },
       "export_consistency": {
-        "export_backend": "torchscript-two-stage",
-        "input_manifest_sha256": "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1",
-        "max_abs_error": 0.0,
-        "minimum_samples": 32,
+        "export_backend": "onnxruntime-1.21.1",
+        "input_manifest_sha256": "2136b3f542a326fb62aa36a02d359a0fa580aab187fc594cbf897cec376b7dea",
+        "max_abs_error": 4.3392181396484375e-05,
+        "minimum_samples": 3,
         "passed": true,
-        "reference_backend": "torch-2.12.1+cu126",
-        "sample_count": 32,
-        "tolerance": 0.003
+        "reference_backend": "paddle-inference-3.3.0",
+        "sample_count": 3,
+        "tolerance": 0.0001
       },
       "gate_policy": {
         "evaluation_gates": [
           {
-            "metric": "normalized_exact_match",
+            "metric": "complete_boxes",
             "operator": "gte",
-            "threshold": 0.5
+            "threshold": 2593.0
+          },
+          {
+            "metric": "complete_and_exact",
+            "operator": "gte",
+            "threshold": 2412.0
+          },
+          {
+            "metric": "missing_observations",
+            "operator": "lte",
+            "threshold": 278.0
           }
         ],
-        "export_max_abs_error": 0.003,
-        "export_min_samples": 32,
-        "task_manifest_sha256": "dc358ada90d2fa671b7071ed9c426f7fd800359c796bddb9e943f6c9d1e142b1"
+        "export_max_abs_error": 0.0001,
+        "export_min_samples": 3,
+        "task_manifest_sha256": "2136b3f542a326fb62aa36a02d359a0fa580aab187fc594cbf897cec376b7dea"
       },
       "inference": {
-        "detector_batch_size": 4,
-        "detector_min_area": 4,
-        "detector_threshold": 0.5,
+        "box_threshold": 0.6,
+        "cpu_threads": 4,
+        "detector_threshold": 0.3,
         "device": "auto",
-        "max_detections_per_view": 512,
-        "max_recognition_width": 4096,
-        "recognition_batch_size": 32,
-        "recognition_threshold": 0
+        "max_candidates": 1000,
+        "recognition_batch_size": 16,
+        "recognition_threshold": 0.0,
+        "unclip_ratio": 1.65
       },
       "license": "Official Dataset300 competition terms; redistribution not granted",
-      "model_card_path": "releases/v8-portable/ocr/train-ocr-resume/model_card.json",
-      "model_card_sha256": "2def5c0b1b01bade7b621fd2d2f78e0c819127cb7403e37eb7d4c6b949086ac4",
-      "path": "releases/v8-portable/ocr/train-ocr-resume/model.pt",
+      "lineage_mode": "dataset300-trained",
+      "model_card_path": "releases/perception-final-20261019/ocr-db-ctc-final-reread-v1/model_card.json",
+      "model_card_sha256": "b4ec7df36f490e54deaa362dcabc21efa1d737b9b093bbcda08b18c5bd3eb9a2",
+      "path": "releases/perception-final-20261019/ocr-db-ctc-final-reread-v1/ocr-bundle.json",
       "precision": "fp32",
-      "sha256": "e4212287d6ac31d2b45e20bb0c6f273bf6328299fb7746ea75a01e2bf180fe78",
+      "sha256": "02cbb04862e9b8aead011521dc2b8a8099a8101fcc95fea2fcc4a234b7920901",
+      "source_asset_sha256": [],
+      "source_license": null,
+      "source_repository_commit": null,
       "status": "blessed",
       "task": "ocr",
-      "training_config_sha256": "a8fb494b855099900d5e58b0d1423fd36c6cd852703886fdee8b7587a0b7fdfd",
-      "version": "ocr-e4212287d6ac31d2"
+      "training_config_sha256": "2136b3f542a326fb62aa36a02d359a0fa580aab187fc594cbf897cec376b7dea",
+      "version": "ocr-db-ctc-final-reread-20261019"
     },
     {
       "adapter": "pcbparse.perception.torch_pin_adapter:factory",
@@ -281,11 +364,15 @@
         "score_threshold": 0.75
       },
       "license": "Official Dataset300 competition terms; redistribution not granted",
+      "lineage_mode": "dataset300-trained",
       "model_card_path": "releases/v8-portable/pin/train-pin-v5-boundary/model_card.json",
       "model_card_sha256": "3f5872b413f7c7cb94a6eb7ec6bac98e088890696ef5315ea5c15bcde9584a02",
       "path": "releases/v8-portable/pin/train-pin-v5-boundary/model.onnx",
       "precision": "fp32",
       "sha256": "ec3c50dc22b8c4e2fcd2ec9c7e84acf8cf1bda069da19c2003e8229c6020bc71",
+      "source_asset_sha256": [],
+      "source_license": null,
+      "source_repository_commit": null,
       "status": "blessed",
       "task": "pin",
       "training_config_sha256": "7b966fc7c7fdd2e0ce419e2029e04783a19914b3f4eec5078dcc85bbefac90b4",
@@ -362,11 +449,15 @@
         "threshold": 0.5
       },
       "license": "Official Dataset300 competition terms; redistribution not granted",
+      "lineage_mode": "dataset300-trained",
       "model_card_path": "releases/v8-portable/wire/train-wire-v5-fresh-allgate/model_card.json",
       "model_card_sha256": "71de9f5362847158322d57a4fc15898b959d77de7adc8b96875e29258664a03c",
       "path": "releases/v8-portable/wire/train-wire-v5-fresh-allgate/model.pt",
       "precision": "fp32",
       "sha256": "3235b9e083190e8d399f819b55a34ed8531652377323ff8be05ae99286ea17dd",
+      "source_asset_sha256": [],
+      "source_license": null,
+      "source_repository_commit": null,
       "status": "blessed",
       "task": "wire",
       "training_config_sha256": "e9b4003e3352a3ab4ea647fc1f3bec281e0cb4463fe3147d3851a28b1639716a",
