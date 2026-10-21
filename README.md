@@ -16,8 +16,9 @@ Git 仅保存主代码及运行、构建所需的配置：
 | `models/models.lock.json` | 唯一生产模型权威 |
 | `models/registry.yaml` | 描述性模型信息 |
 | `docker/` | 容器构建和提交入口 |
+| `tests/unit/` | 无需数据集或模型的序列化回归测试 |
 
-数据集、权重、完整模型 bundle、测试、评测模块、实验脚本、历史文档及运行结果留在工作区或 llm 服务器，不随 Git 分支分发。评测模块同时排除在安装包之外。当前分支的清理不改写历史提交。
+数据集、权重、完整模型 bundle、完整工作区测试、评测模块、实验脚本、历史文档及运行结果留在工作区或 llm 服务器，不随 Git 分支分发；`tests/unit/` 中的独立回归测试随代码分发。评测模块同时排除在安装包之外。当前分支的清理不改写历史提交。
 
 服务器完整项目位于 `/home/data/yinjx/pcbparse-competition/project`，包含合并后的数据与模型资产。新克隆的代码仓库需要另外准备这些资产。
 
@@ -86,4 +87,10 @@ docker build --network=none --pull=false --progress=plain `
 
 训练只使用 `dataset300-v2`，其他派生版本保留审计用途。单 GPU 训练串行执行，先检查初始化资产和配置，再运行 smoke。模型晋级需要完整 bundle 和证据报告，经晋级工具生成新锁。
 
-服务器完整工作区保留 unittest 与离线评测工具。按 unit、integration 顺序执行工作区测试；GitHub CI 只验证代码编译、健康检查和主要入口，不把缺少评测代码的克隆视为完整评测环境。模型加载通过不代表获得官方竞赛成绩。
+新克隆仓库安装后可运行无需模型的回归测试，GitHub CI 同样执行此命令：
+
+```powershell
+python -m unittest discover -s tests/unit -v
+```
+
+服务器完整工作区保留其他 unittest 与离线评测工具。按 unit、integration 顺序执行工作区测试；GitHub CI 验证上述回归测试、代码编译、健康检查和主要入口，不把缺少评测代码的克隆视为完整评测环境。模型加载通过不代表获得官方竞赛成绩。
