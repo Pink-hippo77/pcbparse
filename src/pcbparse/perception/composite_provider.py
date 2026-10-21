@@ -22,11 +22,7 @@ from pcbparse.perception.coordinate_binding import (
     bind_point_evidence,
     bind_segment_evidence,
 )
-from pcbparse.perception.ocr_multilevel import (
-    MultilevelOCRConfig,
-    reread_final_tokens,
-    run_multilevel_ocr,
-)
+from pcbparse.perception.ocr_multilevel import MultilevelOCRConfig, run_multilevel_ocr
 from pcbparse.perception.wire_vectorizer import (
     SkeletonPolyline,
     WireVectorizerConfig,
@@ -46,8 +42,14 @@ class CompositeProviderConfig:
     # Providers with ``predict_many`` receive at most this many Component
     # views per inference call. Providers without it retain sequential calls.
     component_inference_batch_size: int = 1
+    component_global_box_enabled: bool = False
+    component_global_box_min_score: float = 0.85
+    component_global_box_refinement_enabled: bool = False
     wire_tile_size: int | None = None
     wire_tile_overlap: int | None = None
+    # The selected raster backend can replace the preliminary vector pass.
+    # Keep this enabled for all existing providers and vector pipelines.
+    preliminary_wire_enabled: bool = True
     # OCR detector is trained at 512px; tiling at the same size preserves text
     # resolution instead of downscaling 1024px tiles by 2x.
     ocr_tile_size: int = 512
@@ -133,6 +135,18 @@ class CompositeProviderConfig:
     ocr_inference_overrides: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if type(self.preliminary_wire_enabled) is not bool:
+            raise ValueError('preliminary_wire_enabled must be a boolean')
+        if not self.preliminary_wire_enabled and self.learned_junctions_enabled:
+            raise ValueError('learned junctions require preliminary wires')
+        if type(self.component_global_box_enabled) is not bool:
+            raise ValueError('component_global_box_enabled must be a boolean')
+        if type(self.component_global_box_refinement_enabled) is not bool:
+            raise ValueError('component_global_box_refinement_enabled must be a boolean')
+        if (type(self.component_global_box_min_score) not in {int,float}
+                or not np.isfinite(self.component_global_box_min_score)
+                or not 0<=self.component_global_box_min_score<=1):
+            raise ValueError('component_global_box_min_score must be finite in [0,1]')
         if (
             type(self.component_inference_batch_size) is not int
             or self.component_inference_batch_size <= 0
@@ -489,6 +503,7 @@ class CompositePerceptionProvider:
         loaded_tasks = base_tasks | ({"junction"} if learned_junction_loaded else set())
         return {
             "contract": "production_model_task_plan_v1",
+            "preliminary_wire_model_invoked": self.config.preliminary_wire_enabled,
             "junction_mode": (
                 "learned_model_plus_deterministic_vectorizer"
                 if learned_junction_required
@@ -533,19 +548,21 @@ class CompositePerceptionProvider:
             batch_size=self.config.component_inference_batch_size,
         )
         for view, predicted in zip(component_tiles, component_predictions):
+            # Score is independent of the coordinate transform. Reject the
+            # same low-confidence proposals before copying their evidence
+            # and restoring four corners in every overlapping tile.
+            gated = _filter_component_candidates(
+                predicted, min_score=self.config.component_candidate_min_score,
+            )
+            raw_component_count += len(predicted)
+            score_filtered_component_count += len(predicted) - len(gated)
             restored = _restore_components(
-                predicted,
+                gated,
                 view,
                 original_size=original.size,
                 internal_border_margin_px=self.config.component_internal_border_margin_px,
             )
-            raw_component_count += len(restored)
-            gated = _filter_component_candidates(
-                restored,
-                min_score=self.config.component_candidate_min_score,
-            )
-            score_filtered_component_count += len(restored) - len(gated)
-            component_candidates.extend(gated)
+            component_candidates.extend(restored)
         component_candidates, border_refinement = _refine_internal_border_components(
             self.component_provider,
             component_candidates,
@@ -562,7 +579,7 @@ class CompositePerceptionProvider:
             internal_border_margin_px=(
                 self.config.component_internal_border_margin_px
             ),
-            batch_size=self.config.component_internal_border_refinement_batch_size,
+            batch_size=self.config.component_inference_batch_size,
         )
         confirmed_component_candidates = _filter_unconfirmed_internal_border_components(
             component_candidates,
@@ -620,19 +637,18 @@ class CompositePerceptionProvider:
                 batch_size=self.config.component_inference_batch_size,
             )
             for view, predicted in zip(fallback_tiles, fallback_predictions):
+                gated = _filter_component_candidates(
+                    predicted, min_score=self.config.component_candidate_min_score,
+                )
+                fallback_raw_component_count += len(predicted)
+                fallback_score_filtered_component_count += len(predicted) - len(gated)
                 restored = _restore_components(
-                    predicted,
+                    gated,
                     view,
                     original_size=original.size,
                     internal_border_margin_px=self.config.component_internal_border_margin_px,
                 )
-                fallback_raw_component_count += len(restored)
-                gated = _filter_component_candidates(
-                    restored,
-                    min_score=self.config.component_candidate_min_score,
-                )
-                fallback_score_filtered_component_count += len(restored) - len(gated)
-                fallback_candidates.extend(gated)
+                fallback_candidates.extend(restored)
             fallback_candidates, fallback_border_refinement = (
                 _refine_internal_border_components(
                     self.component_provider,
@@ -705,6 +721,18 @@ class CompositePerceptionProvider:
                 self.config.component_center_preference_score_bonus
             ),
         )
+        global_box_report={'enabled':self.config.component_global_box_enabled,'added':0}
+        if self.config.component_global_box_enabled:
+            global_predictions=self.component_provider.predict(original,ctx)
+            global_boxes=_restore_components(
+                [c for c in global_predictions if c.category.upper() in {'BOX','IC','BOXIC','BOX_IC'}
+                 and c.score>=self.config.component_global_box_min_score],
+                original,original_size=original.size)
+            components,added=_merge_global_boxes(components,global_boxes,
+                refine_large=self.config.component_global_box_refinement_enabled,
+                tile_size=self.config.resolved_component_tile_size)
+            refined=sum(any(e.metadata.get('global_box_refinement') for e in c.evidence) for c in components)
+            global_box_report.update(candidates=len(global_boxes),added=added,refined=refined)
         nms_component_count = len(components)
         cap_filtered_component_count = 0
         if self.config.component_max_candidates is not None:
@@ -782,8 +810,6 @@ class CompositePerceptionProvider:
                 conflicting_text_iou_threshold=self.config.ocr_conflicting_text_iou,
             ),
         )
-        if getattr(self.ocr_provider, "final_reread_enabled", False):
-            texts = reread_final_tokens(self.ocr_provider, original, texts, ctx)
         _phase_timings["ocr_recognize"] = time.monotonic() - _t_ocr
         # --- Phase: Pin Detection ---
         _t_pin = time.monotonic()
@@ -818,7 +844,7 @@ class CompositePerceptionProvider:
         _phase_timings["pin_detect"] = time.monotonic() - _t_pin
         # --- Phase: Wire Segmentation ---
         _t_wire = time.monotonic()
-        wire_masks = self.wire_provider.segment(wire_views, ctx)
+        wire_masks = self.wire_provider.segment(wire_views, ctx) if self.config.preliminary_wire_enabled else []
         segments, vectorized_junctions, wire_lineage = _vectorize_masks(
             wire_masks,
             wire_view_index,
@@ -921,6 +947,7 @@ class CompositePerceptionProvider:
                         "internal_border_refinement": fallback_border_refinement,
                     },
                     "targeted_recovery": targeted_recovery,
+                    "global_box_recovery": global_box_report,
                     "after_nms_count": nms_component_count,
                     "max_candidates": self.config.component_max_candidates,
                     "cap_filtered_count": cap_filtered_component_count,
@@ -931,6 +958,29 @@ class CompositePerceptionProvider:
                 },
             },
         )
+
+
+def _merge_global_boxes(components, global_boxes, *, refine_large=False, tile_size=512):
+    """Recover missing large ICs without duplicating existing local boxes."""
+    result=list(components);added=0
+    for candidate in sorted(global_boxes,key=lambda c:(-c.score,c.bbox.y1,c.bbox.x1)):
+        b=candidate.bbox
+        overlaps=[c for c in result if c.category.upper() in {'BOX','IC','BOXIC','BOX_IC'}
+                  and _confirmation_overlap(b,c.bbox,metric='intersection_over_smaller')>=.5]
+        if overlaps:
+            if not (refine_large and len(overlaps)==1 and candidate.score>=.95
+                    and max(b.width,b.height)>=.75*tile_size and _iou(b,overlaps[0].bbox)>=.6):
+                continue
+            old=overlaps[0]
+            for evidence in candidate.evidence:
+                evidence.metadata.update(global_box_refinement=True,replaced_local_bbox=old.bbox.model_dump())
+            result.remove(old)
+            result.append(candidate)
+            continue
+        for evidence in candidate.evidence:
+            evidence.metadata['global_box_recovery']=True
+        result.append(candidate);added+=1
+    return result,added
 
 
 def _restore_components(
@@ -1721,14 +1771,12 @@ def _vectorize_masks(
         for record, view_id in vectorizer_breaks
     ]
     lineage_repairs: list[RepairRecord] = []
+    repair_to_segments: dict[str, set[str]] = {}
+    for segment_id, polyline_id in segment_to_polyline.items():
+        for repair_id in kept_by_id[polyline_id].virtual_repair_ids:
+            repair_to_segments.setdefault(repair_id, set()).add(segment_id)
     for repair, view_id, score in virtual_repairs:
-        affected_segment_ids = sorted(
-            {
-                segment_id
-                for segment_id, polyline_id in segment_to_polyline.items()
-                if repair.repair_id in kept_by_id[polyline_id].virtual_repair_ids
-            }
-        )
+        affected_segment_ids = sorted(repair_to_segments.get(repair.repair_id, ()))
         lineage_repairs.append(
             RepairRecord(
                 repair_id=repair.repair_id,
@@ -1759,6 +1807,7 @@ def _vectorize_masks(
 
     junctions: list[Junction] = []
     kept_polyline_ids = set(polyline_to_segments)
+    segment_index = {segment.internal_id: segment for segment in segments}
     for candidate, view_id, evidence, score in junction_candidates:
         view = views[view_id]
         restored = view.to_original(Point(x=candidate.point[0], y=candidate.point[1]))
@@ -1771,7 +1820,7 @@ def _vectorize_masks(
                 for member in member_ids
                 for segment_id in polyline_to_segments.get(member, [])
                 if _segment_touches_point(
-                    next(segment for segment in segments if segment.internal_id == segment_id),
+                    segment_index[segment_id],
                     restored,
                     tolerance=max(1.5, config.wire_tile_dedup_tolerance_px),
                 )

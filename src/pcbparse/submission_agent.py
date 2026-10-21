@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import logging
+import math
 import os
 import platform
 import sys
@@ -27,8 +28,9 @@ from pcbparse.perception.production_provider import (
     load_production_provider,
     required_model_tasks_for_config,
 )
-from pcbparse.pipeline.orchestrator import infer_one
+from pcbparse.pipeline.orchestrator import infer_one, _reasoner_from_config
 from pcbparse.service.readiness import readiness_report
+from pcbparse.perception.submission_ocr import apply_submission_ocr, resolve_submission_assets
 
 
 _EMPTY_OFFICIAL_OUTPUT: dict[str, dict[str, Any]] = {
@@ -53,6 +55,7 @@ class RuntimeBundle:
     readiness: dict[str, Any]
     config_sha256: str
     model_lock_sha256: str
+    reasoner: Any = None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,13 +65,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-input", "--input", dest="input_dir", type=Path, required=True)
     parser.add_argument("-output", "--output", dest="output_dir", type=Path, required=True)
+    parser.add_argument("--config", dest="config_path", type=Path, help="Explicit development pipeline profile")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        report = run_submission(args.input_dir, args.output_dir)
+        report = (run_submission(args.input_dir, args.output_dir, config_path=args.config_path)
+                  if args.config_path is not None else run_submission(args.input_dir, args.output_dir))
     except KeyboardInterrupt:
         return 130
     except Exception as exc:
@@ -94,10 +99,11 @@ def run_submission(
     output_dir: str | Path,
     *,
     app_root: str | Path | None = None,
+    config_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Execute the official one-shot batch contract.
 
-    The evaluator supplies one read-only directory of PNG files.  This function
+    The evaluator supplies a read-only image directory.  This function
     never reads annotation sidecars and always attempts to publish exactly one
     ``<case_name>_Pred.json`` for every discovered image.  A case-local pipeline
     failure produces a schema-valid empty prediction so the remaining batch can
@@ -122,8 +128,17 @@ def run_submission(
     root = _resolve_app_root(app_root)
     runtime: RuntimeBundle | None = None
     initialization_error: Exception | None = None
+    cases: list[dict[str, Any]] = []
+    token_totals = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+    # Publish valid placeholders and a progress log before model startup. If
+    # an external hard timeout kills us, completed predictions remain usable
+    # and every unprocessed input still has a schema-valid output file.
+    for image_path in inputs:
+        atomic_write_official_json(_EMPTY_OFFICIAL_OUTPUT, final_results/f'{image_path.stem}_Pred.json')
+    _write_progress_log(destination, inputs, cases, token_totals, started_at,
+                        started_monotonic, runtime, initialization_error)
     try:
-        runtime = _load_runtime(root)
+        runtime = _load_runtime(root, config_path=Path(config_path)) if config_path is not None else _load_runtime(root)
         logger.info(
             "Production runtime ready: config=%s model_lock=%s",
             runtime.config_sha256,
@@ -132,13 +147,17 @@ def run_submission(
     except Exception as exc:
         initialization_error = exc
         logger.exception("Production runtime initialization failed")
+    except BaseException:
+        _close_logger(logger)
+        raise
 
     total_limit = _total_time_limit(runtime.config if runtime is not None else None)
-    cases: list[dict[str, Any]] = []
-    token_totals = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
 
     for image_path in inputs:
         case_started = time.monotonic()
+        # Release the previous image's full IR before the next inference;
+        # only compact decision-log records need to survive across images.
+        result = None
         output_path = final_results / f"{image_path.stem}_Pred.json"
         if initialization_error is not None:
             case = _write_fallback_case(
@@ -167,12 +186,14 @@ def run_submission(
                     provider=runtime.provider,
                     config=runtime.config,
                     deadline_at=started_monotonic + total_limit,
+                    reasoner=runtime.reasoner,
                 )
                 manifest = result.context.manifest()
                 _merge_token_totals(token_totals, manifest.get("tokens"))
                 diagnostics = _diagnostic_summary(result.diagnostics)
                 quality = getattr(result, "quality", None)
                 quality_record = dict(quality) if isinstance(quality, Mapping) else {}
+                reasoning = result.ir.metadata.get('selective_reasoning', {})
                 status = _case_status(quality_record, result)
                 case = {
                     "case_name": image_path.stem,
@@ -188,6 +209,34 @@ def run_submission(
                     "quality": quality_record,
                     "model_versions": manifest.get("model_versions", {}),
                     "tokens": _token_mapping(manifest.get("tokens")),
+                    "perception_timings_seconds": result.ir.metadata.get('phase_timings_seconds', {}),
+                    "supplement_timings_seconds": result.ir.metadata.get('supplement_timings_seconds', {}),
+                    "stage_timings_seconds": {t['stage']: t['elapsed_seconds'] for t in manifest.get('trace', [])},
+                    "raster_inference":result.ir.metadata.get('raster_inference',{}),
+                    "image_size": {"width": result.ir.image.width, "height": result.ir.image.height},
+                    "topology_summary": {
+                        "palette": result.ir.metadata.get('raster_palette', {}),
+                        "raster": result.ir.metadata.get('raster_topology', {}).get('raster_diagnostics', {}),
+                        "component_count": len(result.ir.components), "pin_count": len(result.ir.pins),
+                        "wire_segment_count": len(result.ir.segments),
+                        "electrical_net_count": len(result.ir.electrical_nets),
+                        "singleton_net_count": sum(len(n.pins) == 1 for n in result.ir.electrical_nets),
+                        "pins_in_multiple_terminal_nets": len({p for n in result.ir.electrical_nets
+                                                                 if len(n.pins) > 1 for p in n.pins}),
+                    },
+                    "component_candidate_gate":result.ir.metadata.get('component_candidate_gate',{}),
+                    "topology_issue_counts":dict(Counter(item['code'] for item in
+                        result.ir.metadata.get('raster_topology',{}).get('issues',[]))),
+                    "llm": {
+                        "generated_tasks": reasoning.get('generated_tasks', 0),
+                        "routed_tasks": reasoning.get('routed_tasks', 0),
+                        "applied_tasks": reasoning.get('applied_tasks', 0),
+                        "visual_number_readback": reasoning.get('visual_number_readback'),
+                        "outcomes": dict(Counter(row.get('status', 'unknown')
+                            for row in reasoning.get('ledger', []))),
+                        "failure_types": sorted({row.get('reason', 'unknown')
+                            for row in reasoning.get('ledger', []) if row.get('status')=='reasoner_failed'}),
+                    },
                     "error": None,
                 }
             except Exception as exc:
@@ -205,7 +254,13 @@ def run_submission(
                     case["tokens"] = _token_mapping(manifest.get("tokens"))
                     case["model_versions"] = manifest.get("model_versions", {})
                 logger.exception("Case %s fell back to an empty prediction", image_path.stem)
+            except BaseException:
+                _close_logger(logger)
+                raise
+        result = None
         cases.append(case)
+        _write_progress_log(destination, inputs, cases, token_totals, started_at,
+                            started_monotonic, runtime, initialization_error)
         logger.info(
             "Case %s complete: status=%s elapsed=%.3fs",
             image_path.stem,
@@ -291,6 +346,27 @@ def run_submission(
     return report
 
 
+def _write_progress_log(destination, inputs, cases, tokens, started_at, started_monotonic,
+                        runtime, initialization_error):
+    """Checkpoint actual completed cases; never count placeholders as solved."""
+    completed = {case['case_name'] for case in cases}
+    pending = [path.stem for path in inputs if path.stem not in completed]
+    _atomic_write_json(destination/'decision_log.json', {
+        'schema_version':1, 'kind':'edarace-agent-decision-log',
+        'method':'pcbparse-production-image-only', 'status':'in_progress',
+        'timestamp':_utc_now(), 'started_at_utc':started_at,
+        'elapsed_seconds':_rounded(time.monotonic()-started_monotonic),
+        'processed_cases':len(cases), 'pending_cases':pending,
+        'token_usage':{'total_tokens':tokens['input_tokens']+tokens['output_tokens'],
+            'prompt_tokens':tokens['input_tokens'], 'completion_tokens':tokens['output_tokens'],
+            'api_calls':tokens['calls'], **tokens},
+        'runtime':_runtime_record(runtime, initialization_error),
+        'summary':{'total_cases':len(inputs), 'processed_cases':len(cases),
+                   'pending_cases':len(pending), 'status':'in_progress'},
+        'cases':cases,
+    })
+
+
 def _resolve_app_root(value: str | Path | None) -> Path:
     if value is not None:
         return Path(value).expanduser().resolve()
@@ -303,8 +379,8 @@ def _resolve_app_root(value: str | Path | None) -> Path:
     return Path("/submission/app")
 
 
-def _load_runtime(app_root: Path) -> RuntimeBundle:
-    config_path = app_root / "configs" / "pipeline.edarace.yaml"
+def _load_runtime(app_root: Path, *, config_path: Path | None = None) -> RuntimeBundle:
+    config_path = config_path if config_path is not None else app_root / "configs" / "pipeline.edarace.yaml"
     profile_path = app_root / "configs" / "profiles" / "competition.yaml"
     lock_path = app_root / "models" / "models.lock.json"
     for path, label in (
@@ -316,6 +392,19 @@ def _load_runtime(app_root: Path) -> RuntimeBundle:
             raise SubmissionAgentError(f"{label} is missing: {path}")
 
     config = _apply_profile(load_config(config_path), load_config(profile_path))
+    import torch
+    # Multiple inference runtimes share this process. Bound Torch's CPU
+    # pool just as the OCR/Pin ONNX sessions do, especially on A800 hosts.
+    torch.set_num_threads(min(torch.get_num_threads(), 4))
+    try:
+        import cv2
+    except ImportError:
+        pass
+    else:
+        # OpenCV otherwise starts a pool for every host core (104 on the
+        # development server), competing with Torch and the OCR sessions.
+        cv2.setNumThreads(min(cv2.getNumThreads(), 4))
+    resolve_submission_assets(config, app_root)
     run_config = config.get("run", {})
     if not isinstance(run_config, Mapping) or run_config.get("submission_mode") != "degraded":
         raise SubmissionAgentError(
@@ -335,12 +424,30 @@ def _load_runtime(app_root: Path) -> RuntimeBundle:
             + json.dumps(readiness.get("problems", []), ensure_ascii=False)
         )
     provider = load_production_provider(lock_path, config=perception_config)
+    from pcbparse.perception.submission_pin import apply_submission_pin
+    pin_record = apply_submission_pin(provider, config, app_root)
+    if pin_record is not None:
+        readiness['submission_pin'] = pin_record
+    provider = apply_submission_ocr(provider, config, app_root)
+    if config.get('submission_ocr') is not None:
+        readiness['submission_ocr'] = {
+            'descriptor_sha256': provider.descriptor_sha256,
+            'baseline_lock_modified': False, 'model_promotion': False,
+        }
+    from pcbparse.graph.submission_topology import apply_submission_topology
+    provider = apply_submission_topology(provider, config, app_root)
+    if config.get('submission_topology') is not None:
+        readiness['submission_topology'] = {
+            'descriptor_sha256': provider.topology_descriptor_sha256,
+            'baseline_lock_modified': False, 'model_promotion': False,
+        }
     return RuntimeBundle(
         provider=provider,
         config=config,
         readiness=readiness,
         config_sha256=config_hash(config),
         model_lock_sha256=_sha256_file(lock_path),
+        reasoner=_reasoner_from_config(config),
     )
 
 
@@ -349,12 +456,12 @@ def _discover_images(input_dir: Path) -> list[Path]:
         (
             path
             for path in input_dir.iterdir()
-            if path.is_file() and path.suffix.lower() == ".png"
+            if path.is_file() and path.suffix.lower() in {'.png','.jpg','.jpeg'}
         ),
         key=lambda path: (path.name.casefold(), path.name),
     )
     if not images:
-        raise SubmissionAgentError(f"no PNG images found in input directory: {input_dir}")
+        raise SubmissionAgentError(f"no PNG or JPEG images found in input directory: {input_dir}")
     collisions = [
         stem
         for stem, count in Counter(path.stem.casefold() for path in images).items()
@@ -468,6 +575,17 @@ def _runtime_record(
         },
     }
     if runtime is not None:
+        qwen = runtime.config.get('qwen', {})
+        record['llm'] = {'enabled': bool(qwen.get('enabled')), 'backend': qwen.get('backend', 'disabled'),
+                         'model': qwen.get('model') or os.environ.get('LLM_MODEL'),
+                         'configuration_present': {k: bool(qwen.get(k)) for k in ('endpoint', 'model', 'api_key')},
+                         'status': ('enabled' if qwen.get('enabled') else 'disabled_by_switch'
+                                    if os.environ.get('PCBPARSE_QWEN_ENABLED')=='0' else 'disabled_no_configuration')}
+        if qwen.get('configuration_error') == 'invalid_endpoint':
+            record['llm']['status'] = 'disabled_invalid_configuration'
+            record['llm']['configuration_error'] = 'invalid_endpoint'
+        if hasattr(runtime.reasoner, 'health_record'):
+            record['llm']['service'] = runtime.reasoner.health_record()
         record.update(
             {
                 "ready": True,
@@ -521,8 +639,13 @@ def _total_time_limit(config: Mapping[str, Any] | None) -> float:
     run = config.get("run", {})
     if not isinstance(run, Mapping):
         return 7000.0
-    value = run.get("max_total_seconds", 7000.0)
-    if type(value) not in {int, float} or float(value) <= 0:
+    value = os.environ.get('PCBPARSE_MAX_TOTAL_SECONDS', run.get("max_total_seconds", 7000.0))
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except ValueError as exc:
+            raise SubmissionAgentError('PCBPARSE_MAX_TOTAL_SECONDS must be a positive number') from exc
+    if type(value) not in {int, float} or not math.isfinite(float(value)) or float(value) <= 0:
         raise SubmissionAgentError("run.max_total_seconds must be positive")
     return float(value)
 

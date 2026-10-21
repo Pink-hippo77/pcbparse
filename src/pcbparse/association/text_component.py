@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pcbparse.association.reference_prefixes import DESIGNATOR_PATTERN, prefix_compatible
+
 import math
 import re
 from collections import defaultdict
@@ -15,6 +17,7 @@ from pcbparse.association.ocr_common import (
     field_choice,
     lexical_candidates,
     make_rule_evidence,
+    point_bbox_distance,
     preferred_text,
     resolved_text,
     upsert_evidence,
@@ -22,7 +25,7 @@ from pcbparse.association.ocr_common import (
 from pcbparse.ir.models import Component, Diagnostic, TextToken
 
 
-_DESIGNATOR = re.compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$")
+_DESIGNATOR = re.compile(DESIGNATOR_PATTERN)
 # All-letter designators (RUN, VCC, GND, VDD, etc.) are valid when they
 # belong to a recognized power/signal category.  2-6 letters keeps the bar
 # high enough to avoid random OCR noise while covering known labels.
@@ -298,44 +301,7 @@ def resolve_component_keys(
 
 
 def _prefix_compatible(category: str, prefix: str) -> bool:
-    normalized = category.upper()
-    aliases = {
-        "BOX": "*",
-        "RESISTOR": "R",
-        "CAPACITOR": "C",
-        "INDUCTOR": "L",
-        "DIODE": "D",
-        "LED": "D",
-        "IC": "U",
-        "CONNECTOR": "J",
-        "CON": "J",
-        "JACK": "J",
-        "PLUG": "J",
-        "SOCKET": "J",
-        "PORT": "J",
-        "HEADER": "J",
-        "TERMINAL": "J",
-        "SWITCH": "SW",
-        "RELAY": "K",
-        "TRANSISTOR": "Q",
-        "MOSFET": "Q",
-        "BJT": "Q",
-        "NPN": "Q",
-        "PNP": "Q",
-        "CRYSTAL": "Y",
-        "XTAL": "Y",
-        "FUSE": "F",
-        "TESTPOINT": "TP",
-        "VOLTAGE": "U",
-        "REGULATOR": "U",
-        "POWER": "P",
-        "BATTERY": "B",
-        "MOTOR": "M",
-    }
-    expected = aliases.get(normalized, normalized[:1])
-    if expected == "*":
-        return True
-    return prefix.startswith(expected)
+    return prefix_compatible(category, prefix)
 
 
 def _canonical_designator(value: str, category: str) -> tuple[str, dict[str, Any] | None]:
@@ -416,6 +382,148 @@ _COMPONENT_TEXT_FIELDS = {
 }
 
 
+def _is_box_upper_reference(component: Component, token: TextToken, value: str) -> bool:
+    if component.category.upper() not in {"BOX", "BOXIC", "BOX_IC", "IC"}:
+        return False
+    if token.score < .6 or not re.fullmatch(r"(?:U|IC|J|P|CN|CON|JP)[0-9]+[A-Z]?", value):
+        return False
+    body, box = component.bbox, token.bbox
+    return (box.y1 < body.y1 and box.y2 <= body.y1 + min(box.height, body.height * .15)
+            and body.x1 - box.width * .5 <= box.center.x <= body.x2 + box.width * .5
+            and bbox_gap_distance(box, body) <= max(body.width, body.height) * .25)
+
+
+def _box_external_designator_rows(
+    component: Component, rows: list[dict[str, Any]], text_index: dict[str, TextToken],
+) -> list[dict[str, Any]]:
+    """A unique visible upper-edge reference outranks numeric body pin text.
+
+    Only accepted candidates for this very component are reconsidered. No
+    explicit owner is moved and no text is manufactured or rewritten.
+    """
+    if component.category.upper() not in {"BOX", "BOXIC", "BOX_IC", "IC"}:
+        return []
+    anchors = []
+    for row in rows:
+        token = text_index[str(row["text_id"])]
+        if row.get("target_status") != "accepted" or row.get("eligible") is False:
+            continue
+        if _is_box_upper_reference(component, token, str(row.get("value", ""))):
+            anchors.append(row)
+    # Multiple different upper-edge readings remain under the original rules.
+    return anchors if len({row["value"] for row in anchors}) == 1 else []
+
+
+def _designator_center_tiebreak(
+    candidates: list[RankedAssociationCandidate],
+    best: RankedAssociationCandidate,
+    token: TextToken,
+    component_index: dict[str, Component],
+) -> tuple[RankedAssociationCandidate, dict[str, Any] | None]:
+    """Use center geometry only when the original target ranking is tied.
+
+    Overlapping text boxes can have zero gap to two adjacent bodies, leaving
+    stable IDs to decide ownership. Different categories, body axes or rows
+    remain under the original ranking; no score, margin or owner is invented.
+    """
+    tied = [item for item in candidates if item.score == best.score and item.distance == best.distance]
+    bodies = [component_index[item.target_id] for item in tied]
+    categories = {body.category.upper() for body in bodies}
+    axes = {(body.bbox.width > body.bbox.height) - (body.bbox.width < body.bbox.height) for body in bodies}
+    if (
+        len(tied) < 2
+        or len(categories) != 1
+        or "BOX" in categories
+        or any(item.explicit or item.semantic_compatibility != 1.0 for item in tied)
+        or len(axes) != 1
+        or 0 in axes
+        or max(body.bbox.y1 for body in bodies) >= min(body.bbox.y2 for body in bodies)
+    ):
+        return best, None
+    ranked = sorted(
+        ((point_bbox_distance(token.bbox.center, component_index[item.target_id].bbox), item) for item in tied),
+        key=lambda item: (item[0], item[1].target_id),
+    )
+    if ranked[0][0] == ranked[1][0] or ranked[0][1].target_id == best.target_id:
+        return best, None
+    winner = ranked[0][1]
+    candidates.remove(winner)
+    candidates.insert(0, winner)
+    return winner, {
+        "method": "aligned_designator_center_exact_tie",
+        "previous_target_id": best.target_id,
+        "chosen_target_id": winner.target_id,
+        "original_score": best.score,
+        "original_bbox_gap": best.distance,
+        "center_to_bbox_distances": {item.target_id: distance for distance, item in ranked},
+    }
+
+
+def _cross_view_designator_rows(component, rows, text_index):
+    """Resolve a strong global reading of the same glyphs as a weak ROI reading.
+
+    ROI ownership remains fixed. Only content confidence is reconsidered;
+    unrelated global text cannot displace explicit component-owned evidence.
+    """
+    explicit = [r for r in rows if r.get("explicit") and r.get("target_status") == "accepted"
+                and r.get("eligible") is not False]
+    if not explicit:
+        return []
+    winners = []
+    for row in rows:
+        if row.get("explicit") or row.get("target_status") != "accepted" or row.get("eligible") is False:
+            continue
+        token = text_index[str(row["text_id"])]
+        value = str(row["value"])
+        prefix = re.match(r"^[A-Z]+", value)
+        if (token.score < .95 or not _DESIGNATOR.fullmatch(value) or not prefix
+                or not _prefix_compatible(component.category, prefix.group(0))):
+            continue
+        competing = [r for r in explicit if r["value"] != value]
+        if not competing:
+            continue
+        for other in competing:
+            rival = text_index[str(other["text_id"])]
+            a, b = token.bbox, rival.bbox
+            overlap = max(0., min(a.x2, b.x2) - max(a.x1, b.x1)) * max(0., min(a.y2, b.y2) - max(a.y1, b.y1))
+            small, large = sorted((a.width * a.height, b.width * b.height))
+            if (token.score - rival.score < .10 or small <= 0 or large <= 0
+                    or overlap / small < .8 or small / large < .25):
+                break
+        else:
+            winners.append(row)
+    return winners if len({r["value"] for r in winners}) == 1 else []
+
+
+def _punctuation_designator_target(token, value, components):
+    """Recover an observed colon-prefixed ordinary reference near a unique body."""
+    match = re.fullmatch(r":([RCLDQ][0-9]+[A-Z]?)", value)
+    if (not match or token.score < .9 or token.pin_id is not None
+            or any(e.source == "dataset" for e in token.evidence)
+            or not any(e.metadata.get("kind") == "semantic-field-inference" for e in token.evidence)):
+        return None
+    # Side-strip OCR commonly observes IC pin names: never reinterpret it.
+    if any(e.metadata.get("level") == "side_strip" for e in token.evidence):
+        return None
+    reference = match.group(1)
+    targets = []
+    for component in components:
+        if (component.category.upper() in {"BOX", "BOXIC", "BOX_IC", "IC"}
+                or (token.component_id is not None and token.component_id != component.internal_id)
+                or not _prefix_compatible(component.category, reference[0])):
+            continue
+        b, center = component.bbox, token.bbox.center
+        if b.x1 <= center.x <= b.x2 and b.y1 <= center.y <= b.y2:
+            continue
+        gap = bbox_gap_distance(token.bbox, b)
+        if gap <= min(24., max(b.width, b.height) * .5):
+            targets.append((gap, component.internal_id, component))
+    targets.sort(key=lambda r: (r[0], r[1]))
+    if not targets or (len(targets) > 1 and targets[1][0] - targets[0][0] <= 2.):
+        return None
+    return reference, targets[0][2]
+
+
 def associate_component_texts(
     components: list[Component],
     texts: list[TextToken],
@@ -430,6 +538,7 @@ def associate_component_texts(
     """
 
     component_index = {component.internal_id: component for component in components}
+    text_index = {token.internal_id: token for token in texts}
     rows_by_field: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     relevant_tokens = 0
     accepted_targets = 0
@@ -440,11 +549,31 @@ def associate_component_texts(
         field = _COMPONENT_TEXT_FIELDS.get(canonical_details(token.details))
         value = preferred_text(token)
         resolved = resolved_text(token)
+        recovery_targets = []
+        punctuation_recovery = None
+        if config.component_punctuation_designator_enabled and value:
+            punctuation_recovery = _punctuation_designator_target(token, value, components)
+            if punctuation_recovery is not None:
+                value, target = punctuation_recovery
+                recovery_targets = [target]
+                field = "designator"
+                original_details = token.details
+                token.details = token.category = "designator"
+        if (config.box_external_designator_preference_enabled and field is None and value
+                and not any(item.source == "dataset" for item in token.evidence)):
+            recovery_targets = [component for component in components
+                                if (token.component_id is None or token.component_id == component.internal_id)
+                                and _is_box_upper_reference(component, token, value)]
+            if len(recovery_targets) == 1:
+                field = "designator"
+            else:
+                recovery_targets = []
         if field is None or value is None:
             continue
         relevant_tokens += 1
         explicit = token.component_id in component_index
         pool = (
+            recovery_targets if recovery_targets else
             [component_index[str(token.component_id)]]
             if explicit
             else sorted(components, key=lambda item: item.internal_id)
@@ -505,6 +634,17 @@ def associate_component_texts(
             min_score=config.component_min_score,
             unique_margin=config.component_unique_margin,
         )
+        geometry_tiebreak = None
+        if (
+            config.component_designator_center_tiebreak_enabled
+            and field == "designator"
+            and status == "accepted"
+            and best is not None
+            and not explicit
+        ):
+            best, geometry_tiebreak = _designator_center_tiebreak(
+                candidates, best, token, component_index
+            )
         if status == "accepted" and best is not None:
             accepted_targets += 1
             if token.component_id is None and (explicit or config.bind_global_component_targets):
@@ -554,6 +694,9 @@ def associate_component_texts(
                 "resolved_value": resolved,
                 "lexical_candidates": lexical_candidates(token),
                 "rewrite": token_rewrite,
+                **({"role_recovery": "colon_prefixed_ordinary_reference", "original_details": original_details,
+                    "raw_value": token.raw_text} if punctuation_recovery else
+                   {"role_recovery": "box_upper_edge_reference", "original_details": token.details} if recovery_targets else {}),
                 "decision": status,
                 "accepted_target_id": best.target_id if status == "accepted" and best else None,
                 "target_margin": margin,
@@ -563,6 +706,7 @@ def associate_component_texts(
                     "max_distance_factor": config.component_max_distance_factor,
                 },
                 "target_candidates": candidate_records[: config.max_recorded_candidates],
+                **({"geometry_tiebreak": geometry_tiebreak} if geometry_tiebreak is not None else {}),
             },
         )
         upsert_evidence(token.evidence, token_evidence)
@@ -604,6 +748,7 @@ def associate_component_texts(
                 if field == "value"
                 else component.name
             )
+            selection_rule = None
             if existing:
                 decision, chosen, score, margin = "preserved_existing", str(existing), 1.0, None
             else:
@@ -613,16 +758,27 @@ def associate_component_texts(
                 # must not override it during field selection. Other fields
                 # retain the existing mixed-candidate behavior.
                 choice_rows = rows
+                if field == "designator" and config.box_external_designator_preference_enabled:
+                    anchors = _box_external_designator_rows(component, rows, text_index)
+                    if anchors:
+                        choice_rows = anchors
+                        selection_rule = "unique_box_upper_edge_reference"
                 if field == "designator" and not config.key_evidence_pool_enabled:
                     explicit_rows = [
                         row
-                        for row in rows
+                        for row in choice_rows
                         if bool(row.get("explicit"))
                         and row.get("target_status") == "accepted"
                         and row.get("eligible") is not False
                     ]
                     if explicit_rows:
-                        choice_rows = explicit_rows
+                        cross_view = (_cross_view_designator_rows(component, choice_rows, text_index)
+                                      if config.component_cross_view_designator_enabled and selection_rule is None else [])
+                        if cross_view:
+                            choice_rows = cross_view
+                            selection_rule = "strong_same_glyph_global_reference"
+                        else:
+                            choice_rows = explicit_rows
                 decision, chosen, score, margin = field_choice(
                     choice_rows,
                     min_score=config.component_min_score,
@@ -637,6 +793,7 @@ def associate_component_texts(
                 "chosen": chosen,
                 "score": score,
                 "margin": margin,
+                **({"selection_rule": selection_rule} if selection_rule else {}),
             }
 
     # A reference designator is a global image key.  Tentative assignments that
@@ -731,6 +888,7 @@ def associate_component_texts(
                 "existing_value": evaluation["existing"],
                 "chosen_value": chosen,
                 "field_margin": evaluation["margin"],
+                **({"selection_rule": evaluation["selection_rule"]} if evaluation.get("selection_rule") else {}),
                 "thresholds": {
                     "min_score": config.component_min_score,
                     "unique_margin": config.component_unique_margin,

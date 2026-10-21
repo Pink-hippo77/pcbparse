@@ -31,8 +31,9 @@ def natural_sort_key(value: object) -> tuple[tuple[object, ...], ...]:
         # Preserve the original numeric token as a final tie-break.  Without
         # it, distinct legal strings such as R1 and R01 had identical keys and
         # inherited caller insertion order, violating deterministic output.
-        # Only decimal digits match \d and can be converted by int(). Other
-        # digit glyphs such as ² and ① remain literal identifier text.
+        # isdigit() also accepts OCR glyphs such as ⑧ and ², which int()
+        # cannot parse. Only decimal digits (the same class as \d above)
+        # belong in the numeric branch; preserve other glyphs as text.
         (0, int(part), part) if part.isdecimal() else (1, part.casefold(), part)
         for part in _NATURAL_PARTS.split(text)
         if part != ""
@@ -274,13 +275,18 @@ def _missing_designator_ids(ir: CircuitIR) -> list[str]:
 def _pin_number_stats(ir: CircuitIR) -> dict[str, int]:
     missing = 0
     explicit = 0
+    unscored_ids = 0
     for pin in ir.pins:
         numbers = split_official_pin_numbers(pin.number)
         if numbers:
-            explicit += len(numbers)
+            if any(e.metadata.get("kind") == "unscored-pin-output-identity" for e in pin.evidence):
+                unscored_ids += len(numbers)
+            else:
+                explicit += len(numbers)
         else:
             missing += 1
-    return {"pin_number_missing": missing, "pin_explicit_numbers": explicit}
+    return {"pin_number_missing": missing, "pin_explicit_numbers": explicit,
+            "pin_unscored_output_numbers": unscored_ids}
 
 
 def _prune_stats(ir: CircuitIR) -> dict[str, Any]:
@@ -377,7 +383,9 @@ def serialize_official_with_quality(
 
     Never mutates the input IR. ``mode`` is ``strict`` or ``degraded``.
     Missing component keys / pin numbers are rejected in both modes: the
-    serializer never fabricates identifiers.  Upstream degraded pruning may drop
+    serializer never fabricates identifiers. Upstream Q&A numbering assigns
+    unscored non-Box output IDs, counted separately from explicit numbers.
+    Upstream degraded pruning may drop
     unrepresentable objects and records the deleted IDs; the quality dict then
     separates explicit OCR-read pin numbers (``pin_explicit_numbers``) from
     pruned missing numbers (``pins_dropped_missing_number``) so reports never
@@ -407,7 +415,7 @@ def serialize_official_with_quality(
     output = serialize_official(ir, profile)
     prune = _prune_stats(ir)
     empty_output = not output["components"] and not output["pins"] and not output["nets"]
-    degraded_marks = bool(prune["pruned_components"] or prune["pruned_pins"])
+    degraded_marks = bool(prune["pruned_components"] or prune["pruned_pins"] or prune["nets_dropped"])
     if empty_output:
         status = "empty_result"
     elif degraded_marks:
@@ -423,6 +431,7 @@ def serialize_official_with_quality(
         "fallback_empty": False,
         "failed_to_write": False,
         "pin_explicit_numbers": pin_stats["pin_explicit_numbers"],
+        "pin_unscored_output_numbers": pin_stats["pin_unscored_output_numbers"],
         "pin_number_missing": pin_stats["pin_number_missing"],
         "pruned_components": prune["pruned_components"],
         "pruned_pins": prune["pruned_pins"],
@@ -468,15 +477,20 @@ def serialize_official(
         key=lambda item: natural_sort_key(component_keys[item.internal_id]),
     ):
         output_key = component_keys[component.internal_id]
+        output_type = type_aliases.get(component.category, component.category)
+        # Detection ROIs can include leads; a measured physical symbol body
+        # supplies the requested component extent while the ROI stays in IR.
+        bbox = (component.body_bbox if component.body_bbox and output_type in {'box', 'r', 'c', 'l', 'd', 'led', 'gnd', 'v'}
+                else component.bbox)
         components[output_key] = {
-            "type": type_aliases.get(component.category, component.category),
+            "type": output_type,
             name_field: component.name if component.name != "" else None,
             "value": component.value if component.value != "" else None,
             "bbox": [
-                _finite_coordinate(component.bbox.x1),
-                _finite_coordinate(image_height - component.bbox.y2),
-                _finite_coordinate(component.bbox.x2),
-                _finite_coordinate(image_height - component.bbox.y1),
+                _finite_coordinate(bbox.x1),
+                _finite_coordinate(image_height - bbox.y2),
+                _finite_coordinate(bbox.x2),
+                _finite_coordinate(image_height - bbox.y1),
             ],
         }
 

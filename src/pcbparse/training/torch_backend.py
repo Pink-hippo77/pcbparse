@@ -558,6 +558,11 @@ def _component_detector_kwargs(task_config: Any, limits: _RunLimits) -> dict[str
         "min_size": int(min(task_config.input_size)),
         "max_size": int(max(task_config.input_size)),
         "box_score_thresh": float(task_config.component_score_threshold),
+        # MobileNet's constructor otherwise applies a 0.05 RPN proposal
+        # floor even in training. A learned background crop can lose every
+        # proposal and make empty RoI classification/regression losses NaN.
+        # Keep background proposals available for negative supervision.
+        "rpn_score_thresh": 0.0,
     }
     configured_detections = getattr(task_config, "component_box_detections_per_img", None)
     if configured_detections is not None:
@@ -2460,7 +2465,6 @@ def _component_train_epoch(
     model.train()
     totals: dict[str, float] = {}
     examples = 0
-    skipped_non_finite = 0
     total_batches = _bounded_length(loader, max_batches)
     optimizer.zero_grad(set_to_none=True)
     for batch_index, (images, raw_targets) in enumerate(
@@ -2480,11 +2484,15 @@ def _component_train_epoch(
             losses = model(images_list, targets)
             total_loss = sum(losses.values())
             scaled_loss = total_loss / group_size
-        # Skip non-finite loss batches instead of crashing
         if not math.isfinite(float(total_loss.detach().cpu())):
-            skipped_non_finite += 1
             optimizer.zero_grad(set_to_none=True)
-            continue
+            invalid = sorted(name for name, value in losses.items()
+                             if not math.isfinite(float(value.detach().cpu())))
+            raise TorchTrainingError(
+                f"component training produced non-finite losses at batch {batch_index}: "
+                f"{invalid}; target_counts={[len(t['boxes']) for t in targets]}; "
+                "no candidate may be accepted from this run"
+            )
         _backward(scaler, scaled_loss)
         if batch_index % accumulation == 0 or batch_index == total_batches:
             _optimizer_step(torch, scaler, optimizer, model.parameters())

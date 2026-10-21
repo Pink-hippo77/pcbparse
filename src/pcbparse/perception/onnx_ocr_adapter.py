@@ -20,7 +20,7 @@ from pcbparse.io import ImageView
 from pcbparse.ir.models import BBox, Evidence, TextToken
 from pcbparse.perception.protocols import ProviderError
 from pcbparse.perception.onnx_ocr_processing import (
-    OCRProcessingError, crop_quad, db_polygons, decode_ctc, detection_tensor, recognition_tensor, detector_canvas_size,
+    OCRProcessingError, crop_quad, db_polygons, decode_ctc, detection_tensor, recognition_tensor,
 )
 
 
@@ -82,18 +82,12 @@ class ONNXOCRAdapter:
         if not descriptor.is_file() or descriptor.stat().st_size > 1024*1024 or _hash(descriptor) != expected:
             raise ONNXOCRAdapterError('OCR descriptor hash/size mismatch')
         payload = json.loads(descriptor.read_text(encoding='utf-8'),object_pairs_hook=_object)
-        required_fields = {'schema_version','architecture','detector','recognizer','characters','preprocess','provenance'}
-        allowed_fields = required_fields | {'final_recognizer'}
-        if not isinstance(payload,dict) or not required_fields <= set(payload) or set(payload) - allowed_fields:
+        if not isinstance(payload,dict) or set(payload) != {'schema_version','architecture','detector','recognizer','characters','preprocess','provenance'}:
             raise ONNXOCRAdapterError('unsupported OCR descriptor fields')
         if type(payload['schema_version']) is not int or payload['schema_version'] != 1 or payload['architecture'] != 'db_ctc_onnx':
             raise ONNXOCRAdapterError('unsupported OCR descriptor version/architecture')
         self.detector_path = _bound_asset(descriptor.parent,payload['detector'],'detector')
         self.recognizer_path = _bound_asset(descriptor.parent,payload['recognizer'],'recognizer')
-        self.final_recognizer_path = (
-            _bound_asset(descriptor.parent,payload['final_recognizer'],'final_recognizer')
-            if 'final_recognizer' in payload else None
-        )
         characters = payload['characters']
         if not isinstance(characters,list) or not 2 <= len(characters) <= 32768 or characters[0] != '' or any(
             not isinstance(c,str) or len(c) != 1 for c in characters[1:]
@@ -112,11 +106,8 @@ class ONNXOCRAdapter:
         parameters = entry.get('inference',{})
         if not isinstance(parameters,Mapping) or set(parameters)-{
             'device','cpu_threads','detector_threshold','box_threshold','unclip_ratio',
-            'recognition_threshold','recognition_batch_size','max_candidates','padded_source_coordinates'}:
+            'recognition_threshold','recognition_batch_size','max_candidates'}:
             raise ONNXOCRAdapterError('unsupported OCR inference parameters')
-        self.padded_source_coordinates=parameters.get('padded_source_coordinates',False)
-        if type(self.padded_source_coordinates) is not bool:
-            raise ONNXOCRAdapterError('padded_source_coordinates must be boolean')
         self.detector_threshold = parameters.get('detector_threshold',.3)
         self.box_threshold = _probability(parameters.get('box_threshold',.6),'box_threshold')
         self.recognition_threshold = _probability(parameters.get('recognition_threshold',0.),'recognition_threshold')
@@ -142,33 +133,18 @@ class ONNXOCRAdapter:
         try:
             self.detector = ort.InferenceSession(str(self.detector_path),sess_options=options,providers=providers)
             self.recognizer = ort.InferenceSession(str(self.recognizer_path),sess_options=options,providers=providers)
-            self.final_recognizer = (
-                ort.InferenceSession(str(self.final_recognizer_path),sess_options=options,providers=providers)
-                if self.final_recognizer_path is not None else None
-            )
         except Exception as exc: raise ONNXOCRAdapterError(f'cannot load ONNX OCR models: {type(exc).__name__}: {exc}') from exc
         self.active_providers = {'detector': self.detector.get_providers(), 'recognizer': self.recognizer.get_providers()}
-        if self.final_recognizer is not None:
-            self.active_providers['final_recognizer'] = self.final_recognizer.get_providers()
         if use_cuda and any('CUDAExecutionProvider' not in value for value in self.active_providers.values()):
             if requested in {'cuda','gpu'}: raise ONNXOCRAdapterError('requested CUDA OCR session fell back to CPU')
             logging.getLogger('pcbparse.ocr').warning('ONNX OCR auto device fell back: %s',self.active_providers)
         self.detector_input = self._input(self.detector,'detector',height=None)
         self.recognizer_input = self._input(self.recognizer,'recognizer',height=48)
-        self.final_recognizer_input = (
-            self._input(self.final_recognizer,'final_recognizer',height=48)
-            if self.final_recognizer is not None else None
-        )
         douts, routs = self.detector.get_outputs(), self.recognizer.get_outputs()
         if len(douts) != 1 or len(douts[0].shape) != 4 or douts[0].shape[1] != 1:
             raise ONNXOCRAdapterError('detector must output N1HW probabilities')
         if len(routs) != 1 or len(routs[0].shape) != 3 or routs[0].shape[-1] != len(self.charset):
             raise ONNXOCRAdapterError('recognizer output/charset dimensions differ')
-        if self.final_recognizer is not None:
-            final_outputs = self.final_recognizer.get_outputs()
-            if len(final_outputs) != 1 or len(final_outputs[0].shape) != 3 or final_outputs[0].shape[-1] != len(self.charset):
-                raise ONNXOCRAdapterError('final recognizer output/charset dimensions differ')
-        self.final_reread_enabled = self.final_recognizer is not None
         self.version = f'onnx-db-ctc/{expected[:16]}'
         self.descriptor_sha256 = expected
         self.runtime_version = ort.__version__
@@ -176,12 +152,6 @@ class ONNXOCRAdapter:
         self._last_detection_trace = []
         self._detection_trace_log = []
         self._last_invalid_crop_quads = 0
-        self._trace_sink = None
-
-    def _trace(self,stage,**payload):
-        sink=getattr(self,'_trace_sink',None)
-        if sink is not None:
-            sink(dict(stage=stage,view_id=getattr(self,'_active_view_id',None),**payload))
 
     @property
     def detector_threshold(self): return self._detector_threshold
@@ -206,47 +176,6 @@ class ONNXOCRAdapter:
         budget = getattr(ctx,'time_budget',None)
         if budget is not None: budget.check(stage=stage)
 
-    def recognize_crops_bgr(self, crops: list[np.ndarray], ctx=None) -> list[tuple[str, float]]:
-        """Recognize caller-supplied crops without running detection or filtering boxes."""
-        if not isinstance(crops, list) or any(
-            not isinstance(crop, np.ndarray) or crop.ndim != 3 or crop.shape[2] != 3
-            for crop in crops
-        ):
-            raise ONNXOCRAdapterError("recognize_crops_bgr requires a list of BGR images")
-        if not crops:
-            return []
-        with self._lock:
-            session = self.final_recognizer or self.recognizer
-            input_name = self.final_recognizer_input or self.recognizer_input
-            order = sorted(
-                enumerate(crops),
-                key=lambda item: (item[1].shape[1] / item[1].shape[0], item[0]),
-            )
-            results: list[tuple[str, float] | None] = [None] * len(crops)
-            for start in range(0, len(order), self.batch_size):
-                self._check(ctx, "ocr_onnx_final_recognition")
-                batch = order[start : start + self.batch_size]
-                tensors = [
-                    recognition_tensor(
-                        crop, minimum_width=self.minimum_width, maximum_width=self.maximum_width
-                    )
-                    for _, crop in batch
-                ]
-                width = max(array.shape[2] for array in tensors)
-                inputs = np.stack([
-                    np.pad(array, ((0, 0), (0, 0), (0, width - array.shape[2])))
-                    for array in tensors
-                ])
-                outputs = session.run(None, {input_name: inputs})
-                self._check(ctx, "ocr_onnx_final_recognition")
-                if len(outputs) != 1 or outputs[0].shape[0] != len(batch):
-                    raise ONNXOCRAdapterError("recognizer output cardinality mismatch")
-                for (index, _), value in zip(batch, decode_ctc(outputs[0], self.charset)):
-                    results[index] = value
-            if any(value is None for value in results):
-                raise ONNXOCRAdapterError("recognizer did not return every crop")
-            return [value for value in results if value is not None]
-
     def infer_bgr(self,bgr,ctx=None):
         """Return raw text, confidence and view-local quadrilaterals."""
         self._check(ctx,'ocr_onnx_detection')
@@ -255,21 +184,10 @@ class ONNXOCRAdapter:
         self._check(ctx,'ocr_onnx_detection')
         if len(probabilities) != 1 or probabilities[0].ndim != 4 or probabilities[0].shape[:2] != (1,1):
             raise ONNXOCRAdapterError('invalid detector batch output')
-        map_height,map_width=bgr.shape[:2]
-        if getattr(self,'padded_source_coordinates',False):
-            map_height,map_width=detector_canvas_size(int(map_height),int(map_width))
-        polygons = db_polygons(probabilities[0][0,0],width=map_width,height=map_height,
+        polygons = db_polygons(probabilities[0][0,0],width=bgr.shape[1],height=bgr.shape[0],
             threshold=self.detector_threshold,box_threshold=self.box_threshold,
             unclip_ratio=self.unclip_ratio,max_candidates=self.max_candidates,
             check=lambda:self._check(ctx,'ocr_onnx_postprocess'))
-        if getattr(self,'padded_source_coordinates',False) and (map_height,map_width)!=bgr.shape[:2]:
-            # Restore to the padded canvas first, then clip to the real image.
-            # Scaling directly to the smaller image compresses the proposals.
-            polygons=[(np.clip(polygon,[0,0],[bgr.shape[1],bgr.shape[0]]).astype(np.float32),score)
-                      for polygon,score in polygons]
-        self._trace('detector',source_size=[int(bgr.shape[1]),int(bgr.shape[0])],
-            tensor_shape=list(tensor.shape),restore_size=[int(map_width),int(map_height)],
-            probability=probabilities[0][0,0],polygons=[dict(polygon=q.tolist(),score=float(s)) for q,s in polygons])
         crops = []
         invalid_crop_quads = 0
         for index,(polygon,score) in enumerate(polygons):
@@ -283,7 +201,6 @@ class ONNXOCRAdapter:
                 invalid_crop_quads += 1
                 continue
             crops.append((index,crop))
-            self._trace('crop',index=index,polygon=polygon.tolist(),pixels=crop)
         self._last_invalid_crop_quads = invalid_crop_quads
         order = sorted(crops,key=lambda item:(item[1].shape[1]/item[1].shape[0],item[0]))
         results = {}
@@ -298,10 +215,7 @@ class ONNXOCRAdapter:
             if len(outputs) != 1 or outputs[0].shape[0] != len(batch):
                 raise ONNXOCRAdapterError('recognizer output cardinality mismatch')
             texts = decode_ctc(outputs[0],self.charset)
-            for (index,_),result in zip(batch,texts):
-                results[index] = result
-                self._trace('recognition',index=index,text=result[0],score=float(result[1]),
-                    batch_shape=list(inputs.shape),kept=bool(result[0].strip() and result[1]>=self.recognition_threshold))
+            for (index,_),result in zip(batch,texts): results[index] = result
         return [(text,score,polygon,det_score) for index,(polygon,det_score) in enumerate(polygons)
                 if index in results for text,score in [results[index]]
                 if text.strip() and score >= self.recognition_threshold]
@@ -311,7 +225,6 @@ class ONNXOCRAdapter:
         with self._lock:
             result,trace = [],[]
             for view in views:
-                self._active_view_id=view.view_id
                 bgr = np.asarray(view.image.convert('RGB'))[:,:,::-1].copy()
                 pixels_hash = hashlib.sha256(bgr.tobytes()).hexdigest()
                 predictions = self.infer_bgr(bgr,ctx)

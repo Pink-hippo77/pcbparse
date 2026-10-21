@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pcbparse.association import associate_ocr
+from pcbparse.association.pin_identity import assign_unscored_pin_numbers
+from pcbparse.association.library_pin_fields import complete_library_pin_numbers
 from pcbparse.graph.palette_wire import apply_palette_wire_filter, prepare_palette_wire
 from pcbparse.graph.internal_wire_filter import filter_internal_wire_segments
+from pcbparse.graph.ic_artifact_filter import filter_ic_artifact_segments
 from pcbparse.graph.physical import (
     build_physical_graph,
     filter_body_outline_wire_segments,
@@ -21,7 +24,7 @@ from pcbparse.graph.physical import (
 )
 from pcbparse.ir.models import CircuitIR, Diagnostic, IRState
 from pcbparse.nets.hypergraph import build_electrical_nets
-from pcbparse.output.official_schema import split_official_pin_numbers
+from pcbparse.output.official_schema import load_official_schema, split_official_pin_numbers
 from pcbparse.output.official_serializer import (
     atomic_write_official_json,
     official_json_hash,
@@ -79,16 +82,24 @@ def _is_debug_execution(config: dict[str, Any]) -> bool:
     return profile == "debug"
 
 
-def _prune_unrepresentable(ir: Any) -> None:
+def _prune_unrepresentable(ir: Any, official_profile: Any = None) -> None:
     """Drop objects the official schema cannot represent (never guess).
 
     Records deleted object IDs and affected nets so degraded output stays
-    auditable; missing component keys / pin numbers are never fabricated.
+    auditable. Call after assigning the permitted unscored non-Box pin IDs;
+    unresolved scored identities still require evidence.
     """
+    schema = load_official_schema(official_profile)["component"]
+    aliases = schema.get("type_aliases", {})
+    allowed_types = set(schema["allowed_types"])
+    unsupported = {
+        item.internal_id: item.category for item in ir.components
+        if aliases.get(item.category, item.category) not in allowed_types
+    }
     valid_components = {
         item.internal_id
         for item in ir.components
-        if isinstance(item.key, str) and item.key.strip()
+        if isinstance(item.key, str) and item.key.strip() and item.internal_id not in unsupported
     }
     total_components = len(ir.components)
     missing_number_pin_ids = sorted(
@@ -140,6 +151,8 @@ def _prune_unrepresentable(ir: Any) -> None:
     ir.metadata["degraded_submission_prune"] = {
         "components_dropped": total_components - len(ir.components),
         "component_ids_dropped": removed_component_ids,
+        "components_dropped_unsupported_type": len(unsupported),
+        "unsupported_component_types": unsupported,
         "pins_dropped": total_pins - len(ir.pins),
         "pin_ids_dropped": removed_pin_ids,
         "pins_dropped_missing_number": len(missing_number_pin_ids),
@@ -153,6 +166,21 @@ def _prune_unrepresentable(ir: Any) -> None:
     }
 
 
+def _prune_empty_electrical_nets(ir: Any) -> None:
+    """Exclude unanchored wire fragments from the submitted electrical nets.
+
+    Pruning before graph construction cannot remove nets created later. Keep
+    physical geometry in the IR for diagnosis; an empty pin set cannot match
+    an electrical net under the organizer's pin-set assignment.
+    """
+    dropped = sorted(net.internal_id for net in ir.electrical_nets if not net.pins)
+    ir.electrical_nets = [net for net in ir.electrical_nets if net.pins]
+    report = ir.metadata.setdefault("degraded_submission_prune", {})
+    prior = set(report.get("dropped_net_ids", []))
+    report["dropped_net_ids"] = sorted(prior | set(dropped))
+    report["nets_dropped"] = len(report["dropped_net_ids"])
+
+
 def infer_one(
     input_path: str | Path,
     output_path: str | Path,
@@ -162,6 +190,7 @@ def infer_one(
     official_profile: str | Path | dict[str, Any] | None = None,
     evidence_sink: Any = None,
     deadline_at: float | None = None,
+    reasoner: Any = None,
 ) -> InferenceResult:
     source = Path(input_path)
     ctx = RunContext.start(source, config, deadline_at=deadline_at)
@@ -174,6 +203,7 @@ def infer_one(
             official_profile=official_profile,
             evidence_sink=evidence_sink,
             _context=ctx,
+            reasoner=reasoner,
         )
     except Exception as exc:
         setattr(exc, "context_manifest", ctx.manifest())
@@ -200,6 +230,7 @@ def _infer_one(
     official_profile: str | Path | dict[str, Any] | None = None,
     evidence_sink: Any = None,
     _context: RunContext | None = None,
+    reasoner: Any = None,
 ) -> InferenceResult:
     source = Path(input_path)
     destination = Path(output_path)
@@ -208,6 +239,12 @@ def _infer_one(
     palette_enabled = graph_config.get("palette_wire_filter_enabled", False)
     if type(palette_enabled) is not bool:
         raise ValueError("graph.palette_wire_filter_enabled must be a boolean")
+    ic_artifact_enabled = graph_config.get('ic_artifact_filter_enabled', False)
+    if type(ic_artifact_enabled) is not bool:
+        raise ValueError('graph.ic_artifact_filter_enabled must be a boolean')
+    passive_values_enabled = config.get('association', {}).get('passive_value_grouping_enabled', False)
+    if type(passive_values_enabled) is not bool:
+        raise ValueError('association.passive_value_grouping_enabled must be a boolean')
     palette_context = None
 
     def _snapshot(stage: str) -> None:
@@ -235,14 +272,27 @@ def _infer_one(
         trace["object_count"] = len(ir.components) + len(ir.pins) + len(ir.segments)
     _snapshot("perception")
 
-    if palette_enabled:
+    if palette_enabled or ic_artifact_enabled:
         with ctx.stage("wire_palette_prepare") as trace:
             palette_context = prepare_palette_wire(source, ir)
             trace["object_count"] = len(palette_context.palette["votes"])
             trace["message"] = palette_context.palette["reason"]
 
     with ctx.stage("association") as trace:
+        reference_groups = config.get('association', {}).get('confirmed_reference_groups_enabled', False)
+        if type(reference_groups) is not bool:
+            raise ValueError('association.confirmed_reference_groups_enabled must be a boolean')
+        if reference_groups:
+            from pcbparse.association.confirmed_reference_groups import reserve_confirmed_reference_groups
+            reserve_confirmed_reference_groups(ir)
         associate_ocr(ir, config)
+        if config.get('submission_ocr', {}).get('ic_readback_enabled') is True:
+            from pcbparse.perception.ic_visual_readback import finalize_visual_ic_fields
+            finalize_visual_ic_fields(ir)
+        if config.get('submission_ocr', {}).get('ic_outline_dedup_enabled') is True:
+            from pcbparse.association.tiled_ic_fragments import reject_tiled_ic_fragments
+            reject_tiled_ic_fragments(ir, source, ctx)
+        complete_library_pin_numbers(ir, config)
         ir.state = IRState.ASSOCIATED
         trace["object_count"] = len(ir.components) + len(ir.pins)
         report = ir.metadata.get("ocr_association", {})
@@ -253,19 +303,15 @@ def _infer_one(
     _snapshot("association")
 
     _snapshot("pre_prune")
-    if _submission_mode(config) == "degraded":
-        # Degraded output is explicit and local to this image. Drop objects
-        # that cannot be represented safely (missing key / missing pin number /
-        # unowned pin), recording deleted IDs and affected nets. Never invent
-        # keys or pin numbers.
-        _prune_unrepresentable(ir)
-
+    # Q&A 1013 exempts non-Box numbers from scoring; PDF p18 explicitly
+    # permits numbering missing labels. Preserve these real detected pins.
+    assign_unscored_pin_numbers(ir)
     # Junction decisions change physical connectivity, so selective reasoning
     # must finish before either graph is materialized.  Running it later would
     # leave physical/electrical nets stale even though the junction object had
     # changed kind.
     with ctx.stage("selective_reasoning") as trace:
-        reasoner = _reasoner_from_config(config)
+        reasoner = reasoner if reasoner is not None else _reasoner_from_config(config)
         run_selective_reasoning(ir, config, ctx, reasoner)
         report = ir.metadata.get("selective_reasoning", {})
         trace["object_count"] = (
@@ -278,6 +324,108 @@ def _infer_one(
                 f"cache_hits={report.get('cache_hits', 0)}"
             )
 
+    # Allow candidate selection to recover unresolved fields before those
+    # objects are discarded. Graph construction still sees only valid owners.
+    if config.get('qwen', {}).get('enabled'):
+        complete_library_pin_numbers(ir, config)
+        if config.get('submission_ocr', {}).get('ic_readback_enabled') is True:
+            finalize_visual_ic_fields(ir)
+    if passive_values_enabled:
+        with ctx.stage('passive_value_groups') as trace:
+            from pcbparse.association.passive_value_groups import recover_passive_values
+            report = recover_passive_values(ir, replace=True)
+            trace['object_count'] = len(report['updates'])
+    if _submission_mode(config) == "degraded":
+        _prune_unrepresentable(ir, official_profile)
+
+    raster_topology = getattr(provider, 'rebuild_topology', None)
+    direct_raster = graph_config.get('raster_direct_enabled', False)
+    if type(direct_raster) is not bool:
+        raise ValueError('graph.raster_direct_enabled must be a boolean')
+    if direct_raster:
+        if not callable(raster_topology) or float(graph_config.get('pin_point_projection_max_px', 0.0)) != 0:
+            raise ValueError('direct raster requires a raster provider and disabled vector pin projection')
+        # Raster tracing replaces the complete legacy graph, including its
+        # segments and attachment evidence. Keep perceived segments through
+        # OCR association, then build only the selected final graph.
+        ir.state = IRState.SEMANTIC
+    else:
+        _build_vector_topology(ir, config, ctx, palette_context)
+
+    if raster_topology is not None:
+        with ctx.stage('raster_topology') as trace:
+            raster_topology(source, ir, ctx)
+            trace['object_count'] = len(ir.electrical_nets)
+    with ctx.stage("validation") as trace:
+        validators = (
+            SchemaValidator(),
+            ReferenceValidator(),
+            GeometryValidator(),
+            GraphValidator(
+                endpoint_tolerance_px=float(
+                    graph_config.get("endpoint_merge_tolerance_px", 3.0)
+                ),
+                collinear_merge_tolerance_px=float(
+                    graph_config.get("collinear_merge_tolerance_px", 0.0)
+                ),
+                collinear_gap_merge_tolerance_px=float(
+                    graph_config.get("collinear_gap_merge_tolerance_px", 0.0)
+                ),
+                gap_repair_max_px=float(graph_config.get("gap_repair_max_px", 12.0)),
+            ),
+        )
+        repaired = repair_ir_once(ir, config_hash=ctx.config_hash)
+        validator_issues = stable_diagnostics(
+            issue for validator in validators for issue in validator.validate(repaired, ctx)
+        )
+        diagnostics = merge_diagnostics(repaired.diagnostics, validator_issues)
+        repaired.diagnostics = diagnostics
+        ir = repaired
+        errors = [item for item in diagnostics if item.severity == "ERROR"]
+        trace["object_count"] = len(diagnostics)
+        if errors:
+            if _is_debug_execution(config):
+                # Debug mode: log quality errors but don't block serialization.
+                # Debug providers (e.g., dataset_debug) naturally produce IR
+                # with quality gaps; blocking them prevents debug output.
+                ir.state = IRState.VALIDATED
+            else:
+                err = PipelineError(f"validation failed with {len(errors)} error(s)", diagnostics)
+                err.partial_ir = ir
+                raise err
+        elif ir.state in {IRState.SEMANTIC, IRState.VALIDATED}:
+            ir.state = IRState.VALIDATED
+
+    with ctx.stage("serialization") as trace:
+        serialize_mode = (
+            "degraded" if _is_debug_execution(config) else _submission_mode(config)
+        )
+        output, quality = serialize_official_with_quality(
+            ir, official_profile, mode=serialize_mode
+        )
+        output_hash = official_json_hash(output, official_profile)
+        atomic_write_official_json(output, destination, official_profile)
+        trace["object_count"] = len(output["components"]) + len(output["pins"]) + len(output["nets"])
+        ir.state = IRState.SERIALIZED
+    _snapshot("final")
+
+    return InferenceResult(
+        input_path=source,
+        output_path=destination,
+        output=output,
+        output_hash=output_hash,
+        ir=ir,
+        diagnostics=diagnostics,
+        context=ctx,
+        quality=quality,
+    )
+
+
+def _build_vector_topology(ir, config, ctx, palette_context):
+    """Build legacy vector connectivity when it is the selected final backend."""
+    graph_options = config.get("graph", {})
+    palette_enabled = graph_options.get("palette_wire_filter_enabled", False)
+    ic_artifact_enabled = graph_options.get("ic_artifact_filter_enabled", False)
     graph_config = config.get("graph", {})
     association_config = config.get("association", {})
     internal_wire_filter_enabled = graph_config.get("internal_wire_filter_enabled", False)
@@ -314,8 +462,10 @@ def _infer_one(
         return build_physical_graph(ir, **graph_kwargs)
 
     with ctx.stage("physical_graph") as trace:
-        if palette_context is not None:
+        if palette_enabled and palette_context is not None:
             apply_palette_wire_filter(ir, palette_context)
+        if ic_artifact_enabled:
+            filter_ic_artifact_segments(ir, palette_context)
         if body_outline_filter_enabled:
             outline_report = filter_body_outline_wire_segments(
                 ir,
@@ -451,72 +601,11 @@ def _infer_one(
             min_text_score=float(label_config.get("min_text_score", 0.75)),
             merge_threshold=float(label_config.get("merge_threshold", 0.85)),
         )
+        if _submission_mode(config) == "degraded":
+            _prune_empty_electrical_nets(ir)
         ir.state = IRState.SEMANTIC
         trace["object_count"] = len(ir.electrical_nets)
 
-    with ctx.stage("validation") as trace:
-        validators = (
-            SchemaValidator(),
-            ReferenceValidator(),
-            GeometryValidator(),
-            GraphValidator(
-                endpoint_tolerance_px=float(
-                    graph_config.get("endpoint_merge_tolerance_px", 3.0)
-                ),
-                collinear_merge_tolerance_px=float(
-                    graph_config.get("collinear_merge_tolerance_px", 0.0)
-                ),
-                collinear_gap_merge_tolerance_px=float(
-                    graph_config.get("collinear_gap_merge_tolerance_px", 0.0)
-                ),
-                gap_repair_max_px=float(graph_config.get("gap_repair_max_px", 12.0)),
-            ),
-        )
-        repaired = repair_ir_once(ir, config_hash=ctx.config_hash)
-        validator_issues = stable_diagnostics(
-            issue for validator in validators for issue in validator.validate(repaired, ctx)
-        )
-        diagnostics = merge_diagnostics(repaired.diagnostics, validator_issues)
-        repaired.diagnostics = diagnostics
-        ir = repaired
-        errors = [item for item in diagnostics if item.severity == "ERROR"]
-        trace["object_count"] = len(diagnostics)
-        if errors:
-            if _is_debug_execution(config):
-                # Debug mode: log quality errors but don't block serialization.
-                # Debug providers (e.g., dataset_debug) naturally produce IR
-                # with quality gaps; blocking them prevents debug output.
-                ir.state = IRState.VALIDATED
-            else:
-                err = PipelineError(f"validation failed with {len(errors)} error(s)", diagnostics)
-                err.partial_ir = ir
-                raise err
-        elif ir.state in {IRState.SEMANTIC, IRState.VALIDATED}:
-            ir.state = IRState.VALIDATED
-
-    with ctx.stage("serialization") as trace:
-        serialize_mode = (
-            "degraded" if _is_debug_execution(config) else _submission_mode(config)
-        )
-        output, quality = serialize_official_with_quality(
-            ir, official_profile, mode=serialize_mode
-        )
-        output_hash = official_json_hash(output, official_profile)
-        atomic_write_official_json(output, destination, official_profile)
-        trace["object_count"] = len(output["components"]) + len(output["pins"]) + len(output["nets"])
-        ir.state = IRState.SERIALIZED
-    _snapshot("final")
-
-    return InferenceResult(
-        input_path=source,
-        output_path=destination,
-        output=output,
-        output_hash=output_hash,
-        ir=ir,
-        diagnostics=diagnostics,
-        context=ctx,
-        quality=quality,
-    )
 
 
 def _reasoner_from_config(config: dict[str, Any]):

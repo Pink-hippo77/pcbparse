@@ -20,6 +20,7 @@ from pcbparse.association.text_component import (
 )
 from pcbparse.association.text_pin import associate_pin_texts
 from pcbparse.association.pin_component import associate_pin_components
+from pcbparse.association.passive_reference_names import complete_passive_reference_names
 from pcbparse.ir.models import CircuitIR
 from pcbparse.knowledge.model_catalog import load_model_catalog
 
@@ -111,11 +112,23 @@ def associate_ocr(
     )
     if binding_repair_summary is not None:
         component_summary['binding_repair'] = binding_repair_summary
+    if resolved.visible_reference_recovery_enabled:
+        from pcbparse.association.visible_references import recover_visible_references
+        component_summary['visible_reference_recovery']=recover_visible_references(ir)
+    if resolved.box_edge_reference_recovery_enabled:
+        from pcbparse.association.visible_references import recover_box_edge_references
+        component_summary['box_edge_reference_recovery']=recover_box_edge_references(ir)
+    if resolved.amplifier_reference_recovery_enabled:
+        from pcbparse.association.visible_references import recover_amplifier_references
+        component_summary['amplifier_reference_recovery']=recover_amplifier_references(ir)
+    if resolved.passive_reference_name_enabled:
+        component_summary['passive_reference_names'] = complete_passive_reference_names(ir.components)
     pin_summary = associate_pin_texts(
         ir.pins,
         ir.texts,
         ir.diagnostics,
         resolved,
+        components=ir.components,
     )
     netlabel_summary = associate_netlabel_texts(ir, resolved)
     stage_diagnostics = ir.diagnostics[before:]

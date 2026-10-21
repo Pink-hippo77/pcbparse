@@ -45,7 +45,8 @@ _CHARSET_BONUS: float = 0.03
 # (designator, pin number, value), boost confidence.
 _STRUCTURE_BONUS: float = 0.05
 
-_DESIGNATOR_RE = re.compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$")
+from pcbparse.association.reference_prefixes import DESIGNATOR_PATTERN
+_DESIGNATOR_RE = re.compile(DESIGNATOR_PATTERN)
 _PIN_NUMBER_RE = re.compile(r"^[0-9]{1,3}$")
 _ALNUM_PIN_RE = re.compile(r"^(?:[A-Z]{1,2}[0-9]{1,2}|[0-9]{1,2}[A-Z]{1,2})$")
 _VALUE_RE = re.compile(

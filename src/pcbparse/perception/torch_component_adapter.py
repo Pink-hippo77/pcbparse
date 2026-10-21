@@ -32,7 +32,6 @@ class TorchComponentAdapter:
         device: str,
         score_threshold: float,
         max_detections: int,
-        per_class_score_thresholds: Mapping[str, Any] | None = None,
     ) -> None:
         self._checkpoint = checkpoint
         self._model = checkpoint.model
@@ -45,11 +44,6 @@ class TorchComponentAdapter:
             int(item["model_label"]): dict(item)
             for item in checkpoint.category_table
         }
-        self._per_class_score_thresholds = _normalize_per_class_thresholds(
-            per_class_score_thresholds,
-            categories=self._categories,
-            population_floor=self._score_threshold,
-        )
         self._lock = threading.RLock()
         # TorchVision otherwise discards low-score candidates before the
         # adapter's artifact-configured threshold can be applied.  NMS and the
@@ -71,10 +65,6 @@ class TorchComponentAdapter:
     @property
     def checkpoint_sha256(self) -> str:
         return self._checkpoint.checkpoint_sha256
-
-    @property
-    def per_class_score_thresholds(self) -> dict[str, float]:
-        return dict(self._per_class_score_thresholds)
 
     def predict(self, image: ImageView, ctx: Any) -> list[Component]:
         """Return deterministic local ``xyxy`` detections for one image view."""
@@ -113,12 +103,6 @@ class TorchComponentAdapter:
                 # Background and any out-of-contract classifier output are
                 # deliberately rejected rather than mapped to UNKNOWN.
                 continue
-            category = self._categories[label]
-            effective_threshold = self._per_class_score_thresholds.get(
-                str(category["name"]), self._score_threshold
-            )
-            if score < effective_threshold:
-                continue
             if not isinstance(raw_box, (list, tuple)) or len(raw_box) != 4:
                 continue
             values = tuple(float(item) for item in raw_box)
@@ -150,9 +134,6 @@ class TorchComponentAdapter:
         occurrence: dict[str, int] = {}
         for score, label, box, source_index in candidates:
             category = self._categories[label]
-            effective_threshold = self._per_class_score_thresholds.get(
-                str(category["name"]), self._score_threshold
-            )
             signature = (
                 f"{image_identity}|{image.view_id}|{label}|"
                 + "|".join(f"{coordinate:.4f}" for coordinate in box)
@@ -193,7 +174,6 @@ class TorchComponentAdapter:
                                 "coordinate_system": "image_view_local_xyxy",
                                 "source_detection_index": source_index,
                                 "checkpoint_epoch": self._checkpoint.epoch,
-                                "effective_score_threshold": effective_threshold,
                             },
                         )
                     ],
@@ -238,15 +218,11 @@ def factory(path: str | Path, entry: Mapping[str, Any]) -> TorchComponentAdapter
     )
     score_threshold = _entry_value(entry, "score_threshold", default=0.25)
     max_detections = _entry_value(entry, "max_detections", default=300)
-    per_class_score_thresholds = _entry_value(
-        entry, "per_class_score_thresholds", default={}
-    )
     return TorchComponentAdapter(
         checkpoint,
         device=str(resolved_device),
         score_threshold=_threshold(score_threshold),
         max_detections=max_detections,
-        per_class_score_thresholds=per_class_score_thresholds,
     )
 
 
@@ -284,32 +260,6 @@ def _threshold(value: Any) -> float:
     if not math.isfinite(number) or not 0.0 <= number <= 1.0:
         raise ValueError("score_threshold must be a finite number in [0,1]")
     return number
-
-
-def _normalize_per_class_thresholds(
-    value: Mapping[str, Any] | None,
-    *,
-    categories: Mapping[int, Mapping[str, Any]],
-    population_floor: float,
-) -> dict[str, float]:
-    if value is None:
-        return {}
-    if not isinstance(value, Mapping):
-        raise ValueError("per_class_score_thresholds must be an object")
-    known = {str(category["name"]) for category in categories.values()}
-    result: dict[str, float] = {}
-    for raw_name, raw_threshold in value.items():
-        if not isinstance(raw_name, str) or not raw_name:
-            raise ValueError("per-class threshold names must be non-empty strings")
-        if raw_name not in known:
-            raise ValueError(f"unknown per-class threshold category {raw_name!r}")
-        threshold = _threshold(raw_threshold)
-        if threshold < population_floor:
-            raise ValueError(
-                f"per_class_score_thresholds.{raw_name} cannot be below score_threshold"
-            )
-        result[raw_name] = threshold
-    return result
 
 
 def _check_budget(ctx: Any, stage: str) -> None:

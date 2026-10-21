@@ -9,7 +9,8 @@ protobuf==7.36.1
 pydantic==2.13.4
 pydantic-core==2.46.4
 typing-inspection==0.4.2
-onnxruntime-gpu==1.21.1
+# OCR runs on CPU; Torch continues to use the base image's CUDA runtime.
+onnxruntime==1.21.1
 numpy==2.3.5
 Pillow==12.2.0
 typing-extensions==4.16.0

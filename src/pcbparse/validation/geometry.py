@@ -92,6 +92,9 @@ def validate_geometry(ir: CircuitIR) -> list[Diagnostic]:
         issues.extend(
             _bbox_issues(component.bbox, component.internal_id, width, height, "component bbox")
         )
+        if component.body_bbox is not None:
+            issues.extend(_bbox_issues(component.body_bbox, component.internal_id,
+                                       width, height, "component body bbox"))
     for text in ir.texts:
         issues.extend(_bbox_issues(text.bbox, text.internal_id, width, height, "text bbox"))
     for pin in ir.pins:

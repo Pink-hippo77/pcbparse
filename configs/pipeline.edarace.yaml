@@ -14,13 +14,13 @@
     "component_tile_overlap": 64,
     "wire_tile_size": 1024,
     "wire_tile_overlap": 160,
-    "ocr_component_roi_padding_px": 0,
+    "ocr_component_roi_padding_px": 32,
     "pin_component_roi_padding_px": 64,
     "keep_original_rgb": true,
     "coordinate_roundtrip_tolerance_px": 0.5,
     "component_nms_iou": 0.45,
     "component_candidate_min_score": 0.3,
-    "component_max_candidates": 128,
+    "component_max_candidates": 512,
     "component_adaptive_fallback_enabled": true,
     "component_fallback_tile_size": 256,
     "component_fallback_tile_overlap": 32,
@@ -45,7 +45,21 @@
     "pin_min_score": 0.3,
     "pin_unique_margin": 0.0,
     "netlabel_min_text_score": 0.5,
-    "pin_name_row_penalty": 0.22
+    "pin_name_row_penalty": 0.22,
+    "component_designator_center_tiebreak_enabled": true,
+    "box_external_designator_preference_enabled": true,
+    "component_cross_view_designator_enabled": true,
+    "component_punctuation_designator_enabled": true,
+    "passive_reference_name_enabled": true,
+    "pin_body_name_context_enabled": true,
+    "pin_body_component_roi_context_enabled": true,
+    "component_model_catalog_path": "models/submission-knowledge/component-model-catalog-20260930.json",
+    "component_model_catalog_sha256": "07bef78b3ae99f0076ce8abebf7ad4e0b0a5e20d43f2a0cdf4dbf961277edc5a",
+    "visible_reference_recovery_enabled": true,
+    "box_edge_reference_recovery_enabled": true,
+    "amplifier_reference_recovery_enabled": true,
+    "passive_value_grouping_enabled": true,
+    "confirmed_reference_groups_enabled": true
   },
   "graph": {
     "endpoint_merge_tolerance_px": 1.0,
@@ -59,7 +73,9 @@
     "collinear_merge_tolerance_px": 0.75,
     "collinear_gap_merge_tolerance_px": 6.0,
     "palette_wire_filter_enabled": true,
-    "internal_wire_filter_enabled": true
+    "internal_wire_filter_enabled": true,
+    "ic_artifact_filter_enabled": true,
+    "raster_direct_enabled": true
   },
   "labels": {
     "min_text_score": 0.75,
@@ -73,13 +89,30 @@
     "backend": "disabled",
     "endpoint": "",
     "model": "",
-    "route_threshold": 0.72,
-    "max_calls_per_image": 0,
-    "max_input_tokens_per_image": 0,
-    "max_output_tokens_per_call": 0,
-    "timeout_seconds": 12.0,
+    "route_threshold": 0.58,
+    "max_calls_per_image": 4,
+    "max_input_tokens_per_image": 8192,
+    "max_output_tokens_per_call": 192,
+    "timeout_seconds": 8.0,
+    "decision_min_confidence": 0.9,
+    "send_images": true,
+    "task_types": [
+      "component.key",
+      "component.name",
+      "pin.number",
+      "pin.name",
+      "pin.readback_name",
+      "pin.readback_number"
+    ],
+    "ic_only": true,
+    "visual_ic_reselection_enabled": true,
     "min_time_reserve_seconds": 25.0,
-    "cache": false
+    "cache": false,
+    "visual_batch_size": 6,
+    "visual_numeric_cell_readback_enabled": true,
+    "visual_missing_numbers_enabled": true,
+    "visual_unsupported_numbers_enabled": true,
+    "visual_alphanumeric_numbers_enabled": true
   },
   "validation": {
     "max_repair_rounds": 1,
@@ -97,5 +130,86 @@
   },
   "wire": {
     "threshold": 0.6
+  },
+  "knowledge": {
+    "pin_library_path": "models/submission-knowledge/cpntLibrary.json",
+    "pin_library_sha256": "9c2bec334d41119f29a62cd6ff3fb36ae28fa28cbb7aeb3155875a355b38d322"
+  },
+  "submission_ocr": {
+    "enabled": true,
+    "ic_readback_enabled": true,
+    "rail_readback_enabled": true,
+    "descriptor_path": "models/submission-ocr-v5/ocr-bundle.json",
+    "descriptor_sha256": "07a2f6a367a3c5a63b4d313d2af729ca0d4f54754f4354ed9d8f16cc64c539fe",
+    "color_terminals_enabled": true,
+    "interior_ic_enabled": true,
+    "learned_passive_tips_enabled": true,
+    "ic_outline_dedup_enabled": true,
+    "monochrome_ground_ports_enabled": true,
+    "shaped_ic_leads_enabled": false,
+    "learned_color_passive_tips_enabled": true,
+    "passive_pin_refiner": {
+      "enabled": true,
+      "model_path": "models/submission-passive-pin-v1/model.pt",
+      "model_sha256": "0805e7ea4befbe0111b0d70b70c69dab0763f008dd26f3f5aafe6ce658be3596",
+      "split_sha256": "25f75360b9d6777a3f5ec9b7260bfac9bc8e936543a8dd188188204c23e16b75",
+      "inference": {
+        "input_size": 256,
+        "output_stride": 4,
+        "component_mask_channel": true,
+        "score_threshold": 0.5,
+        "nms_radius_heatmap": 1.0,
+        "max_detections_per_component": 128,
+        "box_margin_px": 16.0,
+        "box_prior_mode": "filled_rect_v1",
+        "device": "auto"
+      }
+    },
+    "visual_ic_pin_refiner_enabled": true,
+    "triangle_grounds_enabled": true,
+    "pin_name_lane_refinement_enabled": true,
+    "learned_ic_tips_enabled": false,
+    "local_reference_readback_enabled": true,
+    "local_reference_crop_retry_enabled": true,
+    "local_reference_line_isolation_enabled": true,
+    "local_reference_selective_retry_enabled": true,
+    "local_symbol_type_readback_enabled": true,
+    "occluded_passive_readback_enabled": true,
+    "interior_number_tip_refinement_enabled": true,
+    "cpu_threads": 8,
+    "repeated_pin_name_lanes_enabled": true,
+    "decorated_ic_leads_enabled": true,
+    "observed_terminal_boundaries_enabled": true,
+    "observed_capacitor_extents_enabled": true
+  },
+  "submission_topology": {
+    "enabled": true,
+    "descriptor_path": "models/submission-topology-v6/bundle.json",
+    "descriptor_sha256": "4ef3319a0fd0a7a8c89c4402181b7960686893b86a75dda8b2c5a96b33308299",
+    "device": "auto",
+    "trusted_source_owners_enabled": true,
+    "palette_gate_enabled": true,
+    "achromatic_wire_recovery_enabled": true,
+    "palette_stroke_recovery_enabled": true,
+    "skip_preliminary_wires_enabled": true,
+    "signal_labels_enabled": true,
+    "direct_rail_contacts_enabled": true
+  },
+  "submission_pin": {
+    "enabled": true,
+    "model_path": "models/submission-pin-v11/model.pt",
+    "model_sha256": "558394a0e7bda652b50c4b422f4d0d1902213750b444d2737ff6caaa93311b68",
+    "split_sha256": "25f75360b9d6777a3f5ec9b7260bfac9bc8e936543a8dd188188204c23e16b75",
+    "inference": {
+      "input_size": 256,
+      "output_stride": 4,
+      "component_mask_channel": true,
+      "score_threshold": 0.3,
+      "nms_radius_heatmap": 1.0,
+      "max_detections_per_component": 128,
+      "box_margin_px": 16.0,
+      "box_prior_mode": "filled_rect_v1",
+      "device": "auto"
+    }
   }
 }

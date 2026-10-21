@@ -10,9 +10,6 @@ the single owner of coordinate restoration and vectorisation.
 import hashlib
 import importlib
 import math
-import os
-import shutil
-import tempfile
 import threading
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -213,31 +210,19 @@ class TorchWireAdapter:
         torch = _require_torch()
         selected_device = _torch_device(torch, requested_device)
         if artifact_format in {"torchscript", "torchscript_or_checkpoint"}:
-            staged: Path | None = None
             try:
-                # torch.jit.load cannot open non-ASCII (e.g. Chinese) paths on
-                # Windows; stage a copy in the ASCII %TEMP% directory first.
-                descriptor, staged_name = tempfile.mkstemp(
-                    prefix=".wire-adapter-", suffix=".pt", dir=tempfile.gettempdir()
-                )
-                os.close(descriptor)
-                staged = Path(staged_name)
-                staged.unlink()
-                shutil.copy2(self.artifact_path, staged)
-                module = torch.jit.load(str(staged), map_location=selected_device)
-                staged.unlink(missing_ok=True)
-                staged = None
+                # Windows user and temporary directories may both contain
+                # Unicode characters. A Python stream avoids the native
+                # TorchScript loader's filename handling entirely.
+                with self.artifact_path.open("rb") as stream:
+                    module = torch.jit.load(stream, map_location=selected_device)
                 module.eval()
                 return "torchscript", module, str(selected_device)
             except OSError as exc:
-                if staged is not None:
-                    staged.unlink(missing_ok=True)
                 raise TorchWireAdapterError(
-                    f"cannot stage wire TorchScript artifact: {type(exc).__name__}: {exc}"
+                    f"cannot read wire TorchScript artifact: {type(exc).__name__}: {exc}"
                 ) from exc
             except Exception as script_error:
-                if staged is not None:
-                    staged.unlink(missing_ok=True)
                 if artifact_format == "torchscript":
                     raise TorchWireAdapterError(
                         f"cannot load wire TorchScript artifact: {type(script_error).__name__}: {script_error}"

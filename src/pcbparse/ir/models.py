@@ -76,6 +76,9 @@ class Component(StrictModel):
     name: str = ""
     value: str = ""
     bbox: BBox
+    # The detector ROI may include leads. Preserve it for association while
+    # retaining an independently observed physical symbol boundary.
+    body_bbox: BBox | None = None
     score: float = Field(default=1.0, ge=0.0, le=1.0)
     key_score: float = Field(default=0.0, ge=0.0, le=1.0)
     rotation: int | None = None

@@ -44,8 +44,8 @@ class PinModelConfig:
     output_stride: int = 4
 
     def __post_init__(self) -> None:
-        if self.input_channels != 3:
-            raise ValueError("PinModelConfig.input_channels must be 3 (RGB)")
+        if self.input_channels not in {3, 4}:
+            raise ValueError("PinModelConfig.input_channels must be 3 (RGB) or 4 (RGB + component mask)")
         if type(self.base_channels) is not int or self.base_channels < 2:
             raise ValueError("PinModelConfig.base_channels must be an integer >= 2")
         if self.output_stride != 4:
@@ -1001,8 +1001,8 @@ def _normalize_export_samples(value: Any | Sequence[Any], torch: Any) -> list[An
     else:
         raise TypeError("sample_inputs must be a tensor or non-empty tensor sequence")
     for sample in samples:
-        if sample.ndim != 4 or sample.shape[1] != 3:
-            raise ValueError("each export sample must have shape [B, 3, H, W]")
+        if sample.ndim != 4 or sample.shape[1] not in {3, 4}:
+            raise ValueError("each export sample must have shape [B, 3 or 4, H, W]")
     return samples
 
 

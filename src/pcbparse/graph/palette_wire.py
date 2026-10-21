@@ -120,6 +120,58 @@ def estimate_palette(ir: CircuitIR, bins, ink, policy: PalettePolicy) -> dict[st
             "supporting_components": len(owners), "agreement": agreement, "votes": votes}
 
 
+def palette_cleanup_stability(ir: CircuitIR, bins, ink, palette: dict[str, Any],
+                              policy: PalettePolicy) -> dict[str, Any]:
+    """Check whether duplicate rejection newly enables destructive filtering.
+
+    Compare the live color estimate with a temporary view that also includes
+    the discarded detector observations. Their coordinates affect this
+    sensitivity calculation only. They never return as graph obstacles or
+    scored objects. Local signal-label evidence keeps the live hue estimate.
+    """
+    from pcbparse.ir.models import Component
+
+    if not palette.get('enabled'):
+        return {'stable': False, 'reason': 'palette_not_enabled'}
+    updates = ir.metadata.get('observed_terminal_boundaries', {}).get('updates', [])
+    prior_pins = ir.pins
+    if updates:
+        # A local endpoint correction must not newly authorize removing an
+        # entire ink color. Require agreement with the independent pre-repair
+        # anchor observations before enabling destructive palette filtering.
+        from pcbparse.ir.models import Point
+        previous = {r['pin_id']: r['previous'] for r in updates}
+        prior_pins = [p.model_copy(update={'point': Point(**previous[p.internal_id])})
+                      if p.internal_id in previous else p for p in ir.pins]
+        prior = estimate_palette(ir.model_copy(update={'pins': prior_pins}), bins, ink, policy)
+        if not (prior['enabled'] and _hue_distance(prior['wire_hue_bin'], palette['wire_hue_bin']) <= 1):
+            return {'stable': False, 'reason': 'terminal_refinement_changes_palette',
+                    'pre_refinement': {k:v for k,v in prior.items() if k != 'votes'}}
+    observations = ir.metadata.get('tiled_ic_fragments', {}).get('palette_observations', [])
+    if not observations:
+        return {'stable': True, 'reason': 'no_duplicate_cleanup'}
+    components, pins = [], []
+    active_components, active_pins = ir.component_index(), ir.pin_index()
+    for row in observations:
+        if row['component']['internal_id'] in active_components:
+            continue
+        components.append(Component.model_validate(row['component']))
+        pins.extend(Pin.model_validate(p) for p in row['pins'] if p['internal_id'] not in active_pins)
+    if not components:
+        return {'stable': True, 'reason': 'no_discarded_palette_observations'}
+    # Both repairs can increase anchor agreement. Test their combined original
+    # observations as well; checking each change alone misses that interaction.
+    observed_view = ir.model_copy(update={'components': [*ir.components, *components],
+                                          'pins': [*prior_pins, *pins]})
+    prior = estimate_palette(observed_view, bins, ink, policy)
+    stable = bool(prior['enabled'] and
+                  _hue_distance(prior['wire_hue_bin'], palette['wire_hue_bin']) <= 1)
+    return {'stable': stable,
+            'reason': 'cleanup_palette_supported' if stable else 'duplicate_cleanup_changes_palette',
+            'discarded_components': len(components), 'discarded_pins': len(pins),
+            'with_discarded_observations': {k: v for k, v in prior.items() if k != 'votes'}}
+
+
 def prepare_palette_wire(source: str | Path, ir: CircuitIR) -> PaletteWireContext:
     """Read only the actual input image and bind pixels to canonical IR geometry."""
     if stable_file_hash(source) != ir.image.sha256:

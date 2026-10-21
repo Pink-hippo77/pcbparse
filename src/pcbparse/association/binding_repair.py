@@ -43,7 +43,8 @@ from pcbparse.association.ocr_common import (
 )
 from pcbparse.ir.models import Component, TextToken
 
-_DESIGNATOR = re.compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$")
+from pcbparse.association.reference_prefixes import DESIGNATOR_PATTERN
+_DESIGNATOR = re.compile(DESIGNATOR_PATTERN)
 
 # Weighting mirrors ``resolve_component_keys`` so a repair cannot outrank
 # evidence the main pass already trusts more.

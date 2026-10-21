@@ -4,6 +4,8 @@
 
 生产推理只读取图像、模型、配置和静态器件库。输出顶层为 `components`、`pins`、`nets`；缺少器件标识或引脚编号时，不自动编造字段。
 
+当前同步版本为 **V5**，公开 13 图的平台实测为 **85.13215**。详情及限制见 [V5 结果说明](releases/V5.md)。
+
 ## 仓库范围
 
 Git 仅保存主代码及运行、构建所需的配置：
@@ -16,18 +18,19 @@ Git 仅保存主代码及运行、构建所需的配置：
 | `models/models.lock.json` | 唯一生产模型权威 |
 | `models/registry.yaml` | 描述性模型信息 |
 | `docker/` | 容器构建和提交入口 |
-| `tests/unit/` | 无需数据集或模型的序列化回归测试 |
+| `tests/unit/` | 无需数据集或模型的序列化与几何回归测试 |
+| `releases/` | 已验证版本的公开指标、运行信息和源码哈希 |
 
 数据集、权重、完整模型 bundle、完整工作区测试、评测模块、实验脚本、历史文档及运行结果留在工作区或 llm 服务器，不随 Git 分支分发；`tests/unit/` 中的独立回归测试随代码分发。评测模块同时排除在安装包之外。当前分支的清理不改写历史提交。
 
-服务器完整项目位于 `/home/data/yinjx/pcbparse-competition/project`，包含合并后的数据与模型资产。新克隆的代码仓库需要另外准备这些资产。
+新克隆的代码仓库需要另外准备模型权重及静态资产；个人服务器配置和 API 密钥不随仓库分发。
 
 ## 安装与检查
 
 运行环境为 Python 3.11 或 3.12。PowerShell 示例：
 
 ```powershell
-git clone https://github.com/yueryu54111-commits/pcbparse.git
+git clone https://github.com/Pink-hippo77/pcbparse.git
 cd pcbparse
 python -m pip install -e .
 $env:PYTHONPATH = (Resolve-Path './src').Path

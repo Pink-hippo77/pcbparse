@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
-from math import hypot
+from math import floor, hypot, isfinite
 from typing import Any, Iterable, Literal, Sequence
 
 import numpy as np
@@ -260,6 +260,20 @@ def vectorize_wire_mask(
     nodes, adjacency = _build_pixel_graph(skeleton)
     raw_paths = _trace_pixel_graph(nodes, adjacency)
 
+    # Invert the small bridge neighbourhood once, rather than scanning every
+    # bridge against every pixel of every path.
+    repair_pixels: dict[Pixel, list[str]] = {}
+    repair_reach = options.gap_closing_radius + 1.0
+    repair_radius = int(repair_reach)
+    for repair in virtual_repairs:
+        if repair.bridge_pixel is None:
+            continue
+        row, column = repair.bridge_pixel
+        for dr in range(-repair_radius, repair_radius+1):
+            for dc in range(-repair_radius, repair_radius+1):
+                if hypot(dr, dc) <= repair_reach:
+                    repair_pixels.setdefault((row+dr, column+dc), []).append(repair.repair_id)
+
     path_records: list[tuple[Pixel, Pixel, SkeletonPolyline]] = []
     geometry_seen: set[tuple[Coordinate, ...]] = set()
     for pixel_path in raw_paths:
@@ -285,6 +299,7 @@ def vectorize_wire_mask(
                 pixel_path,
                 virtual_repairs,
                 reach=options.gap_closing_radius + 1.0,
+                pixel_index=repair_pixels,
             ),
         )
         path_records.append((pixel_path[0], pixel_path[-1], polyline))
@@ -381,8 +396,25 @@ def classify_break_lineage(
 
     records: list[BreakLineageRecord] = []
     seen_pairs: set[tuple[str, str]] = set()
+    # Only nearby endpoints can form a break. Preserve original right-index
+    # order, so duplicate endpoint pairs keep the exact same first evidence.
+    # Large sheets otherwise spend quadratic time comparing distant strokes.
+    spatial_ends: dict[tuple[int, int], list[int]] = {}
+    cell_size = max(float(max_gap_px), 1.0)
+    use_spatial = isfinite(cell_size)
+    if use_spatial:
+        for index, (_, point, _) in enumerate(free_ends):
+            cell = (floor(point[0]/cell_size), floor(point[1]/cell_size))
+            spatial_ends.setdefault(cell, []).append(index)
     for left_index, (left_id, left_point, left_ns) in enumerate(free_ends):
-        for right_id, right_point, right_ns in free_ends[left_index + 1 :]:
+        if use_spatial:
+            cx,cy = floor(left_point[0]/cell_size),floor(left_point[1]/cell_size)
+            right_indices = sorted(index for dx in (-1,0,1) for dy in (-1,0,1)
+                                   for index in spatial_ends.get((cx+dx,cy+dy), ()) if index>left_index)
+        else:
+            right_indices = range(left_index+1,len(free_ends))
+        for right_index in right_indices:
+            right_id, right_point, right_ns = free_ends[right_index]
             if left_id == right_id:
                 continue
             pair = tuple(sorted((left_id, right_id)))
@@ -450,11 +482,14 @@ def _polyline_repair_ids(
     repairs: Sequence[VirtualGapRepair],
     *,
     reach: float,
+    pixel_index: dict[Pixel, list[str]] | None = None,
 ) -> tuple[str, ...]:
     """Repair ids whose synthetic bridge pixels this skeleton path traverses."""
 
     if not repairs:
         return ()
+    if pixel_index is not None:
+        return tuple(sorted({identity for pixel in pixel_path for identity in pixel_index.get(pixel, ())}))
     hits: set[str] = set()
     for repair in repairs:
         bridge = repair.bridge_pixel
@@ -508,6 +543,17 @@ def _binary_close_tracking_repairs(
         return closed, repairs
     labels_after = _label_components(closed)
     added = np.asarray(closed, dtype=bool) & ~np.asarray(mask, dtype=bool)
+    # Cache row-major pixels per component, avoiding a full mask scan for
+    # each pair in a large merged component.
+    foreground = np.argwhere(labels_before)
+    component_pixels: dict[int, np.ndarray] = {}
+    if len(foreground):
+        values = labels_before[foreground[:, 0], foreground[:, 1]]
+        order = np.argsort(values, kind="stable")
+        sorted_ids = values[order]
+        boundaries = np.r_[0, np.flatnonzero(np.diff(sorted_ids))+1, len(order)]
+        for a, b in zip(boundaries[:-1], boundaries[1:]):
+            component_pixels[int(sorted_ids[a])] = foreground[order[a:b]]
     merged: dict[int, set[int]] = {}
     for row, column in np.argwhere(mask):
         before = int(labels_before[row, column])
@@ -522,7 +568,7 @@ def _binary_close_tracking_repairs(
         for index, left_id in enumerate(ordered):
             for right_id in ordered[index + 1 :]:
                 gap, left_pixel, right_pixel = _closest_component_pair(
-                    labels_before, left_id, right_id, radius
+                    labels_before, left_id, right_id, radius, component_pixels=component_pixels
                 )
                 bridge_pixel = (
                     (
@@ -535,7 +581,10 @@ def _binary_close_tracking_repairs(
                 added_count = 0
                 if bridge_pixel is not None:
                     reach = float(radius) + 1.0
-                    for row, column in np.argwhere(added):
+                    row0, column0 = max(0, bridge_pixel[0]-radius-1), max(0, bridge_pixel[1]-radius-1)
+                    row1, column1 = min(added.shape[0], bridge_pixel[0]+radius+2), min(added.shape[1], bridge_pixel[1]+radius+2)
+                    for local_row, local_column in np.argwhere(added[row0:row1, column0:column1]):
+                        row, column = int(local_row)+row0, int(local_column)+column0
                         if (
                             hypot(
                                 int(row) - bridge_pixel[0],
@@ -600,6 +649,8 @@ def _closest_component_pair(
     left_id: int,
     right_id: int,
     radius: int,
+    *,
+    component_pixels: dict[int, np.ndarray] | None = None,
 ) -> tuple[float, Pixel | None, Pixel | None]:
     """Closest pixel pair between two mask components, bounded by the radius.
 
@@ -609,9 +660,8 @@ def _closest_component_pair(
     retain the historical row-major (left pixel, right pixel) tie break.
     """
 
-    left_pixels = np.argwhere(labels == left_id)
-    right_mask = labels == right_id
-    right_pixels = np.argwhere(right_mask)
+    left_pixels = np.argwhere(labels == left_id) if component_pixels is None else component_pixels[left_id]
+    right_pixels = np.argwhere(labels == right_id) if component_pixels is None else component_pixels[right_id]
     if left_pixels.size == 0 or right_pixels.size == 0:
         return float(2 * radius), None, None
 
@@ -655,10 +705,10 @@ def _closest_component_pair(
             if valid_indices.size == 0:
                 continue
             matched_positions = np.flatnonzero(
-                right_mask[
+                labels[
                     neighbor_rows[valid_indices],
                     neighbor_columns[valid_indices],
-                ]
+                ] == right_id
             )
             if matched_positions.size == 0:
                 continue
@@ -738,10 +788,37 @@ def deduplicate_polylines(
         raise ValueError("tolerance must be finite and non-negative")
     candidates = sorted(tuple(polylines), key=_polyline_sort_key)
     kept: list[SkeletonPolyline] = []
+    endpoints: dict[tuple[int, int], list[int]] = {}
+    closed_indices: list[int] = []
+    nonfinite_indices: list[int] = []
+    cell_size = max(float(tolerance), 1.0)
     for candidate in candidates:
-        if any(_same_curve(candidate.points, other.points, tolerance) for other in kept):
+        closed = candidate.points[0] == candidate.points[-1]
+        finite = all(isfinite(value) for point in (candidate.points[0], candidate.points[-1]) for value in point)
+        if closed:
+            nearby = closed_indices
+        elif not finite:
+            nearby = range(len(kept))
+        else:
+            x, y = candidate.points[0]
+            cx, cy = floor(x / cell_size), floor(y / cell_size)
+            nearby = sorted(set(nonfinite_indices).union(
+                index for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                for index in endpoints.get((cx+dx, cy+dy), ())
+            ))
+        if any(_same_curve(candidate.points, kept[index].points, tolerance) for index in nearby):
             continue
+        index = len(kept)
         kept.append(candidate)
+        if closed:
+            # Closed curves need no coincident endpoints; retain the original
+            # full geometric check for these uncommon cases.
+            closed_indices.append(index)
+        elif not finite:
+            nonfinite_indices.append(index)
+        else:
+            for x, y in (candidate.points[0], candidate.points[-1]):
+                endpoints.setdefault((floor(x / cell_size), floor(y / cell_size)), []).append(index)
     return tuple(kept)
 
 

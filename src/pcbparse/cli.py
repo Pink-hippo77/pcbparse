@@ -345,8 +345,21 @@ def _apply_profile(config: dict[str, Any], profile: dict[str, Any]) -> dict[str,
         # editing committed profiles.  Credentials still come from env vars.
         qwen["enabled"] = qwen_env.strip().lower() in {"1", "true", "yes", "on"}
     else:
-        qwen["enabled"] = bool(profile["qwen_enabled"])
+        # Runtime endpoint/model injection has already enabled HTTP reasoning
+        # in load_config. A profile default must not turn that explicit
+        # deployment configuration off. The environment override above wins.
+        configured_http = (
+            bool(qwen.get("enabled"))
+            and qwen.get("backend") == "http"
+            and bool(qwen.get("endpoint"))
+            and bool(qwen.get("model"))
+        )
+        qwen["enabled"] = bool(profile["qwen_enabled"]) or configured_http
     validation["require_zero_errors"] = bool(profile["strict_validation"])
+    if qwen.get("configuration_error") == "invalid_endpoint":
+        # A profile or force-on switch cannot make an invalid URL usable.
+        qwen["enabled"] = False
+        qwen["backend"] = "disabled"
     return effective
 
 

@@ -51,13 +51,6 @@ def resize_linear(image: np.ndarray, width: int, height: int) -> np.ndarray:
     return result
 
 
-def detector_canvas_size(height: int, width: int) -> tuple[int, int]:
-    """Pixel canvas before resize; tiny views are padded at bottom/right."""
-    if type(height) is not int or type(width) is not int or min(height,width)<1:
-        raise OCRProcessingError('invalid source dimensions')
-    return (max(32,height),max(32,width)) if height+width<64 else (height,width)
-
-
 def detection_tensor(bgr: np.ndarray, *, limit_side_len: int = 64,
                      max_side_limit: int = 4000) -> np.ndarray:
     bgr = _raster(bgr)
@@ -65,9 +58,8 @@ def detection_tensor(bgr: np.ndarray, *, limit_side_len: int = 64,
         raise OCRProcessingError('invalid detector resize limits')
     h, w = bgr.shape[:2]
     source = bgr
-    canvas_height,canvas_width=detector_canvas_size(h,w)
-    if (canvas_height,canvas_width)!=(h,w):
-        source = np.zeros((canvas_height,canvas_width,3), dtype=np.uint8)
+    if h+w < 64:
+        source = np.zeros((max(32, h), max(32, w), 3), dtype=np.uint8)
         source[:h, :w] = bgr
     sh, sw = source.shape[:2]
     ratio = max(1., limit_side_len/min(sh, sw))
@@ -91,25 +83,36 @@ def _regions(mask: np.ndarray, check: Callable[[], None] | None = None):
             parents[label] = parents[parents[label]]
             label = parents[label]
         return label
-    for y, row in enumerate(mask):
-        if check is not None and y % 32 == 0: check()
-        transitions = np.diff(np.pad(row.astype(np.int8), (1,1)))
-        starts, ends = np.flatnonzero(transitions == 1), np.flatnonzero(transitions == -1)-1
-        current = []
-        offset = 0
-        for start, end in zip(starts.tolist(), ends.tolist()):
-            label = len(parents)
-            if label >= 200_000: raise OCRProcessingError('detector bitmap exceeds component-run bound')
-            parents.append(label)
-            while offset < len(previous) and previous[offset][1] < start-1: offset += 1
-            k = offset
-            while k < len(previous) and previous[k][0] <= end+1:
-                left, right = find(label), find(previous[k][2])
-                if left != right: parents[max(left,right)] = min(left,right)
-                k += 1
-            current.append((start,end,label))
-            runs.append((start,end,y,label))
-        previous = current
+    # Batch transitions within the existing 32-row deadline interval. This
+    # avoids padding and scanning each row separately, with bounded temporary
+    # memory and identical row order, run endpoints and union operations.
+    for first in range(0, len(mask), 32):
+        if check is not None: check()
+        chunk = mask[first:first+32].astype(np.int8)
+        transitions = np.diff(np.pad(chunk, ((0,0),(1,1))), axis=1)
+        start_y, start_x = np.nonzero(transitions == 1)
+        _, end_x = np.nonzero(transitions == -1)
+        counts = np.bincount(start_y, minlength=len(chunk))
+        cursor = 0
+        for row, count in enumerate(counts):
+            y = first+row
+            current = []
+            offset = 0
+            for index in range(cursor, cursor+int(count)):
+                start, end = int(start_x[index]), int(end_x[index])-1
+                label = len(parents)
+                if label >= 200_000: raise OCRProcessingError('detector bitmap exceeds component-run bound')
+                parents.append(label)
+                while offset < len(previous) and previous[offset][1] < start-1: offset += 1
+                k = offset
+                while k < len(previous) and previous[k][0] <= end+1:
+                    left, right = find(label), find(previous[k][2])
+                    if left != right: parents[max(left,right)] = min(left,right)
+                    k += 1
+                current.append((start,end,label))
+                runs.append((start,end,y,label))
+            cursor += int(count)
+            previous = current
     grouped = defaultdict(list)
     for start,end,y,label in runs:
         grouped[find(label)].extend(((start,y),(end,y)))

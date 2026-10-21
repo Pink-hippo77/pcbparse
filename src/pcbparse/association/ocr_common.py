@@ -50,6 +50,16 @@ class OCRAssociationConfig:
     # different scales (raw token confidence vs. composite), so the default
     # filter can hand a component a strictly worse reading.
     key_evidence_pool_enabled: bool = False
+    # Experimental: resolve exact designator target ties with center geometry
+    # only for same-category, similarly oriented bodies on the same row.
+    component_designator_center_tiebreak_enabled: bool = False
+    box_external_designator_preference_enabled: bool = False
+    component_cross_view_designator_enabled: bool = False
+    component_punctuation_designator_enabled: bool = False
+    passive_reference_name_enabled: bool = False
+    visible_reference_recovery_enabled: bool = False
+    box_edge_reference_recovery_enabled: bool = False
+    amplifier_reference_recovery_enabled: bool = False
     component_model_catalog_path: str | None = None
     component_model_catalog_sha256: str | None = None
 
@@ -108,6 +118,13 @@ class OCRAssociationConfig:
             raise ValueError("key_argument_max_enabled must be a boolean")
         if type(self.key_evidence_pool_enabled) is not bool:
             raise ValueError("key_evidence_pool_enabled must be a boolean")
+        if type(self.component_designator_center_tiebreak_enabled) is not bool:
+            raise ValueError("component_designator_center_tiebreak_enabled must be a boolean")
+        if type(self.box_external_designator_preference_enabled) is not bool:
+            raise ValueError("box_external_designator_preference_enabled must be a boolean")
+        for name in ("component_cross_view_designator_enabled", "component_punctuation_designator_enabled", "passive_reference_name_enabled", "visible_reference_recovery_enabled", "box_edge_reference_recovery_enabled", "amplifier_reference_recovery_enabled"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
         if (
             isinstance(self.binding_swap_min_gain_px, bool)
             or not math.isfinite(float(self.binding_swap_min_gain_px))

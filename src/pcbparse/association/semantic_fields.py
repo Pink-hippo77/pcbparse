@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pcbparse.association.reference_prefixes import DESIGNATOR_PATTERN, designator_compatible
+
 import math
 import re
 import unicodedata
@@ -16,6 +18,7 @@ from pcbparse.association.ocr_common import (
 )
 from pcbparse.ir.models import Component, Pin, TextToken, WireSegment
 from pcbparse.association.pin_label_context import BodyPinLabelContext
+from pcbparse.association.conflicted_reference_roles import recover_conflicted_reference_roles
 
 
 """Conservative semantic-field inference for untyped OCR tokens.
@@ -31,7 +34,7 @@ assignment passes.
 """
 
 
-_DESIGNATOR = re.compile(r"^[A-Z]{1,4}[0-9]+[A-Z]?$")
+_DESIGNATOR = re.compile(DESIGNATOR_PATTERN)
 # Pure-digit pin numbers keep this conservative pattern.  Alphanumeric pin
 # labels (A5, B12) use a separate recognition path below so simply widening
 # _PIN_NUMBER is not treated as sufficient coverage.
@@ -48,7 +51,7 @@ _VALUEISH = re.compile(
 _REFERENCE_PREFIXES = frozenset({
     "R", "C", "L", "D", "Q", "U", "J", "P", "S", "SW", "FB",
     "Y", "X", "TP", "F", "K", "M", "B", "N", "E", "H", "A",
-    "G", "V", "O", "I", "IC", "LED", "CN", "CON", "JP", "RN",
+    "G", "V", "O", "I", "IC", "LED", "CN", "CON", "JP", "RN", "T", "SCREW", "BUZZER",
 })
 _NETLIKE = re.compile(r"^[A-Za-z0-9_+.\-]+$")
 
@@ -119,7 +122,10 @@ def infer_semantic_fields(
         "candidate_rescued": 0,
         "by_field": {},
     }
-    by_field: dict[str, int] = {}
+    summary['conflicted_reference_roles']=recover_conflicted_reference_roles(components,texts)
+    recovered_ids={r['text_id']for r in summary['conflicted_reference_roles']}
+    summary['classified']=len(recovered_ids)
+    by_field: dict[str, int] = {'designator':len(recovered_ids)} if recovered_ids else {}
     # The semantic pass is invoked after perception and can see hundreds of
     # objects on a single schematic. Spatial grids preserve the exact
     # distance checks below while avoiding a full scan for every OCR token.
@@ -148,7 +154,8 @@ def infer_semantic_fields(
             continue
         existing = canonical_details(token.details)
         if existing:
-            summary["preserved_typed"] += 1
+            if token.internal_id not in recovered_ids:
+                summary["preserved_typed"] += 1
             continue
         value = preferred_text(token)
         resolved = resolved_text(token)
@@ -397,7 +404,8 @@ def _classify_component_roi(
     if component is not None and _is_catalog_body_model(token, normalized, component, known_model_names):
         return "searchname", component_id
     if _DESIGNATOR.fullmatch(normalized):
-        if component is None or _prefix_compatible(component.category, normalized):
+        if component is None or (_prefix_compatible(component.category, normalized)
+                                 and _switch_reference_score_ok(token, normalized, component)):
             return "designator", component_id
         # Designator-shaped but wrong prefix for this component (e.g. A5 inside
         # an IC body) follows the alphanumeric pin-number path instead.
@@ -451,7 +459,8 @@ def _classify_global(
     if _DESIGNATOR.fullmatch(normalized):
         if nearest_component is not None:
             component = nearest_component[0]
-            if _prefix_compatible(component.category, normalized):
+            if (_prefix_compatible(component.category, normalized)
+                    and _switch_reference_score_ok(token, normalized, component)):
                 # Pin-proximity guard: if a pin is much closer than the component,
                 # prefer pinnumber/pinname over designator (fixes wrong_field:designator).
                 if nearest_pin is not None:
@@ -473,7 +482,8 @@ def _classify_global(
                 continue
             if component.category.upper() == "BOX":
                 continue
-            if _prefix_compatible(component.category, normalized):
+            if (_prefix_compatible(component.category, normalized)
+                    and _switch_reference_score_ok(token, normalized, component)):
                 return "designator", component.internal_id, None
         # Alphanumeric pin labels near a pin tip use the dedicated path.
         if nearest_pin is not None and _ALNUM_PIN_NUMBER.fullmatch(normalized):
@@ -773,6 +783,17 @@ def _looks_like_pin_name(normalized: str) -> bool:
 def _looks_like_search_name(normalized: str) -> bool:
     if not normalized or len(normalized) > 256 or not any(character.isalpha() for character in normalized):
         return False
+    if ('©' in normalized or re.search(r'\b(?:copyright|all rights reserved)\b', normalized, re.I)
+            or re.match(r'\s*(?:https?://|www\.)', normalized, re.I)):
+        return False
+    # Title-block fields are drawing metadata, not unknown IC model names.
+    # Their proximity to a false rectangular proposal is insufficient evidence.
+    heading = normalized.strip().casefold().rstrip(':')
+    if heading.startswith('schematic') or heading in {
+        'revision', 'reviewed', 'review', 'checked', 'approved', 'drawn',
+        'designed', 'document', 'drawing', 'project', 'filename', 'title',
+    }:
+        return False
     # Box search names are usually titles/part names, often containing spaces
     # or separators. Short plain words are left to the net-label/pin-name rules.
     return bool(re.search(r"\s|[/_-]", normalized)) or len(normalized) >= 8
@@ -798,48 +819,17 @@ def _looks_like_netlabel(normalized: str) -> bool:
     return True
 
 
+def _switch_reference_score_ok(token: TextToken, value: str, component: Component) -> bool:
+    # Single-S references are newly supported aliases. Weak glyph reads such
+    # as S43 must not be promoted by proximity alone; SW references retain
+    # their previous policy. Typed input fields are preserved by the caller.
+    return not (component.category.upper() == "SWITCH"
+                and re.fullmatch(r"S[0-9]+[A-Z]?", value)
+                and token.score < .6)
+
+
 def _prefix_compatible(category: str, designator: str) -> bool:
-    normalized = category.upper()
-    aliases = {
-        "BOX": "*",
-        "RESISTOR": "R",
-        "CAPACITOR": "C",
-        "INDUCTOR": "L",
-        "DIODE": "D",
-        "LED": "D",
-        "IC": "U",
-        "CONNECTOR": "J",
-        "CON": "J",
-        "JACK": "J",
-        "PLUG": "J",
-        "SOCKET": "J",
-        "PORT": "J",
-        "HEADER": "J",
-        "TERMINAL": "J",
-        "SWITCH": "SW",
-        "RELAY": "K",
-        "TRANSISTOR": "Q",
-        "MOSFET": "Q",
-        "BJT": "Q",
-        "NPN": "Q",
-        "PNP": "Q",
-        "CRYSTAL": "Y",
-        "XTAL": "Y",
-        "FUSE": "F",
-        "TESTPOINT": "TP",
-        "VOLTAGE": "U",
-        "REGULATOR": "U",
-        "POWER": "P",
-        "BATTERY": "B",
-        "MOTOR": "M",
-    }
-    expected = aliases.get(normalized, normalized[:1])
-    if expected == "*":
-        return True
-    prefix = re.match(r"^[A-Z]+", designator)
-    if prefix is None:
-        return False
-    return prefix.group(0).startswith(expected)
+    return designator_compatible(category, designator)
 
 
 def _bbox_gap_distance(left: Any, right: Any) -> float:

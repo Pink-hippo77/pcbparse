@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 import math
 import re
+import unicodedata
 from typing import Any
 
 from pcbparse.association.ocr_common import (
@@ -36,6 +37,61 @@ _PIN_TEXT_FIELDS = {
 _NUMBER_LEXEME = re.compile(r"^[^\s,()]+$")
 _ALNUM_PIN_NUMBER = re.compile(r"^(?:[A-Z]{1,2}[0-9]{1,3}|[0-9]{1,3}[A-Z]{1,2})$")
 _SIDES = {"L", "R", "T", "B"}
+_NUMERIC_TERMINALS = {'R','RESISTOR','C','CAPACITOR','L','INDUCTOR','D','DIODE','LED',
+                      'SWITCH','CRYSTAL','XTAL','FUSE'}
+
+
+def _overlapping_component_fragment(token, value, parents):
+    normalized = unicodedata.normalize('NFKC', value).strip()
+    if re.fullmatch(r'[0-9]{1,3}', normalized) is None:
+        return False
+    a = token.bbox
+    for other in parents:
+        if other is token or other.score < .95:
+            continue
+        parent = unicodedata.normalize('NFKC', preferred_text(other) or '').strip()
+        if len(parent) <= len(normalized) or normalized not in parent:
+            continue
+        b = other.bbox
+        overlap = max(0., min(a.x2,b.x2)-max(a.x1,b.x1))*max(0., min(a.y2,b.y2)-max(a.y1,b.y1))
+        if not .5*a.height <= b.height <= 1.8*a.height:
+            continue
+        fraction = overlap/max(1.,a.width*a.height)
+        weak_centered = (token.score < .5 and b.x1 <= a.center.x <= b.x2
+                         and b.y1 <= a.center.y <= b.y2 and fraction >= .5)
+        if fraction >= .65 or weak_centered:
+            return True
+    return False
+
+
+def _pin_text_context_ok(owner, token, field, value, references, component_fragment=False):
+    if any(e.source == 'dataset' for e in token.evidence):
+        return True
+    # A fragment of a bound component field cannot become a different
+    # neighbour's pin number after its original owner rejects it.
+    if field == 'number' and component_fragment:
+        return False
+    if owner is None or owner.category.upper() not in _NUMERIC_TERMINALS:
+        return True
+    normalized = unicodedata.normalize('NFKC', value).strip()
+    if field == 'number':
+        # GPIO/net names such as PB12 are valid words, but cannot establish
+        # the pin number of an ordinary two-terminal symbol. Box/BGA ball
+        # identities retain their separate alphanumeric matching path.
+        if re.fullmatch(r'[0-9]{1,3}', normalized) is None:
+            return False
+        return True
+    key = (owner.key or '').casefold()
+    if not key or not re.fullmatch(r'[0-9]*'+re.escape(key)+r'[0-9]*', normalized.casefold()):
+        return True
+    for reference in references:
+        if reference is token:
+            continue
+        a,b = token.bbox,reference.bbox
+        overlap = max(0.,min(a.x2,b.x2)-max(a.x1,b.x1))*max(0.,min(a.y2,b.y2)-max(a.y1,b.y1))
+        if overlap/max(1.,min(a.width*a.height,b.width*b.height)) >= .65:
+            return False
+    return True
 
 
 def associate_pin_texts(
@@ -43,6 +99,8 @@ def associate_pin_texts(
     texts: list[TextToken],
     diagnostics: list[Diagnostic],
     config: OCRAssociationConfig,
+    *,
+    components: Sequence[Component] | None = None,
 ) -> dict[str, Any]:
     """Conservatively resolve typed pin OCR with global one-to-one matching.
 
@@ -60,6 +118,20 @@ def associate_pin_texts(
         tuple[str, tuple[str | None, str]], list[PinAssignmentCandidate]
     ] = defaultdict(list)
     relevant_tokens = 0
+    context_filtered_targets = 0
+    owners = {c.internal_id:c for c in components or ()}
+    references = defaultdict(list)
+    fragment_parents = []
+    for text in texts:
+        owner = owners.get(text.component_id)
+        if (owner is not None and owner.category.upper() in {'CRYSTAL','XTAL'}
+                and any(e.metadata.get('method') == 'visible-crystal-plates-reference-and-model-leads'
+                        and e.metadata.get('component_id') == owner.internal_id for e in owner.evidence)
+                and canonical_details(text.details) in {'value','model','designator'} and text.score >= .95):
+            fragment_parents.append(text)
+        if (owner is not None and owner.key and text.score >= .98
+                and (preferred_text(text) or '').casefold() == owner.key.casefold()):
+            references[owner.internal_id].append(text)
 
     # Candidate construction is deterministic, but neither input list is
     # sorted or replaced: callers retain their original object order.
@@ -83,9 +155,17 @@ def associate_pin_texts(
         else:
             pool = sorted(pins, key=lambda item: item.internal_id)
 
+        component_fragment = field == 'number' and _overlapping_component_fragment(token, value, fragment_parents)
+        filtered = [p.internal_id for p in pool if not _pin_text_context_ok(
+            owners.get(p.component_id),token,field,value,references.get(p.component_id,()),
+            component_fragment)]
+        context_filtered_targets += len(filtered)
+        excluded = set(filtered)
+
         candidates = [
             candidate
             for pin in pool
+            if pin.internal_id not in excluded
             if (
                 candidate := _score_candidate(
                     token,
@@ -116,6 +196,7 @@ def associate_pin_texts(
             "assignment_method": None,
             "group_total_score": None,
             "group_next_best_score": None,
+            "context_filtered_pin_ids": filtered,
         }
         contexts[token.internal_id] = context
 
@@ -262,6 +343,7 @@ def associate_pin_texts(
                     "max_distance_px": config.pin_max_distance_px,
                 },
                 "target_candidates": candidate_records[: config.max_recorded_candidates],
+                "context_filtered_pin_ids": context['context_filtered_pin_ids'],
             },
         )
         upsert_evidence(token.evidence, token_evidence)
@@ -394,6 +476,7 @@ def associate_pin_texts(
 
     return {
         "relevant_tokens": relevant_tokens,
+        "context_filtered_targets": context_filtered_targets,
         "accepted_targets": accepted_targets,
         "ambiguous_targets": ambiguous_targets,
         "unknown_targets": unknown_targets,

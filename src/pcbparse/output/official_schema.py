@@ -24,7 +24,8 @@ def split_official_pin_numbers(value: object) -> tuple[str, ...]:
 
     The guide requires comma-delimited values such as ``5,6,7`` to become
     separate pins.  Blank/placeholder/OCR-noise values return empty: callers
-    must reject or prune them and must never invent pin numbers.  Dots and
+    must resolve the identity before serialization: Q&A permits local output
+    IDs for non-Box pins; missing scored Box numbers require evidence. Dots and
     parentheses cannot be represented without colliding with the documented
     ``(U1.A5,R1.1)`` HyperGraph grammar.
     """
@@ -468,7 +469,7 @@ def validate_official_output(
                 f"components.{key}.bbox must have positive area"
             )
 
-    available_pin_refs: set[tuple[str, str]] = set()
+    available_pin_refs: set[str] = set()
     for component_key, raw_group in pins.items():
         if not isinstance(raw_group, Mapping):
             raise OfficialSchemaError(f"pins.{component_key} must be an object")
@@ -482,7 +483,11 @@ def validate_official_output(
                 raise OfficialSchemaError(
                     f"pins.{component_key}.{pin_key} does not match pin.key_template"
                 )
-            available_pin_refs.add((str(component_key), match.group("number")))
+            # Resolve against the actual component/pin groups. Splitting a
+            # reference at its first dot misreads multi-unit keys (U8.1.3).
+            available_pin_refs.add(schema["net"]["hypergraph_pin_template"].format(
+                component_key=component_key, pin_number=match.group("number")
+            ))
             pin = _require_exact_keys(
                 raw_pin, schema["pin"]["fields"], f"pins.{component_key}.{pin_key}"
             )
@@ -509,8 +514,7 @@ def validate_official_output(
                 raise OfficialSchemaError(
                     f"nets.{net_key}.hyperGraph ref {encoded_ref!r} does not match profile"
                 )
-            reference = (match.group("component_key"), match.group("pin_number"))
-            if reference not in available_pin_refs:
+            if encoded_ref not in available_pin_refs:
                 raise OfficialSchemaError(
                     f"nets.{net_key}.hyperGraph references unknown pin {encoded_ref!r}"
                 )

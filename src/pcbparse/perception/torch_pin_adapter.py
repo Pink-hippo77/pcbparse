@@ -46,8 +46,11 @@ class PinAdapterConfig:
     pin_budget_floor: int = 12
     pin_budget_pitch_px: float = 8.0
     device: str = "auto"
+    component_mask_channel: bool = False
 
     def __post_init__(self) -> None:
+        if type(self.component_mask_channel) is not bool:
+            raise ValueError("component_mask_channel must be boolean")
         if (
             not isinstance(self.input_size, tuple)
             or len(self.input_size) != 2
@@ -122,6 +125,7 @@ class PinAdapterConfig:
                     raise TorchPinAdapterError(f"model entry {key!r} must be an object")
                 merged.update(candidate)
         direct_names = {
+            "component_mask_channel",
             "input_size",
             "output_stride",
             "score_threshold",
@@ -206,9 +210,12 @@ class TorchPinProvider:
                 inference_tensor, geometry = _view_tensor(
                     component_view.full_roi, self.config.input_size
                 )
+                box_rect = _component_box_rect_heatmap(component_view, geometry)
+                if self.config.component_mask_channel:
+                    inference_tensor = add_component_mask(inference_tensor, box_rect)
                 tensors.append(inference_tensor)
                 geometries.append(geometry)
-                box_rects.append(_component_box_rect_heatmap(component_view, geometry))
+                box_rects.append(box_rect)
             budgets = [self.config.pin_budget_for(rect) for rect in box_rects]
 
             torch = _require_torch()
@@ -372,7 +379,17 @@ class _ONNXBackend:
         else:
             raise TorchPinAdapterError(f"unsupported ONNX device {device!r}")
         try:
-            self.session = ort.InferenceSession(str(path), providers=providers)
+            options = ort.SessionOptions()
+            options.intra_op_num_threads = 4
+            options.inter_op_num_threads = 1
+            # Exhaustive cuDNN search repeats for different ROI batch sizes
+            # and dominates short evaluation batches. Heuristic selection
+            # uses the same FP32 model without that search cost.
+            configured = [
+                (name, {'cudnn_conv_algo_search': 'HEURISTIC'})
+                if name == 'CUDAExecutionProvider' else name for name in providers
+            ]
+            self.session = ort.InferenceSession(str(path), sess_options=options, providers=configured)
         except Exception as exc:
             raise TorchPinAdapterError(
                 f"cannot load ONNX Pin artifact: {type(exc).__name__}: {exc}"
@@ -450,7 +467,9 @@ def create_pin_provider(model_path: str | Path, entry: Mapping[str, Any]) -> Tor
         torch = _require_torch()
         device = _resolve_torch_device(config.device, torch)
         try:
-            model = torch.jit.load(str(path), map_location=device)
+            # File objects also handle non-ASCII Windows workspaces correctly.
+            with path.open("rb") as stream:
+                model = torch.jit.load(stream, map_location=device)
             backend = _TorchBackend(model, str(device))
         except Exception as script_error:
             if artifact_format != "auto":
@@ -482,6 +501,28 @@ def create_pin_provider(model_path: str | Path, entry: Mapping[str, Any]) -> Tor
 # conventional ``create_*_provider`` factory name.
 factory = create_pin_provider
 TorchPinAdapter = TorchPinProvider
+
+
+def add_component_mask(image: Any, box: tuple[float, float, float, float] | None) -> Any:
+    """Condition a new model on its detected owner, in the same letterbox frame.
+
+    Existing RGB models never call this. The rectangle is observed detection
+    geometry; no pin target, number, label, or component type is encoded.
+    """
+    torch = _require_torch()
+    if box is None or len(box) != 4 or not all(math.isfinite(v) for v in box):
+        raise TorchPinAdapterError("conditioned Pin model requires a finite component bbox")
+    height, width = image.shape[-2:]
+    x1,y1,x2,y2 = box
+    if x2<=x1 or y2<=y1:
+        raise TorchPinAdapterError("conditioned Pin component bbox is empty")
+    left,right = max(0,math.floor(x1)),min(width,math.ceil(x2)+1)
+    top,bottom = max(0,math.floor(y1)),min(height,math.ceil(y2)+1)
+    if right<=left or bottom<=top:
+        raise TorchPinAdapterError("conditioned Pin component bbox is outside the input")
+    mask = image.new_zeros((image.shape[0],1,height,width))
+    mask[:,:,top:bottom,left:right] = 1
+    return torch.cat((image,mask),dim=1)
 
 
 def _batches(items: list[ComponentView], size: int) -> list[list[ComponentView]]:
