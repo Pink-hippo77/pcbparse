@@ -31,7 +31,9 @@ def natural_sort_key(value: object) -> tuple[tuple[object, ...], ...]:
         # Preserve the original numeric token as a final tie-break.  Without
         # it, distinct legal strings such as R1 and R01 had identical keys and
         # inherited caller insertion order, violating deterministic output.
-        (0, int(part), part) if part.isdigit() else (1, part.casefold(), part)
+        # Only decimal digits match \d and can be converted by int(). Other
+        # digit glyphs such as ² and ① remain literal identifier text.
+        (0, int(part), part) if part.isdecimal() else (1, part.casefold(), part)
         for part in _NATURAL_PARTS.split(text)
         if part != ""
     )

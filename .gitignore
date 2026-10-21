@@ -1,5 +1,5 @@
 # Git stores active application, training/data tooling and build metadata.
-# Dataset/model assets, evaluation, tests and experiments remain in the workspace.
+# Dataset/model assets, evaluation and experiments remain in the workspace.
 /*
 !/.gitignore
 !/.gitattributes
@@ -16,6 +16,13 @@
 !/configs/
 !/models/
 !/docker/
+!/tests/
+
+# Track only the model-free serializer regressions from the workspace tests.
+/tests/*
+!/tests/unit/
+/tests/unit/*
+!/tests/unit/test_official_serializer_unicode.py
 
 # Evaluation is an offline workspace companion.
 /src/pcbparse/evaluation/
